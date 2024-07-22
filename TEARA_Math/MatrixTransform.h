@@ -100,6 +100,17 @@ inline Mat3x3 MakeRotationAroundY3x3(real32 Rad)
     return Result;
 }
 
+inline Mat3x3 MakeRotationAroundX3x3(real32 Rad)
+{
+    Mat3x3 Result = {
+        1.0f,        0.0f,        0.0f,
+        0.0f, Cosine(Rad),  -Sine(Rad),
+        0.0f,   Sine(Rad), Cosine(Rad)
+    };
+
+    return Result;
+}
+
 inline Mat4x4 MakeRotationAroundZ(real32 Rad)
 {
     Mat4x4 Result = {

@@ -489,6 +489,7 @@ int main(int argc, char *argv[])
     GLfloat Speed = 5.0f;
 
     GLfloat CameraYRotationDelta = 0.0f;
+    GLfloat CameraXRotationDelta = 0.0f;
 
     GLfloat CameraTargetTranslationDelta = 0.0f;
     GLfloat CameraRightTranslationDelta = 0.0f;
@@ -501,6 +502,12 @@ int main(int argc, char *argv[])
             else if (Event.type == SDL_EVENT_KEY_DOWN) {
                 switch (Event.key.key) {
                     // TODO (ismail): use raw key code
+                    case SDLK_I: {
+                        CameraXRotationDelta = DEGREE_TO_RAD(0.03f);
+                    } break;
+                    case SDLK_K: {
+                        CameraXRotationDelta = -DEGREE_TO_RAD(0.03f);
+                    } break;
                     case SDLK_L: {
                         CameraYRotationDelta = -DEGREE_TO_RAD(0.03f);
                     } break;
@@ -559,6 +566,12 @@ int main(int argc, char *argv[])
                     case SDLK_LEFT: {
                          CameraRightTranslationDelta = 0.0f;
                     } break;
+                    case SDLK_I: {
+                        CameraXRotationDelta = 0.0f;
+                    } break;
+                    case SDLK_K: {
+                        CameraXRotationDelta = 0.0f;
+                    } break;
                     case SDLK_L: {
                         CameraYRotationDelta = 0.0f;
                     } break;
@@ -605,17 +618,30 @@ int main(int argc, char *argv[])
 
         // 0.005234f
 
-        Mat3x3 CameraFrameRotation = MakeRotationAroundY3x3(CameraYRotationDelta);
+        // TODO (ismail): camera rotation is so baggy, i need fix this
+        Mat3x3 CameraYFrameRotation = MakeRotationAroundY3x3(CameraYRotationDelta);
+        Mat3x3 CameraXFrameRotation = MakeRotationAroundX3x3(CameraXRotationDelta);
+        Mat3x3 CameraFrameRotation = CameraYFrameRotation * CameraXFrameRotation;
 
         PlayerCamera.UVN = CameraFrameRotation * PlayerCamera.UVN;
 
+        // TODO (ismail): if we press up and right(or any other combination of up, down, right, left)
+        // we will translate faster because z = 1.0f and x = 1.0f i need fix that
         Vec3 CameraTargetTranslation = { 
             PlayerCamera.UVN[0][2] * (CameraTargetTranslationDelta * Speed * 0.0001234f),
-            PlayerCamera.UVN[1][2],
+            PlayerCamera.UVN[1][2] * (CameraTargetTranslationDelta * Speed * 0.0001234f),
             PlayerCamera.UVN[2][2] * (CameraTargetTranslationDelta * Speed * 0.0001234f)
         };
 
-        PlayerCamera.Position += CameraTargetTranslation;
+        Vec3 CameraRightTranslation = { 
+            PlayerCamera.UVN[0][0] * (CameraRightTranslationDelta * Speed * 0.0001234f),
+            PlayerCamera.UVN[1][0] * (CameraRightTranslationDelta * Speed * 0.0001234f),
+            PlayerCamera.UVN[2][0] * (CameraRightTranslationDelta * Speed * 0.0001234f)
+        };
+
+        Vec3 FinalTranslation = CameraTargetTranslation + CameraRightTranslation;
+
+        PlayerCamera.Position += FinalTranslation;
         Vec3 ObjectCameraTranslation = { -(PlayerCamera.Position.x) , -(PlayerCamera.Position.y), -(PlayerCamera.Position.z) };
 
         Mat4x4 CameraWorldTranslation = MakeTranslation(&ObjectCameraTranslation);
