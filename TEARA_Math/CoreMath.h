@@ -7,9 +7,9 @@
 // TODO (ismail): maybe use SDL_stdinc?
 #include <math.h>
 
-#define                     PI         3.14159265358979323846f
-#define                 TWO_PI         2.0f * PI
-#define          HALF_ROTATION         180.0f
+#define                     PI         (3.14159265358979323846f)
+#define                 TWO_PI         (2.0f * PI)
+#define          HALF_ROTATION         (180.0f)
 #define            ONE_OVER_PI         (1.0f / PI)
 #define        ONE_OVER_TWO_PI         (1.0f / TWO_PI)
 #define ONE_OVER_HALF_ROTATION         (1.0f / HALF_ROTATION)
@@ -17,6 +17,8 @@
 #define          RAD_IN_DEGREE         (PI * ONE_OVER_HALF_ROTATION)
 #define          DEGREE_TO_RAD(Deg)    (Deg * RAD_IN_DEGREE)
 #define          RAD_TO_DEGREE(Rad)    (Rad * DEGREE_IN_RAD)
+#define               INFINITY		   (1e30f)
+#define         SMALLEST_FLOAT         (1.1754944e-038f)
 
 inline real32 Tangens(real32 Rad)
 {
@@ -26,7 +28,7 @@ inline real32 Tangens(real32 Rad)
 
 inline real32 Sqrt(real32 Scalar) 
 {
-    real32 Result = sqrtf(Scalar);
+    real32 Result = Scalar > SMALLEST_FLOAT ? sqrtf(Scalar) : INFINITY;
     return Result;
 }
 

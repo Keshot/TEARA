@@ -8,6 +8,7 @@
 #include "CoreMath.h"
 
 #define FILE_READ_BUFFER_LEN 5000
+#define MOUSE_EVENT(type) ((type == SDL_EVENT_MOUSE_MOTION)||(type == SDL_EVENT_MOUSE_BUTTON_UP)||(type == SDL_EVENT_MOUSE_BUTTON_DOWN))
 
 const Mat4x4 Identity4x4 = {
     1.0f, 0.0f, 0.0f, 0.0f,
@@ -491,7 +492,12 @@ int main(int argc, char *argv[])
     GLfloat CameraTargetTranslationDelta = 0.0f;
     GLfloat CameraRightTranslationDelta = 0.0f;
 
+    // TODO (ismail): read what is this
+    SDL_SetRelativeMouseMode(SDL_TRUE);
+
     while (!Quit) {
+        Vec2 MouseMoution = { };
+
         while (SDL_PollEvent(&Event)) {
             if (Event.type == SDL_EVENT_QUIT) {
                 Quit = true;
@@ -592,14 +598,24 @@ int main(int argc, char *argv[])
                     }
                 }
             }
+            else if (MOUSE_EVENT(Event.type)) {
+                // TODO (ismail): check this
+                SDL_GetRelativeMouseState(&MouseMoution.x, &MouseMoution.y);
+                MouseMoution.Normalize();
+
+                SDL_Log("Mouse X = %.2f\tMouse Y = %.2f\n", MouseMoution.x, MouseMoution.y);
+
+                // TODO (ismail): check this
+                SDL_WarpMouseInWindow(Window, (real32)(WINDOW_WIDTH / 2), (real32)(WINDOW_HEIGHT / 2));
+            }
         }
 
         AngelInRadY += RotationDeltaY;
         AngelInRadX += RotationDeltaX;
         Translation += TranslationDelta;
         Scale += ScaleDelta;
-        PlayerCamera.Rotation.Heading += CameraYRotationDelta;
-        PlayerCamera.Rotation.Pitch += CameraXRotationDelta;
+        PlayerCamera.Rotation.Heading += CameraYRotationDelta + (MouseMoution.x * 0.005);
+        PlayerCamera.Rotation.Pitch += CameraXRotationDelta + (MouseMoution.y * 0.005);
 
         if ((Scale >= MaxScale) || (Scale <= MinScale)) {
             ScaleDelta *= -1.0f;
