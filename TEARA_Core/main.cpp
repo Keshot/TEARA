@@ -1,6 +1,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_opengl.h>
 #include <SDL3/SDL_iostream.h>
+#include <SDL3/SDL_stdinc.h>
 
 #include "Types.h"
 #include "MatrixTransform.h"
@@ -33,10 +34,7 @@ struct Vertex {
 
 struct Camera {
     Vec3 Position;
-    Vec3 Target;
-    Vec3 Up;
-    Vec3 Right;
-    Mat3x3 UVN;
+    Rotation Rotation;
 };
 
 enum {
@@ -474,7 +472,7 @@ int main(int argc, char *argv[])
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     Mat4x4 OrthoProjection = MakeOrtographProjection(-2.0f * AspectRatio, 2.0f * AspectRatio, -2.0f, 2.0f, 0.1f, 100.0f);
-    Mat4x4 PerspectiveProjection = MakePerspectiveProjection(90.0f, AspectRatio, 0.1f, 5.0f);
+    Mat4x4 PerspectiveProjection = MakePerspectiveProjection(60.0f, AspectRatio, 0.1f, 5.0f);
 
     bool isPerspective = true;
 
@@ -484,7 +482,6 @@ int main(int argc, char *argv[])
     GLfloat PerspectiveTranslationZ = 2.0f;
 
     Camera PlayerCamera = {  };
-    PlayerCamera.UVN = Identity3x3;
 
     GLfloat Speed = 5.0f;
 
@@ -503,16 +500,16 @@ int main(int argc, char *argv[])
                 switch (Event.key.key) {
                     // TODO (ismail): use raw key code
                     case SDLK_I: {
-                        CameraXRotationDelta = DEGREE_TO_RAD(0.03f);
-                    } break;
-                    case SDLK_K: {
                         CameraXRotationDelta = -DEGREE_TO_RAD(0.03f);
                     } break;
+                    case SDLK_K: {
+                        CameraXRotationDelta = DEGREE_TO_RAD(0.03f);
+                    } break;
                     case SDLK_L: {
-                        CameraYRotationDelta = -DEGREE_TO_RAD(0.03f);
+                        CameraYRotationDelta = DEGREE_TO_RAD(0.03f);
                     } break;
                     case SDLK_J: {
-                        CameraYRotationDelta = DEGREE_TO_RAD(0.03f);
+                        CameraYRotationDelta = -DEGREE_TO_RAD(0.03f);
                     } break;
                     case SDLK_UP: {
                         CameraTargetTranslationDelta = 1.0f;
@@ -601,6 +598,8 @@ int main(int argc, char *argv[])
         AngelInRadX += RotationDeltaX;
         Translation += TranslationDelta;
         Scale += ScaleDelta;
+        PlayerCamera.Rotation.Heading += CameraYRotationDelta;
+        PlayerCamera.Rotation.Pitch += CameraXRotationDelta;
 
         if ((Scale >= MaxScale) || (Scale <= MinScale)) {
             ScaleDelta *= -1.0f;
@@ -618,45 +617,40 @@ int main(int argc, char *argv[])
 
         // 0.005234f
 
-        // TODO (ismail): camera rotation is so baggy, i need fix this
-        Mat3x3 CameraYFrameRotation = MakeRotationAroundY3x3(CameraYRotationDelta);
-        Mat3x3 CameraXFrameRotation = MakeRotationAroundX3x3(CameraXRotationDelta);
-        Mat3x3 CameraFrameRotation = CameraYFrameRotation * CameraXFrameRotation;
-
-        PlayerCamera.UVN = CameraFrameRotation * PlayerCamera.UVN;
+        Vec3 Target;
+        Vec3 Right;
+        Vec3 Up;
+        // TODO (ismail): camera rotation is so buggy, i need fix this
+        // NOTE (ismail): replace RotationToVectors call?
+        Mat4x4 CameraWorldRotation = MakeRotation4x4Inverse(&PlayerCamera.Rotation);
+        RotationToVectors(&PlayerCamera.Rotation, &Target, &Right, &Up);
 
         // TODO (ismail): if we press up and right(or any other combination of up, down, right, left)
         // we will translate faster because z = 1.0f and x = 1.0f i need fix that
         Vec3 CameraTargetTranslation = { 
-            PlayerCamera.UVN[0][2] * (CameraTargetTranslationDelta * Speed * 0.0001234f),
-            PlayerCamera.UVN[1][2] * (CameraTargetTranslationDelta * Speed * 0.0001234f),
-            PlayerCamera.UVN[2][2] * (CameraTargetTranslationDelta * Speed * 0.0001234f)
+            Target.x * (CameraTargetTranslationDelta * Speed * 0.0001234f),
+            Target.y * (CameraTargetTranslationDelta * Speed * 0.0001234f),
+            Target.z * (CameraTargetTranslationDelta * Speed * 0.0001234f)
         };
 
         Vec3 CameraRightTranslation = { 
-            PlayerCamera.UVN[0][0] * (CameraRightTranslationDelta * Speed * 0.0001234f),
-            PlayerCamera.UVN[1][0] * (CameraRightTranslationDelta * Speed * 0.0001234f),
-            PlayerCamera.UVN[2][0] * (CameraRightTranslationDelta * Speed * 0.0001234f)
+            Right.x * (CameraRightTranslationDelta * Speed * 0.0001234f),
+            Right.y * (CameraRightTranslationDelta * Speed * 0.0001234f),
+            Right.z * (CameraRightTranslationDelta * Speed * 0.0001234f)
         };
 
         Vec3 FinalTranslation = CameraTargetTranslation + CameraRightTranslation;
 
         PlayerCamera.Position += FinalTranslation;
-        Vec3 ObjectCameraTranslation = { -(PlayerCamera.Position.x) , -(PlayerCamera.Position.y), -(PlayerCamera.Position.z) };
+        Vec3 ObjectCameraTranslation = { 
+            -(PlayerCamera.Position.x), 
+            -(PlayerCamera.Position.y), 
+            -(PlayerCamera.Position.z) 
+        };
 
         Mat4x4 CameraWorldTranslation = MakeTranslation(&ObjectCameraTranslation);
 
-        Mat3x3 WorldObjectsRotation = PlayerCamera.UVN;
-        WorldObjectsRotation.Transpose();
-
-        Mat4x4 CameraWorldRotation = {
-            WorldObjectsRotation.Matrix[0][0], WorldObjectsRotation.Matrix[0][1], WorldObjectsRotation.Matrix[0][2], 0.0f,
-            WorldObjectsRotation.Matrix[1][0], WorldObjectsRotation.Matrix[1][1], WorldObjectsRotation.Matrix[1][2], 0.0f,
-            WorldObjectsRotation.Matrix[2][0], WorldObjectsRotation.Matrix[2][1], WorldObjectsRotation.Matrix[2][2], 0.0f,
-                                         0.0f,                              0.0f,                              0.0f, 1.0f
-        };
-
-        Mat4x4 WorldTransformation = Translation * Scale * RotationX * RotationY;
+        Mat4x4 WorldTransformation = Translation * Scale * RotationY * RotationX;
         Mat4x4 CameraTransformation = CameraWorldRotation * CameraWorldTranslation;
         Mat4x4 Transform = Projection * CameraTransformation * WorldTransformation;
 

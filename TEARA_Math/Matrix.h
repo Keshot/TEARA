@@ -1,7 +1,7 @@
 #ifndef _TEARA_MATH_MATRIX_H_
 #define _TEARA_MATH_MATRIX_H_
 
-#include "Math.h"
+#include "CoreMath.h"
 #include "Vector.h"
 
 // TODO(ismail): convert all to SIMD
