@@ -2,6 +2,7 @@
 #include <SDL3/SDL_opengl.h>
 #include <SDL3/SDL_iostream.h>
 #include <SDL3/SDL_stdinc.h>
+#include <stb/stb_image.h>
 
 #include "Types.h"
 #include "MatrixTransform.h"
@@ -30,7 +31,7 @@ struct FileData {
 
 struct Vertex {
     Vec3 Position;
-    Vec3 Color;
+    Vec2 Texture;
 };
 
 struct Camera {
@@ -81,6 +82,10 @@ static PFNGLGETPROGRAMINFOLOGPROC           glGetProgramInfoLog;
 static PFNGLGETUNIFORMLOCATIONPROC          glGetUniformLocation;
 static PFNGLUNIFORM1FPROC                   glUniform1f;
 static PFNGLUNIFORMMATRIX4FVPROC            glUniformMatrix4fv;
+static PFNGLUNIFORM1IPROC                   glUniform1i;
+static PFNGLACTIVETEXTUREPROC               glActiveTextureStb;
+
+#define glActiveTexture glActiveTextureStb
 
 static i32 ReadFile(const char *Path, FileData *Buffer)
 {
@@ -220,6 +225,18 @@ static i32 LoadGlFunctions()
         return SDL_OPENGL_LOAD_FAILURE;
     }
 
+    glUniform1i = (PFNGLUNIFORM1IPROC) SDL_GL_GetProcAddress("glUniform1i");
+    if (!glUniform1i) {
+        // TODO (ismail): diagnostic
+        return SDL_OPENGL_LOAD_FAILURE;
+    }
+
+    glActiveTexture = (PFNGLACTIVETEXTUREPROC) SDL_GL_GetProcAddress("glActiveTexture");
+    if (!glActiveTexture) {
+        // TODO (ismail): diagnostic
+        return SDL_OPENGL_LOAD_FAILURE;
+    }
+
     return SUCCESS;
 }
 
@@ -254,35 +271,35 @@ static GLuint CreateSimpleBox()
     Vertex Vertices[] = {
         {
             { -0.5f, -0.5f, -0.5f },
-            { 1.0f, 0.0f, 0.0f }
+            { 0.0f, 0.0f }
         },
         {
             { -0.5f, 0.5f, -0.5f },
-            { 0.0f, 1.0f, 0.0f }
+            { 0.0f, 1.0f }
         },
         {
             { 0.5f, 0.5f, -0.5f },
-            { 0.0f, 0.0f, 1.0f }
+            { 1.0f, 0.0 }
         },
         {
             { 0.5f, -0.5f, -0.5f },
-            { 0.25f, 0.25f, 0.25f }
+            { 1.0f, 1.0f }
         },
         {
             { -0.5f, -0.5f, 0.5f },
-            { 1.0f, 0.0f, 0.0f }
+            { 0.0f, 0.0f }
         },
         {
             { -0.5f, 0.5f, 0.5f },
-            { 0.0f, 1.0f, 0.0f }
+            { 0.0f, 1.0f }
         },
         {
             { 0.5f, 0.5f, 0.5f },
-            { 0.0f, 0.0f, 1.0f }
+            { 1.0f, 0.0 }
         },
         {
             { 0.5f, -0.5f, 0.5f },
-            { 0.25f, 0.25f, 0.25f }
+            { 1.0f, 1.0f }
         },
     };
 
@@ -325,6 +342,34 @@ static GLuint CreateSimpleBoxVertexIndices()
     return IBOResult;
 }
 
+GLuint LoadTexture(const char *FileName)
+{
+    GLuint TextureObject;
+    int u, v, bpp;
+    u8 *ImageData = stbi_load(FileName, &u, &v, &bpp, 0);
+
+    if (!ImageData) {
+        // TODO (ismail): diagnostic?
+        return 0;
+    }
+
+    glGenTextures(1, &TextureObject);
+    glBindTexture(GL_TEXTURE_2D, TextureObject);
+    // TODO (ismail): read about mip mapping
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, u, v, 0, GL_RGB, GL_UNSIGNED_BYTE, ImageData);
+
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    stbi_image_free(ImageData);
+
+    return TextureObject;
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -335,6 +380,8 @@ int main(int argc, char *argv[])
     SDL_Surface *WindowScreenSurface;
     SDL_GLContext GlContext;
     bool32 Quit = false;
+
+    stbi_set_flip_vertically_on_load_thread(1);
 
     if (SDL_Init(SDLInitFlags) < 0) {
         // TODO (ismail): logging
@@ -398,6 +445,7 @@ int main(int argc, char *argv[])
 
     GLuint VBO = CreateSimpleBox();
     GLuint IBO = CreateSimpleBoxVertexIndices();
+    GLuint TextureObject = LoadTexture("bricks_textures.jpg");
 
     GLuint ShaderProgram = glCreateProgram();
     if (!ShaderProgram) {
@@ -437,6 +485,12 @@ int main(int argc, char *argv[])
     }
 
     GLint TransformLocation = glGetUniformLocation(ShaderProgram, "Transform");
+    if (TransformLocation == -1) {
+        // TODO (ismail): diagnostic
+        return OPENGL_ERROR;
+    }
+
+    GLint SamplerLocation = glGetUniformLocation(ShaderProgram, "Sampler");
     if (TransformLocation == -1) {
         // TODO (ismail): diagnostic
         return OPENGL_ERROR;
@@ -494,6 +548,9 @@ int main(int argc, char *argv[])
 
     // TODO (ismail): read what is this
     SDL_SetRelativeMouseMode(SDL_TRUE);
+
+    // TODO (ismail): check what is that
+    // glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &texture_units);
 
     while (!Quit) {
         Vec2 MouseMoution = { };
@@ -679,16 +736,20 @@ int main(int argc, char *argv[])
         // GL_FALSE for column based memory order: (memory - matrix cell) 0x01 - a11, 0x02 - a21, 0x03 - a31
         glUniformMatrix4fv(TransformLocation, 1, GL_TRUE, Transform[0]);
         
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, TextureObject);
+        glUniform1i(SamplerLocation, 0);
+
         glBindBuffer(GL_ARRAY_BUFFER, VBO);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBO);
 
         // position
         glEnableVertexAttribArray(0);        
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), 0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
 
         // color
         glEnableVertexAttribArray(1);        
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(GLfloat)));
 
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
 
