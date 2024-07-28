@@ -39,6 +39,17 @@ struct Camera {
     Rotation Rotation;
 };
 
+struct OpenGLObjectContext {
+    GLuint VAO;
+    GLuint VBO;
+    GLuint IBO;
+};
+
+struct Object {
+    Vec3 WorldPosition;
+    OpenGLObjectContext RenderContext;
+};
+
 enum {
     SUCCESS = 0,
     SDL_INIT_FAILURE = -1,
@@ -84,6 +95,8 @@ static PFNGLUNIFORM1FPROC                   glUniform1f;
 static PFNGLUNIFORMMATRIX4FVPROC            glUniformMatrix4fv;
 static PFNGLUNIFORM1IPROC                   glUniform1i;
 static PFNGLACTIVETEXTUREPROC               glActiveTextureStb;
+static PFNGLGENVERTEXARRAYSPROC             glGenVertexArrays;
+static PFNGLBINDVERTEXARRAYPROC             glBindVertexArray;
 
 #define glActiveTexture glActiveTextureStb
 
@@ -237,6 +250,18 @@ static i32 LoadGlFunctions()
         return SDL_OPENGL_LOAD_FAILURE;
     }
 
+    glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC) SDL_GL_GetProcAddress("glGenVertexArrays");
+    if (!glGenVertexArrays) {
+        // TODO (ismail): diagnostic
+        return SDL_OPENGL_LOAD_FAILURE;
+    }
+
+    glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC) SDL_GL_GetProcAddress("glBindVertexArray");
+    if (!glGenVertexArrays) {
+        // TODO (ismail): diagnostic
+        return SDL_OPENGL_LOAD_FAILURE;
+    }
+
     return SUCCESS;
 }
 
@@ -264,9 +289,10 @@ static bool32 AttachShader(GLuint ShaderHandle, const char *ShaderCode, GLint Le
     return 1;
 }
 
-static GLuint CreateSimpleBox()
+static void CreateObject(Object *Object)
 {
-    GLuint VBOResult;
+    glGenVertexArrays(1, &Object->RenderContext.VAO);
+    glBindVertexArray(Object->RenderContext.VAO);
 
     Vertex Vertices[] = {
         {
@@ -303,17 +329,10 @@ static GLuint CreateSimpleBox()
         },
     };
 
-    glGenBuffers(1, &VBOResult);
-    glBindBuffer(GL_ARRAY_BUFFER, VBOResult);
+    glGenBuffers(1, &Object->RenderContext.VBO);
+    glBindBuffer(GL_ARRAY_BUFFER, Object->RenderContext.VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(Vertices), Vertices, GL_STATIC_DRAW);
-    
-    return VBOResult;
-}
-
-static GLuint CreateSimpleBoxVertexIndices()
-{
-    GLuint IBOResult;
-
+ 
     u32 Indices[] = {
         // face
         0, 1, 2,
@@ -335,11 +354,23 @@ static GLuint CreateSimpleBoxVertexIndices()
         4, 7, 6
     };
 
-    glGenBuffers(1, &IBOResult);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBOResult);
+    glGenBuffers(1, &Object->RenderContext.IBO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Object->RenderContext.IBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(Indices), Indices, GL_STATIC_DRAW);
+
+    // position
+    glEnableVertexAttribArray(0);        
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
+
+    // color
+    glEnableVertexAttribArray(1);        
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(GLfloat)));
     
-    return IBOResult;
+    glBindVertexArray(0);
+    glDisableVertexAttribArray(0);
+    glDisableVertexAttribArray(1);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
 GLuint LoadTexture(const char *FileName)
@@ -402,7 +433,7 @@ int main(int argc, char *argv[])
     // NOTE (ismail): it must be 24 if not opengl will be intialized with 1.1.0 version
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
     Window = SDL_CreateWindow("TEARA", WINDOW_WIDTH, WINDOW_HEIGHT, WindowFlags);
     if (!Window) {
@@ -443,8 +474,8 @@ int main(int argc, char *argv[])
     glFrontFace(GL_CW);
     glCullFace(GL_BACK);
 
-    GLuint VBO = CreateSimpleBox();
-    GLuint IBO = CreateSimpleBoxVertexIndices();
+    Object CubeObject = {};
+    CreateObject(&CubeObject);
     GLuint TextureObject = LoadTexture("bricks_textures.jpg");
 
     GLuint ShaderProgram = glCreateProgram();
@@ -527,7 +558,7 @@ int main(int argc, char *argv[])
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     Mat4x4 OrthoProjection = MakeOrtographProjection(-2.0f * AspectRatio, 2.0f * AspectRatio, -2.0f, 2.0f, 0.1f, 100.0f);
-    Mat4x4 PerspectiveProjection = MakePerspectiveProjection(60.0f, AspectRatio, 0.1f, 5.0f);
+    Mat4x4 PerspectiveProjection = MakePerspectiveProjection(60.0f, AspectRatio, 0.01f, 5.0f);
 
     bool isPerspective = true;
 
@@ -551,6 +582,12 @@ int main(int argc, char *argv[])
 
     // TODO (ismail): check what is that
     // glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &texture_units);
+
+    glBindVertexArray(CubeObject.RenderContext.VAO);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, TextureObject);
+    glUniform1i(SamplerLocation, 0);
 
     while (!Quit) {
         Vec2 MouseMoution = { };
@@ -735,26 +772,8 @@ int main(int argc, char *argv[])
         // GL_TRUE for row based memory order: (memory - matrix cell)  0x01 - a11, 0x02 - a12, 0x03 - a13
         // GL_FALSE for column based memory order: (memory - matrix cell) 0x01 - a11, 0x02 - a21, 0x03 - a31
         glUniformMatrix4fv(TransformLocation, 1, GL_TRUE, Transform[0]);
-        
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, TextureObject);
-        glUniform1i(SamplerLocation, 0);
-
-        glBindBuffer(GL_ARRAY_BUFFER, VBO);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, IBO);
-
-        // position
-        glEnableVertexAttribArray(0);        
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
-
-        // color
-        glEnableVertexAttribArray(1);        
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(GLfloat)));
 
         glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
-
-        glDisableVertexAttribArray(0);
-        glDisableVertexAttribArray(1);
 
         SDL_GL_SwapWindow(Window);
     }
