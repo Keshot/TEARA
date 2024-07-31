@@ -31,7 +31,6 @@ struct FileData {
 
 struct Vertex {
     Vec3 Position;
-    Vec2 Texture;
 };
 
 struct Camera {
@@ -97,8 +96,164 @@ static PFNGLUNIFORM1IPROC                   glUniform1i;
 static PFNGLACTIVETEXTUREPROC               glActiveTextureStb;
 static PFNGLGENVERTEXARRAYSPROC             glGenVertexArrays;
 static PFNGLBINDVERTEXARRAYPROC             glBindVertexArray;
+static PFNGLUNIFORM3FVPROC                  glUniform3fv;
 
 #define glActiveTexture glActiveTextureStb
+
+struct ObjFile {
+    Vec3        *Vertices;
+    i64          VertexArraySize;
+    u32         *Indices;
+    i64          IndexArraySize;
+};
+
+// TODO (ismail): function must return value in order to detect wrong file
+static void ParseObj(const char *Data, ObjFile *LoadedFile)
+{
+    // TODO (ismail): maybe change SDL_function on my own?
+    i64 IndexArraySize = 0;
+    u32 *IndexArray = LoadedFile->Indices;
+    i64 VertexArraySize = 0;
+    Vec3 *VertexArray = LoadedFile->Vertices;
+
+    for (;;) {
+        char Sym = *Data;
+
+        if (Sym == 0) {
+            break;
+        }
+
+        switch (Sym) {
+            case 's':
+            case 'o':
+            case '#': {
+                const char *CommentStart = (Data + 2);
+                for (; *CommentStart != '\n'; ++CommentStart); // TODO (ismail): case when sym == 0
+                Data = CommentStart + 1; // NOTE (ismail): in order to skip current '\n'
+            } break;
+            case 'v': {
+                Vec3 VertexStorage = {};
+                i8 VertexIndex = 0;
+                u8 Finish = 0;
+
+                for (const char *VertexStart = (Data + 2); !Finish; ++VertexStart) {
+                    char InnerSym = *VertexStart;
+                    
+                    switch (InnerSym) {
+                        case ' ':
+                        case 'v': {
+                            continue;
+                        } break;
+                        case '0':
+                        case '1':
+                        case '2':
+                        case '3':
+                        case '4':
+                        case '5':
+                        case '6':
+                        case '7':
+                        case '8':
+                        case '9':
+                        case '-': {
+                            // TODO (ismail): VertexIndex > 3?
+                            VertexStorage[VertexIndex++] = SDL_atof(VertexStart);
+                            for (const char *FetchToNextValue = VertexStart;; ++FetchToNextValue) {
+                                InnerSym = *FetchToNextValue;
+
+                                if (InnerSym == ' ') {
+                                    VertexStart = FetchToNextValue;
+                                    break;
+                                }
+                                else if (InnerSym == '\n') {
+                                    VertexArray[VertexArraySize++] = VertexStorage;
+                                    VertexIndex = 0;
+                                    VertexStart = FetchToNextValue;
+                                    break;
+                                }
+                                else if (InnerSym == '\0') {
+                                    goto end;
+                                }
+                            }
+                        } break;
+                        case '\0': {
+                            VertexArray[VertexArraySize++] = VertexStorage;
+                            goto end;
+                        } break;
+                        default: {
+                            Data = VertexStart;
+                            Finish = 1;
+                        } break;
+                    }
+                }
+            } break;
+            case 'f': {
+                u8 Finish = 0;
+                
+                for (const char *FaceStart = (Data + 2); !Finish;) {
+                    char InnerSym = *FaceStart;
+
+                    if (SDL_isdigit(InnerSym)) {
+                        IndexArray[IndexArraySize++] = SDL_atoi((const char*)FaceStart) - 1;
+                        ++FaceStart;
+                        for (; SDL_isdigit(*FaceStart); ++FaceStart);
+
+                        continue;
+                    }
+
+                    switch (InnerSym) {
+                        case '\n': 
+                        case ' ': 
+                        case 'f': {
+                            ++FaceStart;
+                        } break;
+                        case '\0': {
+                            goto end;
+                        } break;
+                        default : {
+                            Data = FaceStart;
+                            Finish = 1;
+                        }
+                    }
+                }
+            } break;
+            default: {
+                ++Data;
+            }
+        }
+    }
+
+end:
+    LoadedFile->Vertices = VertexArray;
+    LoadedFile->VertexArraySize = VertexArraySize;
+    LoadedFile->Indices = IndexArray;
+    LoadedFile->IndexArraySize = IndexArraySize;
+}
+
+// TODO (ismail): move it to another file and optimize
+static i32 LoadObjFile(const char *Path, ObjFile *LoadedFile)
+{
+    char DataBuffer[30000] = { };
+    SDL_IOStream *DataStream = SDL_IOFromFile(Path, "r");
+    
+    if (!DataStream) {
+        // TODO (ismail): diagnostic
+        return SDL_ERROR;
+    }
+
+    u64 ReadedSize = SDL_ReadIO(DataStream, DataBuffer, 30000);
+    // TODO (ismail): diagnostic
+    if (ReadedSize == 30000) {
+        // TODO (ismail): crutch for now but later i need to remove this
+        abort();
+    }
+
+    ParseObj(DataBuffer, LoadedFile);
+    // TODO (ismail): diagnostic
+
+    SDL_CloseIO(DataStream); // TODO (ismail): ignoring of the result
+
+    return SUCCESS;
+}
 
 static i32 ReadFile(const char *Path, FileData *Buffer)
 {
@@ -262,6 +417,12 @@ static i32 LoadGlFunctions()
         return SDL_OPENGL_LOAD_FAILURE;
     }
 
+    glUniform3fv = (PFNGLUNIFORM3FVPROC) SDL_GL_GetProcAddress("glUniform3fv");
+    if (!glUniform3fv) {
+        // TODO (ismail): diagnostic
+        return SDL_OPENGL_LOAD_FAILURE;
+    }
+
     return SUCCESS;
 }
 
@@ -289,86 +450,80 @@ static bool32 AttachShader(GLuint ShaderHandle, const char *ShaderCode, GLint Le
     return 1;
 }
 
-static void CreateObject(Object *Object)
+static void CreateCubeObject(Object *Object, ObjFile *ObjectData)
 {
     glGenVertexArrays(1, &Object->RenderContext.VAO);
     glBindVertexArray(Object->RenderContext.VAO);
 
+    /*
+                Cube Vetices
+    ----------------------------------
     Vertex Vertices[] = {
         {
-            { -0.5f, -0.5f, -0.5f },
-            { 0.0f, 0.0f }
+            { 1.0f, -1.0f, -1.0f }
         },
         {
-            { -0.5f, 0.5f, -0.5f },
-            { 0.0f, 1.0f }
+            { 1.0f, 1.0f, -1.0f }
         },
         {
-            { 0.5f, 0.5f, -0.5f },
-            { 1.0f, 0.0 }
+            { 1.0f, -1.0f, 1.0f }
         },
         {
-            { 0.5f, -0.5f, -0.5f },
-            { 1.0f, 1.0f }
+            { 1.0f, 1.0f, 1.0f }
         },
         {
-            { -0.5f, -0.5f, 0.5f },
-            { 0.0f, 0.0f }
+            { -1.0f, -1.0f, -1.0f }
         },
         {
-            { -0.5f, 0.5f, 0.5f },
-            { 0.0f, 1.0f }
+            { -1.0f, 1.0f, -1.0f }
         },
         {
-            { 0.5f, 0.5f, 0.5f },
-            { 1.0f, 0.0 }
+            { -1.0f, -1.0f, 1.0f }
         },
         {
-            { 0.5f, -0.5f, 0.5f },
-            { 1.0f, 1.0f }
+            { -1.0f, 1.0f, 1.0f }
         },
     };
+    ----------------------------------
+                Cube Indices
+    ----------------------------------
+    u32 Indices[] = {
+        1, 2, 0,
+        3, 6, 2,
+        7, 4, 6,
+        5, 0, 4,
+        6, 0, 2,
+        3, 5, 7,
+        1, 3, 2,
+        3, 7, 6,
+        7, 5, 4,
+        5, 1, 0,
+        6, 4, 0,
+        3, 1, 5
+    };
+    ----------------------------------
+    */
 
     glGenBuffers(1, &Object->RenderContext.VBO);
     glBindBuffer(GL_ARRAY_BUFFER, Object->RenderContext.VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(Vertices), Vertices, GL_STATIC_DRAW);
- 
-    u32 Indices[] = {
-        // face
-        0, 1, 2,
-        2, 3, 0,
-        // top
-        1, 5, 6,
-        6, 2, 1,
-        // bottom
-        0, 7, 4,
-        0, 3, 7,
-        // left
-        0, 4, 5,
-        5, 1, 0,
-        // right
-        3, 2, 6,
-        3, 6, 7,
-        // back
-        4, 6, 5,
-        4, 7, 6
-    };
+    glBufferData(GL_ARRAY_BUFFER, sizeof(*ObjectData->Vertices) * ObjectData->VertexArraySize, ObjectData->Vertices, GL_STATIC_DRAW);
 
     glGenBuffers(1, &Object->RenderContext.IBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Object->RenderContext.IBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(Indices), Indices, GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(*ObjectData->Indices) * ObjectData->IndexArraySize, ObjectData->Indices, GL_STATIC_DRAW);
 
     // position
     glEnableVertexAttribArray(0);        
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(*ObjectData->Vertices), 0);
 
+    // NOTE (ismail): for now i disable this, because i will be put color directly in shader for now
     // color
-    glEnableVertexAttribArray(1);        
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(GLfloat)));
+    // glEnableVertexAttribArray(1);        
+    // glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(GLfloat)));
     
     glBindVertexArray(0);
     glDisableVertexAttribArray(0);
-    glDisableVertexAttribArray(1);
+    // glDisableVertexAttribArray(1);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
@@ -474,9 +629,22 @@ int main(int argc, char *argv[])
     glFrontFace(GL_CW);
     glCullFace(GL_BACK);
 
+    u32 IndexBuffer[4000];
+    Vec3 VertexBuffer[4000];
+    ObjFile CubeFile = { };
+    CubeFile.Indices = IndexBuffer;
+    CubeFile.Vertices = VertexBuffer;
+
+    LoadObjFile("sphere.obj", &CubeFile);
+
     Object CubeObject = {};
-    CreateObject(&CubeObject);
-    GLuint TextureObject = LoadTexture("bricks_textures.jpg");
+    CreateCubeObject(&CubeObject, &CubeFile);
+    // NOTE (ismail): i disable textures for now that call need for load texture
+    // GLuint TextureObject = LoadTexture("bricks_textures.jpg");
+    // NOTE (ismail): these calls need later for put it in screen
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, TextureObject);
+    // glUniform1i(SamplerLocation, 0);
 
     GLuint ShaderProgram = glCreateProgram();
     if (!ShaderProgram) {
@@ -486,12 +654,12 @@ int main(int argc, char *argv[])
 
     FileData VertexShader = {  }, FragmentShader = {  };
 
-    if (ReadFile("../vertex.vs", &VertexShader) != SUCCESS) {
+    if (ReadFile("../vertex_color.vs", &VertexShader) != SUCCESS) {
         // TODO (ismail): diagnostic
         return SDL_ERROR;
     }
 
-    if (ReadFile("../fragment.fs", &FragmentShader) != SUCCESS) {
+    if (ReadFile("../fragment_color.fs", &FragmentShader) != SUCCESS) {
         // TODO (ismail): diagnostic
         return SDL_ERROR;
     }
@@ -521,11 +689,17 @@ int main(int argc, char *argv[])
         return OPENGL_ERROR;
     }
 
-    GLint SamplerLocation = glGetUniformLocation(ShaderProgram, "Sampler");
-    if (TransformLocation == -1) {
+    GLint MeshColorLocation = glGetUniformLocation(ShaderProgram, "MeshColor");
+    if (MeshColorLocation == -1) {
         // TODO (ismail): diagnostic
         return OPENGL_ERROR;
     }
+
+    //  GLint SamplerLocation = glGetUniformLocation(ShaderProgram, "Sampler");
+    //  if (TransformLocation == -1) {
+           // TODO (ismail): diagnostic
+    //     return OPENGL_ERROR;
+    //  }
 
     glValidateProgram(ShaderProgram);
     glGetProgramiv(ShaderProgram, GL_VALIDATE_STATUS, &Success);
@@ -585,9 +759,7 @@ int main(int argc, char *argv[])
 
     glBindVertexArray(CubeObject.RenderContext.VAO);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, TextureObject);
-    glUniform1i(SamplerLocation, 0);
+    Vec3 CubeColor = { 1.0f, 0.0f, 0.0f };
 
     while (!Quit) {
         Vec2 MouseMoution = { };
@@ -772,8 +944,9 @@ int main(int argc, char *argv[])
         // GL_TRUE for row based memory order: (memory - matrix cell)  0x01 - a11, 0x02 - a12, 0x03 - a13
         // GL_FALSE for column based memory order: (memory - matrix cell) 0x01 - a11, 0x02 - a21, 0x03 - a31
         glUniformMatrix4fv(TransformLocation, 1, GL_TRUE, Transform[0]);
+        glUniform3fv(MeshColorLocation, 1, CubeColor.ValueHolder);
 
-        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, CubeFile.IndexArraySize, GL_UNSIGNED_INT, 0);
 
         SDL_GL_SwapWindow(Window);
     }
