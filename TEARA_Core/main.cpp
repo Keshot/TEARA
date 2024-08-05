@@ -10,6 +10,7 @@
 
 #define FILE_READ_BUFFER_LEN 5000
 #define MOUSE_EVENT(type) ((type == SDL_EVENT_MOUSE_MOTION)||(type == SDL_EVENT_MOUSE_BUTTON_UP)||(type == SDL_EVENT_MOUSE_BUTTON_DOWN))
+#define AABB_TEST_EPSILON 0.0001f
 
 const Mat4x4 Identity4x4 = {
     1.0f, 0.0f, 0.0f, 0.0f,
@@ -24,18 +25,15 @@ const Mat3x3 Identity3x3 = {
     0.0f, 0.0f, 1.0f
 };
 
-struct FileData {
-    char Data[FILE_READ_BUFFER_LEN];
-    u64 DataLength;
-};
-
 struct Vertex {
     Vec3 Position;
 };
 
-struct Camera {
-    Vec3 Position;
-    Rotation Rotation;
+struct ObjFile {
+    Vertex      *Vertices;
+    i64          VertexArraySize;
+    u32         *Indices;
+    i64          IndexArraySize;
 };
 
 struct OpenGLObjectContext {
@@ -44,9 +42,29 @@ struct OpenGLObjectContext {
     GLuint IBO;
 };
 
-struct Object {
-    Vec3 WorldPosition;
-    OpenGLObjectContext RenderContext;
+struct AABB {
+    Vec3 Center;
+    real32 R[3]; // Rx, Ry, Rz radius of halfwidth
+};
+
+struct WorldTransform {
+    Vec3        Position;
+    Rotation    Rotate;
+    Vec3        Scale;
+};
+
+struct WorldObject {
+    WorldTransform          Transform;
+    AABB                    BoundingBox;
+};
+
+struct Camera {
+    WorldTransform Transform;
+};
+
+struct FileData {
+    char Data[FILE_READ_BUFFER_LEN];
+    u64 DataLength;
 };
 
 enum {
@@ -57,6 +75,9 @@ enum {
     SDL_OPENGL_CREATE_CONTEXT_FAILURE = -4,
     OPENGL_ERROR = -5,
     SDL_ERROR = -6,
+
+    OVERLAP = 11,
+    SEPARATE = -11,
 
     // TODO (ismail): make these configurable
     WINDOW_WIDTH = 1600,
@@ -100,13 +121,6 @@ static PFNGLUNIFORM3FVPROC                  glUniform3fv;
 
 #define glActiveTexture glActiveTextureStb
 
-struct ObjFile {
-    Vec3        *Vertices;
-    i64          VertexArraySize;
-    u32         *Indices;
-    i64          IndexArraySize;
-};
-
 // TODO (ismail): function must return value in order to detect wrong file
 static void ParseObj(const char *Data, ObjFile *LoadedFile)
 {
@@ -114,7 +128,7 @@ static void ParseObj(const char *Data, ObjFile *LoadedFile)
     i64 IndexArraySize = 0;
     u32 *IndexArray = LoadedFile->Indices;
     i64 VertexArraySize = 0;
-    Vec3 *VertexArray = LoadedFile->Vertices;
+    Vertex *VertexArray = LoadedFile->Vertices;
 
     for (;;) {
         char Sym = *Data;
@@ -165,7 +179,7 @@ static void ParseObj(const char *Data, ObjFile *LoadedFile)
                                     break;
                                 }
                                 else if (InnerSym == '\n') {
-                                    VertexArray[VertexArraySize++] = VertexStorage;
+                                    VertexArray[VertexArraySize++].Position = VertexStorage;
                                     VertexIndex = 0;
                                     VertexStart = FetchToNextValue;
                                     break;
@@ -176,7 +190,7 @@ static void ParseObj(const char *Data, ObjFile *LoadedFile)
                             }
                         } break;
                         case '\0': {
-                            VertexArray[VertexArraySize++] = VertexStorage;
+                            VertexArray[VertexArraySize++].Position = VertexStorage;
                             goto end;
                         } break;
                         default: {
@@ -253,6 +267,24 @@ static i32 LoadObjFile(const char *Path, ObjFile *LoadedFile)
     SDL_CloseIO(DataStream); // TODO (ismail): ignoring of the result
 
     return SUCCESS;
+}
+
+bool32 AABBTestOverlap(AABB *A, AABB *B)
+{
+    // TODO (ismail): convert to SIMD
+    // TODO (ismail): may be calculate A.Center - B.Center one time and use it?
+    
+    if (SDL_fabsf(A->Center.x - B->Center.x) > (A->R[0] + B->R[0])) {
+        return SEPARATE;
+    }
+    if (SDL_fabsf(A->Center.y - B->Center.y) > (A->R[1] + B->R[1])) {
+        return SEPARATE;
+    }
+    if (SDL_fabsf(A->Center.z - B->Center.z) > (A->R[2] + B->R[2])) {
+        return SEPARATE;
+    }
+
+    return OVERLAP;
 }
 
 static i32 ReadFile(const char *Path, FileData *Buffer)
@@ -450,66 +482,17 @@ static bool32 AttachShader(GLuint ShaderHandle, const char *ShaderCode, GLint Le
     return 1;
 }
 
-static void CreateCubeObject(Object *Object, ObjFile *ObjectData)
+static void CreateCubeObject(OpenGLObjectContext *RenderContext, ObjFile *ObjectData)
 {
-    glGenVertexArrays(1, &Object->RenderContext.VAO);
-    glBindVertexArray(Object->RenderContext.VAO);
+    glGenVertexArrays(1, &(RenderContext->VAO));
+    glBindVertexArray(RenderContext->VAO);
 
-    /*
-                Cube Vetices
-    ----------------------------------
-    Vertex Vertices[] = {
-        {
-            { 1.0f, -1.0f, -1.0f }
-        },
-        {
-            { 1.0f, 1.0f, -1.0f }
-        },
-        {
-            { 1.0f, -1.0f, 1.0f }
-        },
-        {
-            { 1.0f, 1.0f, 1.0f }
-        },
-        {
-            { -1.0f, -1.0f, -1.0f }
-        },
-        {
-            { -1.0f, 1.0f, -1.0f }
-        },
-        {
-            { -1.0f, -1.0f, 1.0f }
-        },
-        {
-            { -1.0f, 1.0f, 1.0f }
-        },
-    };
-    ----------------------------------
-                Cube Indices
-    ----------------------------------
-    u32 Indices[] = {
-        1, 2, 0,
-        3, 6, 2,
-        7, 4, 6,
-        5, 0, 4,
-        6, 0, 2,
-        3, 5, 7,
-        1, 3, 2,
-        3, 7, 6,
-        7, 5, 4,
-        5, 1, 0,
-        6, 4, 0,
-        3, 1, 5
-    };
-    ----------------------------------
-    */
-
-    glGenBuffers(1, &Object->RenderContext.VBO);
-    glBindBuffer(GL_ARRAY_BUFFER, Object->RenderContext.VBO);
+    glGenBuffers(1, &(RenderContext->VBO));
+    glBindBuffer(GL_ARRAY_BUFFER, RenderContext->VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(*ObjectData->Vertices) * ObjectData->VertexArraySize, ObjectData->Vertices, GL_STATIC_DRAW);
 
-    glGenBuffers(1, &Object->RenderContext.IBO);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Object->RenderContext.IBO);
+    glGenBuffers(1, &(RenderContext->IBO));
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, RenderContext->IBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(*ObjectData->Indices) * ObjectData->IndexArraySize, ObjectData->Indices, GL_STATIC_DRAW);
 
     // position
@@ -518,7 +501,7 @@ static void CreateCubeObject(Object *Object, ObjFile *ObjectData)
 
     // NOTE (ismail): for now i disable this, because i will be put color directly in shader for now
     // color
-    // glEnableVertexAttribArray(1);        
+    // glEnableVertexAttribArray(1);
     // glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)(3 * sizeof(GLfloat)));
     
     glBindVertexArray(0);
@@ -630,15 +613,16 @@ int main(int argc, char *argv[])
     glCullFace(GL_BACK);
 
     u32 IndexBuffer[4000];
-    Vec3 VertexBuffer[4000];
+    Vertex VertexBuffer[4000];
     ObjFile CubeFile = { };
     CubeFile.Indices = IndexBuffer;
     CubeFile.Vertices = VertexBuffer;
 
-    LoadObjFile("sphere.obj", &CubeFile);
+    LoadObjFile("cube.obj", &CubeFile);
 
-    Object CubeObject = {};
-    CreateCubeObject(&CubeObject, &CubeFile);
+    OpenGLObjectContext CubeObjectRenderContext;
+    CreateCubeObject(&CubeObjectRenderContext, &CubeFile);
+    
     // NOTE (ismail): i disable textures for now that call need for load texture
     // GLuint TextureObject = LoadTexture("bricks_textures.jpg");
     // NOTE (ismail): these calls need later for put it in screen
@@ -732,14 +716,11 @@ int main(int argc, char *argv[])
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     Mat4x4 OrthoProjection = MakeOrtographProjection(-2.0f * AspectRatio, 2.0f * AspectRatio, -2.0f, 2.0f, 0.1f, 100.0f);
-    Mat4x4 PerspectiveProjection = MakePerspectiveProjection(60.0f, AspectRatio, 0.01f, 5.0f);
+    Mat4x4 PerspectiveProjection = MakePerspectiveProjection(60.0f, AspectRatio, 0.01f, 50.0f);
 
     bool isPerspective = true;
 
     Mat4x4 Projection = isPerspective ? PerspectiveProjection : OrthoProjection;
-
-    GLfloat BaseTranslationZ = 1.5f;
-    GLfloat PerspectiveTranslationZ = 2.0f;
 
     Camera PlayerCamera = {  };
 
@@ -757,11 +738,43 @@ int main(int argc, char *argv[])
     // TODO (ismail): check what is that
     // glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &texture_units);
 
-    glBindVertexArray(CubeObject.RenderContext.VAO);
+    glBindVertexArray(CubeObjectRenderContext.VAO);
 
-    Vec3 CubeColor = { 1.0f, 0.0f, 0.0f };
+    WorldObject NpcCube = {};
+
+    NpcCube.Transform.Position.x = -1.5f;
+    NpcCube.Transform.Position.y = 0.0f;
+    NpcCube.Transform.Position.z = 2.0f;
+
+    NpcCube.Transform.Scale.x = 1.0f;
+    NpcCube.Transform.Scale.y = 1.0f;
+    NpcCube.Transform.Scale.z = 1.0f;
+
+    NpcCube.BoundingBox.R[0] = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    NpcCube.BoundingBox.R[1] = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    NpcCube.BoundingBox.R[2] = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+
+    Vec3 NpcCubeColor = { 1.0f, 0.0f, 0.0f };
+
+    WorldObject PlayerCube = {};
+
+    PlayerCube.Transform.Position.x = 1.5f;
+    PlayerCube.Transform.Position.y = 0.0f;
+    PlayerCube.Transform.Position.z = 2.0f;
+
+    PlayerCube.Transform.Scale.x = 1.0f;
+    PlayerCube.Transform.Scale.y = 1.0f;
+    PlayerCube.Transform.Scale.z = 1.0f;
+
+    PlayerCube.BoundingBox.R[0] = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    PlayerCube.BoundingBox.R[1] = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    PlayerCube.BoundingBox.R[2] = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+
+    Vec3 PlayerCubeColor = { 0.0f, 0.0f, 1.0f };
 
     while (!Quit) {
+        glClear(GL_COLOR_BUFFER_BIT);
+
         Vec2 MouseMoution = { };
 
         while (SDL_PollEvent(&Event)) {
@@ -875,37 +888,42 @@ int main(int argc, char *argv[])
                 SDL_WarpMouseInWindow(Window, (real32)(WINDOW_WIDTH / 2), (real32)(WINDOW_HEIGHT / 2));
             }
         }
+        // --------------------------------OLD CODE--------------------------------------------
+        // Translation += TranslationDelta;
+        // Scale += ScaleDelta;
+        // if ((Scale >= MaxScale) || (Scale <= MinScale)) {
+        //     ScaleDelta *= -1.0f;
+        // }
+        // if ((Translation >= MaxTranslation) || (Translation <= MinTranslation)) {
+        //    TranslationDelta *= -1.0f;
+        // }
+        // Vec3 ScaleVector = { 1.0f, 1.0f, 1.0f };
+        // Mat4x4 Scale = MakeScale(&ScaleVector);
+        // -------------------------------------------------------------------------------------
 
-        AngelInRadY += RotationDeltaY;
-        AngelInRadX += RotationDeltaX;
-        Translation += TranslationDelta;
-        Scale += ScaleDelta;
-        PlayerCamera.Rotation.Heading += CameraYRotationDelta + (MouseMoution.x * 0.005);
-        PlayerCamera.Rotation.Pitch += CameraXRotationDelta + (MouseMoution.y * 0.005);
+        PlayerCube.Transform.Rotate.Heading += RotationDeltaY;
+        PlayerCube.Transform.Rotate.Pitch += RotationDeltaX;
 
-        if ((Scale >= MaxScale) || (Scale <= MinScale)) {
-            ScaleDelta *= -1.0f;
-        }
-        if ((Translation >= MaxTranslation) || (Translation <= MinTranslation)) {
-            TranslationDelta *= -1.0f;
-        }
+        PlayerCamera.Transform.Rotate.Heading += CameraYRotationDelta + (MouseMoution.x * 0.005);
+        PlayerCamera.Transform.Rotate.Pitch += CameraXRotationDelta + (MouseMoution.y * 0.005);
 
-        Vec3 ScaleVector = { 1.0f, 1.0f, 1.0f };
-        Vec3 TranslationVector = { 0.0f, 0.0f, isPerspective ? PerspectiveTranslationZ : BaseTranslationZ };
-        Mat4x4 RotationX = MakeRotationAroundX(AngelInRadX);
-        Mat4x4 RotationY = MakeRotationAroundY(AngelInRadY);
-        Mat4x4 Translation = MakeTranslation(&TranslationVector);
-        Mat4x4 Scale = MakeScale(&ScaleVector);
+        Mat4x4 PlayerCubeRotationX = MakeRotationAroundX(PlayerCube.Transform.Rotate.Pitch);
+        Mat4x4 PlayerCubeRotationY = MakeRotationAroundY(PlayerCube.Transform.Rotate.Heading);
+        Mat4x4 PlayerTranslation = MakeTranslation(&PlayerCube.Transform.Position);
+        Mat4x4 PlayerScale = Identity4x4;
 
-        // 0.005234f
+        Mat4x4 NpcCubeRotationX = MakeRotationAroundX(NpcCube.Transform.Rotate.Pitch);
+        Mat4x4 NpcCubeRotationY = MakeRotationAroundY(NpcCube.Transform.Rotate.Heading);
+        Mat4x4 NpcTranslation = MakeTranslation(&NpcCube.Transform.Position);
+        Mat4x4 NpcScale = Identity4x4;
 
         Vec3 Target;
         Vec3 Right;
         Vec3 Up;
         // TODO (ismail): camera rotation is so buggy, i need fix this
         // NOTE (ismail): replace RotationToVectors call?
-        Mat4x4 CameraWorldRotation = MakeRotation4x4Inverse(&PlayerCamera.Rotation);
-        RotationToVectors(&PlayerCamera.Rotation, &Target, &Right, &Up);
+        Mat4x4 CameraWorldRotation = MakeRotation4x4Inverse(&PlayerCamera.Transform.Rotate);
+        RotationToVectors(&PlayerCamera.Transform.Rotate, &Target, &Right, &Up);
 
         // TODO (ismail): if we press up and right(or any other combination of up, down, right, left)
         // we will translate faster because z = 1.0f and x = 1.0f i need fix that
@@ -923,28 +941,34 @@ int main(int argc, char *argv[])
 
         Vec3 FinalTranslation = CameraTargetTranslation + CameraRightTranslation;
 
-        PlayerCamera.Position += FinalTranslation;
-        Vec3 ObjectCameraTranslation = { 
-            -(PlayerCamera.Position.x), 
-            -(PlayerCamera.Position.y), 
-            -(PlayerCamera.Position.z) 
+        PlayerCamera.Transform.Position += FinalTranslation;
+        Vec3 ObjectToCameraTranslation = { 
+            -(PlayerCamera.Transform.Position.x), 
+            -(PlayerCamera.Transform.Position.y), 
+            -(PlayerCamera.Transform.Position.z) 
         };
 
-        Mat4x4 CameraWorldTranslation = MakeTranslation(&ObjectCameraTranslation);
-
-        Mat4x4 WorldTransformation = Translation * Scale * RotationY * RotationX;
+        Mat4x4 CameraWorldTranslation = MakeTranslation(&ObjectToCameraTranslation);
         Mat4x4 CameraTransformation = CameraWorldRotation * CameraWorldTranslation;
-        Mat4x4 Transform = Projection * CameraTransformation * WorldTransformation;
+
+        Mat4x4 PlayerCubeWorldTransformation = PlayerTranslation * PlayerScale * PlayerCubeRotationY * PlayerCubeRotationX;
+        Mat4x4 PlayerCubeTransform = Projection * CameraTransformation * PlayerCubeWorldTransformation;
 
         // SDL_Log("Y rotation = %.2f\tX rotation = %.2f\n", RAD_TO_DEGREE(AngelInRadY), RAD_TO_DEGREE(AngelInRadX));
-
-        glClear(GL_COLOR_BUFFER_BIT);
 
         // NOTE (ismail) 3rd argument is transpose that transpose mean memory order of this matrix
         // GL_TRUE for row based memory order: (memory - matrix cell)  0x01 - a11, 0x02 - a12, 0x03 - a13
         // GL_FALSE for column based memory order: (memory - matrix cell) 0x01 - a11, 0x02 - a21, 0x03 - a31
-        glUniformMatrix4fv(TransformLocation, 1, GL_TRUE, Transform[0]);
-        glUniform3fv(MeshColorLocation, 1, CubeColor.ValueHolder);
+        glUniformMatrix4fv(TransformLocation, 1, GL_TRUE, PlayerCubeTransform[0]);
+        glUniform3fv(MeshColorLocation, 1, PlayerCubeColor.ValueHolder);
+
+        glDrawElements(GL_TRIANGLES, CubeFile.IndexArraySize, GL_UNSIGNED_INT, 0);
+
+        Mat4x4 NpcCubeWorldTransformation = NpcTranslation * NpcScale * NpcCubeRotationY * NpcCubeRotationX;
+        Mat4x4 NpcCubeTransform = Projection * CameraTransformation * NpcCubeWorldTransformation;
+
+        glUniformMatrix4fv(TransformLocation, 1, GL_TRUE, NpcCubeTransform[0]);
+        glUniform3fv(MeshColorLocation, 1, NpcCubeColor.ValueHolder);
 
         glDrawElements(GL_TRIANGLES, CubeFile.IndexArraySize, GL_UNSIGNED_INT, 0);
 
