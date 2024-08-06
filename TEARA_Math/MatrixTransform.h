@@ -51,6 +51,42 @@ inline Mat4x4 MakeRotation4x4(Rotation *Rotation)
     return Result;
 }
 
+inline Mat3x3 MakeRotation3x3(Rotation *Rotation)
+{
+    real32 cosh, sinh;
+    real32 cosp, sinp;
+    real32 cosb, sinb;
+
+    real32 Heading = WrapPi(Rotation->Heading);
+    real32 Pitch;
+    real32 Bank;
+
+    if (Rotation->Pitch <= -90.0f) {
+        Pitch = -90.0f;
+        Bank = 0.0f;
+    }
+    else if (Rotation->Pitch >= 90.0f) {
+        Pitch = 90.0f;
+        Bank = 0;
+    }
+    else {
+        Pitch = Rotation->Pitch;
+        Bank = Rotation->Bank;
+    }
+
+    SineCosine(Heading, &sinh, &cosh);
+    SineCosine(Pitch, &sinp, &cosp);
+    SineCosine(Bank, &sinb, &cosb);
+
+    Mat3x3 Result = {
+        cosh * cosb + sinh * sinp * sinb, -cosh * sinb + sinh * sinp * cosb, sinh * cosp,
+                             cosp * sinb,                       cosp * cosb,       -sinp,
+       -sinh * cosb + cosh * sinp * sinb,  sinh * sinb + cosh * sinp * cosb, cosh * cosp
+    };
+
+    return Result;
+}
+
 inline Mat4x4 MakeRotation4x4Inverse(Rotation *Rotation)
 {
     real32 cosh, sinh;
@@ -241,6 +277,17 @@ inline Mat4x4 MakeRotationAroundZ(real32 Rad)
           Sine(Rad),  Cosine(Rad),    0.0f,    0.0f,
                0.0f,         0.0f,    1.0f,    0.0f,
                0.0f,         0.0f,    0.0f,    1.0f
+    };
+
+    return Result;
+}
+
+inline Mat3x3 MakeRotationAroundZ3x3(real32 Rad)
+{
+    Mat3x3 Result = {
+        Cosine(Rad),   -Sine(Rad),    0.0f,
+          Sine(Rad),  Cosine(Rad),    0.0f,
+               0.0f,         0.0f,    1.0f
     };
 
     return Result;

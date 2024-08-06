@@ -44,7 +44,7 @@ struct OpenGLObjectContext {
 
 struct AABB {
     Vec3 Center;
-    real32 R[3]; // Rx, Ry, Rz radius of halfwidth
+    Vec3 Extens; // Rx, Ry, Rz radius of halfwidth
 };
 
 struct WorldTransform {
@@ -269,18 +269,34 @@ static i32 LoadObjFile(const char *Path, ObjFile *LoadedFile)
     return SUCCESS;
 }
 
+void AABBRecalculate(Mat4x4 *Rotation, Vec3 *Translation, AABB *Original, AABB *Result)
+{
+    // NOTE (ismail): for now aabb center is always x = 0, y = 0, z = 0, fix it in future
+    Result->Center.x = Translation->x;
+    Result->Center.y = Translation->y;
+    Result->Center.z = Translation->z;
+
+    for (i32 i = 0; i < 3; ++i) {
+        Result->Extens[i] = 0.0f;
+
+        for (i32 j = 0; j < 3; ++j) {
+            Result->Extens[i] += Fabs((*Rotation)[i][j]) * Original->Extens[j];
+        }
+    }
+}
+
 bool32 AABBTestOverlap(AABB *A, AABB *B)
 {
     // TODO (ismail): convert to SIMD
     // TODO (ismail): may be calculate A.Center - B.Center one time and use it?
     
-    if (SDL_fabsf(A->Center.x - B->Center.x) > (A->R[0] + B->R[0])) {
+    if (SDL_fabsf(A->Center.x - B->Center.x) > (A->Extens.x + B->Extens.x)) {
         return SEPARATE;
     }
-    if (SDL_fabsf(A->Center.y - B->Center.y) > (A->R[1] + B->R[1])) {
+    if (SDL_fabsf(A->Center.y - B->Center.y) > (A->Extens.y + B->Extens.y)) {
         return SEPARATE;
     }
-    if (SDL_fabsf(A->Center.z - B->Center.z) > (A->R[2] + B->R[2])) {
+    if (SDL_fabsf(A->Center.z - B->Center.z) > (A->Extens.z + B->Extens.z)) {
         return SEPARATE;
     }
 
@@ -539,11 +555,9 @@ GLuint LoadTexture(const char *FileName)
     return TextureObject;
 }
 
-
 int main(int argc, char *argv[])
 {
     //TODO (ismail): read width/height from command arguments, from file, from in game settings.
-
     SDL_Event Event;
     SDL_Window *Window;
     SDL_Surface *WindowScreenSurface;
@@ -714,6 +728,7 @@ int main(int argc, char *argv[])
 
     // NOTE (ismail): wireframe mode = GL_LINE, polygon mode = GL_FILL
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    glEnable(GL_DEPTH_TEST);
 
     Mat4x4 OrthoProjection = MakeOrtographProjection(-2.0f * AspectRatio, 2.0f * AspectRatio, -2.0f, 2.0f, 0.1f, 100.0f);
     Mat4x4 PerspectiveProjection = MakePerspectiveProjection(60.0f, AspectRatio, 0.01f, 50.0f);
@@ -731,6 +746,9 @@ int main(int argc, char *argv[])
 
     GLfloat CameraTargetTranslationDelta = 0.0f;
     GLfloat CameraRightTranslationDelta = 0.0f;
+
+    GLfloat PlayerTargetTranslationDelta = 0.0f;
+    GLfloat PlayerRightTranslationDelta = 0.0f;
 
     // TODO (ismail): read what is this
     SDL_SetRelativeMouseMode(SDL_TRUE);
@@ -750,9 +768,9 @@ int main(int argc, char *argv[])
     NpcCube.Transform.Scale.y = 1.0f;
     NpcCube.Transform.Scale.z = 1.0f;
 
-    NpcCube.BoundingBox.R[0] = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-    NpcCube.BoundingBox.R[1] = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-    NpcCube.BoundingBox.R[2] = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    NpcCube.BoundingBox.Extens.x = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    NpcCube.BoundingBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    NpcCube.BoundingBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
 
     Vec3 NpcCubeColor = { 1.0f, 0.0f, 0.0f };
 
@@ -766,14 +784,13 @@ int main(int argc, char *argv[])
     PlayerCube.Transform.Scale.y = 1.0f;
     PlayerCube.Transform.Scale.z = 1.0f;
 
-    PlayerCube.BoundingBox.R[0] = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-    PlayerCube.BoundingBox.R[1] = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-    PlayerCube.BoundingBox.R[2] = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-
-    Vec3 PlayerCubeColor = { 0.0f, 0.0f, 1.0f };
+    PlayerCube.BoundingBox.Extens.x = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    PlayerCube.BoundingBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    PlayerCube.BoundingBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
 
     while (!Quit) {
-        glClear(GL_COLOR_BUFFER_BIT);
+        Vec3 PlayerCubeColor = { 0.0f, 0.0f, 1.0f };
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         Vec2 MouseMoution = { };
 
@@ -785,16 +802,16 @@ int main(int argc, char *argv[])
                 switch (Event.key.key) {
                     // TODO (ismail): use raw key code
                     case SDLK_I: {
-                        CameraXRotationDelta = -DEGREE_TO_RAD(0.03f);
+                        PlayerTargetTranslationDelta = 1.0f;
                     } break;
                     case SDLK_K: {
-                        CameraXRotationDelta = DEGREE_TO_RAD(0.03f);
+                        PlayerTargetTranslationDelta = -1.0f;
                     } break;
                     case SDLK_L: {
-                        CameraYRotationDelta = DEGREE_TO_RAD(0.03f);
+                        PlayerRightTranslationDelta = 1.0f;
                     } break;
                     case SDLK_J: {
-                        CameraYRotationDelta = -DEGREE_TO_RAD(0.03f);
+                        PlayerRightTranslationDelta = -1.0f;
                     } break;
                     case SDLK_UP: {
                         CameraTargetTranslationDelta = 1.0f;
@@ -849,16 +866,16 @@ int main(int argc, char *argv[])
                          CameraRightTranslationDelta = 0.0f;
                     } break;
                     case SDLK_I: {
-                        CameraXRotationDelta = 0.0f;
+                        PlayerTargetTranslationDelta = 0.0f;
                     } break;
                     case SDLK_K: {
-                        CameraXRotationDelta = 0.0f;
+                        PlayerTargetTranslationDelta = 0.0f;
                     } break;
                     case SDLK_L: {
-                        CameraYRotationDelta = 0.0f;
+                        PlayerRightTranslationDelta = 0.0f;
                     } break;
                     case SDLK_J: {
-                        CameraYRotationDelta = 0.0f;
+                        PlayerRightTranslationDelta = 0.0f;
                     } break;
                     case SDLK_Q: {
                         RotationDeltaY = 0.0f;
@@ -907,19 +924,50 @@ int main(int argc, char *argv[])
         PlayerCamera.Transform.Rotate.Heading += CameraYRotationDelta + (MouseMoution.x * 0.005);
         PlayerCamera.Transform.Rotate.Pitch += CameraXRotationDelta + (MouseMoution.y * 0.005);
 
-        Mat4x4 PlayerCubeRotationX = MakeRotationAroundX(PlayerCube.Transform.Rotate.Pitch);
-        Mat4x4 PlayerCubeRotationY = MakeRotationAroundY(PlayerCube.Transform.Rotate.Heading);
+        Vec3 PlayerTarget = {};
+        Vec3 PlayerRight = {};
+        Vec3 PlayerUp = {};
+
+        Mat4x4 PlayerRotation = MakeRotation4x4(&PlayerCube.Transform.Rotate);
+        RotationToVectors(&PlayerCube.Transform.Rotate, &PlayerTarget, &PlayerRight, &PlayerUp);
+
+        Vec3 PlayerTargetTranslation = { 
+            PlayerTarget.x * (PlayerTargetTranslationDelta * Speed * 0.0001234f),
+            PlayerTarget.y * (PlayerTargetTranslationDelta * Speed * 0.0001234f),
+            PlayerTarget.z * (PlayerTargetTranslationDelta * Speed * 0.0001234f)
+        };
+
+        Vec3 PlayerRightTranslation = { 
+            PlayerRight.x * (PlayerRightTranslationDelta * Speed * 0.0001234f),
+            PlayerRight.y * (PlayerRightTranslationDelta * Speed * 0.0001234f),
+            PlayerRight.z * (PlayerRightTranslationDelta * Speed * 0.0001234f)
+        };
+
+        Vec3 FinalPlayerTranslation = PlayerTargetTranslation + PlayerRightTranslation;
+        PlayerCube.Transform.Position += FinalPlayerTranslation;
+        
         Mat4x4 PlayerTranslation = MakeTranslation(&PlayerCube.Transform.Position);
         Mat4x4 PlayerScale = Identity4x4;
 
-        Mat4x4 NpcCubeRotationX = MakeRotationAroundX(NpcCube.Transform.Rotate.Pitch);
-        Mat4x4 NpcCubeRotationY = MakeRotationAroundY(NpcCube.Transform.Rotate.Heading);
+        Mat4x4 NpcRotation = MakeRotation4x4(&NpcCube.Transform.Rotate);
         Mat4x4 NpcTranslation = MakeTranslation(&NpcCube.Transform.Position);
         Mat4x4 NpcScale = Identity4x4;
 
-        Vec3 Target;
-        Vec3 Right;
-        Vec3 Up;
+        AABB TransformedPlayerAABB = {};
+        AABBRecalculate(&PlayerRotation, &PlayerCube.Transform.Position, &PlayerCube.BoundingBox, &TransformedPlayerAABB);
+
+        AABB TransformedNpcAABB = {};
+        AABBRecalculate(&NpcRotation, &NpcCube.Transform.Position, &NpcCube.BoundingBox, &TransformedNpcAABB);
+
+        if (AABBTestOverlap(&TransformedPlayerAABB, &TransformedNpcAABB) == OVERLAP) {
+            PlayerCubeColor.x = 0.0f;
+            PlayerCubeColor.y = 1.0f;
+            PlayerCubeColor.z = 0.0f;
+        }
+
+        Vec3 Target = {};
+        Vec3 Right = {};
+        Vec3 Up = {};
         // TODO (ismail): camera rotation is so buggy, i need fix this
         // NOTE (ismail): replace RotationToVectors call?
         Mat4x4 CameraWorldRotation = MakeRotation4x4Inverse(&PlayerCamera.Transform.Rotate);
@@ -951,7 +999,7 @@ int main(int argc, char *argv[])
         Mat4x4 CameraWorldTranslation = MakeTranslation(&ObjectToCameraTranslation);
         Mat4x4 CameraTransformation = CameraWorldRotation * CameraWorldTranslation;
 
-        Mat4x4 PlayerCubeWorldTransformation = PlayerTranslation * PlayerScale * PlayerCubeRotationY * PlayerCubeRotationX;
+        Mat4x4 PlayerCubeWorldTransformation = PlayerTranslation * PlayerScale * PlayerRotation;
         Mat4x4 PlayerCubeTransform = Projection * CameraTransformation * PlayerCubeWorldTransformation;
 
         // SDL_Log("Y rotation = %.2f\tX rotation = %.2f\n", RAD_TO_DEGREE(AngelInRadY), RAD_TO_DEGREE(AngelInRadX));
@@ -964,7 +1012,7 @@ int main(int argc, char *argv[])
 
         glDrawElements(GL_TRIANGLES, CubeFile.IndexArraySize, GL_UNSIGNED_INT, 0);
 
-        Mat4x4 NpcCubeWorldTransformation = NpcTranslation * NpcScale * NpcCubeRotationY * NpcCubeRotationX;
+        Mat4x4 NpcCubeWorldTransformation = NpcTranslation * NpcScale * NpcRotation;
         Mat4x4 NpcCubeTransform = Projection * CameraTransformation * NpcCubeWorldTransformation;
 
         glUniformMatrix4fv(TransformLocation, 1, GL_TRUE, NpcCubeTransform[0]);
