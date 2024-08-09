@@ -47,15 +47,25 @@ struct AABB {
     Vec3 Extens; // Rx, Ry, Rz radius of halfwidth
 };
 
+struct Sphere {
+    Vec3    Center;
+    real32  Radius;
+};
+
 struct WorldTransform {
     Vec3        Position;
     Rotation    Rotate;
     Vec3        Scale;
 };
 
-struct WorldObject {
+struct WorldObjectAABBCollider {
     WorldTransform          Transform;
     AABB                    BoundingBox;
+};
+
+struct WorldObjectSphereCollider {
+    WorldTransform          Transform;
+    Sphere                  BoundingSphere;
 };
 
 struct Camera {
@@ -285,22 +295,55 @@ void AABBRecalculate(Mat4x4 *Rotation, Vec3 *Translation, AABB *Original, AABB *
     }
 }
 
-bool32 AABBTestOverlap(AABB *A, AABB *B)
+bool32 AABBToAABBTestOverlap(AABB *A, AABB *B)
 {
     // TODO (ismail): convert to SIMD
     // TODO (ismail): may be calculate A.Center - B.Center one time and use it?
     
     if (SDL_fabsf(A->Center.x - B->Center.x) > (A->Extens.x + B->Extens.x)) {
-        return SEPARATE;
+        return 0;
     }
     if (SDL_fabsf(A->Center.y - B->Center.y) > (A->Extens.y + B->Extens.y)) {
-        return SEPARATE;
+        return 0;
     }
     if (SDL_fabsf(A->Center.z - B->Center.z) > (A->Extens.z + B->Extens.z)) {
-        return SEPARATE;
+        return 0;
     }
 
-    return OVERLAP;
+    return 1;
+}
+
+bool32 SphereToAABBTestOverlap(AABB *A, Sphere *B)
+{
+    Vec3 DistanceVector = A->Center - B->Center;
+    real32 DistanceSquare = DotProduct(DistanceVector, DistanceVector);
+
+    real32 RadiusSumX = A->Extens.x + B->Radius;
+    real32 RadiusSumY = A->Extens.y + B->Radius;
+    real32 RadiusSumZ = A->Extens.z + B->Radius;
+
+    if (DistanceSquare > SQUARE(RadiusSumX)) {
+        return 0;
+    }
+    if (DistanceSquare > SQUARE(RadiusSumY)) {
+        return 0;
+    }
+    if (DistanceSquare > SQUARE(RadiusSumZ)) {
+        return 0;
+    }
+
+    return 1;
+}
+
+bool32 SphereToSphereTestOverlap(Sphere *A, Sphere *B)
+{
+    Vec3 DistanceVector = A->Center - B->Center;
+    real32 DistanceSquare = DotProduct(DistanceVector, DistanceVector);
+
+    real32 RadiusSum = A->Radius + B->Radius;
+    real32 RadiusSquare = SQUARE(RadiusSum);
+
+    return DistanceSquare < RadiusSquare;
 }
 
 static i32 ReadFile(const char *Path, FileData *Buffer)
@@ -626,16 +669,29 @@ int main(int argc, char *argv[])
     glFrontFace(GL_CW);
     glCullFace(GL_BACK);
 
-    u32 IndexBuffer[4000];
-    Vertex VertexBuffer[4000];
+    u32 IndexBuffer1[4000];
+    Vertex VertexBuffer1[4000];
+
     ObjFile CubeFile = { };
-    CubeFile.Indices = IndexBuffer;
-    CubeFile.Vertices = VertexBuffer;
+    CubeFile.Indices = IndexBuffer1;
+    CubeFile.Vertices = VertexBuffer1;
 
     LoadObjFile("cube.obj", &CubeFile);
 
     OpenGLObjectContext CubeObjectRenderContext;
     CreateCubeObject(&CubeObjectRenderContext, &CubeFile);
+
+    u32 IndexBuffer2[4000];
+    Vertex VertexBuffer2[4000];
+    
+    ObjFile SphereFile = { };
+    SphereFile.Indices = IndexBuffer2;
+    SphereFile.Vertices = VertexBuffer2;
+
+    LoadObjFile("sphere.obj", &SphereFile);
+
+    OpenGLObjectContext SphereObjectRenderContext;
+    CreateCubeObject(&SphereObjectRenderContext, &SphereFile);
     
     // NOTE (ismail): i disable textures for now that call need for load texture
     // GLuint TextureObject = LoadTexture("bricks_textures.jpg");
@@ -756,9 +812,8 @@ int main(int argc, char *argv[])
     // TODO (ismail): check what is that
     // glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &texture_units);
 
-    glBindVertexArray(CubeObjectRenderContext.VAO);
-
-    WorldObject NpcCube = {};
+    /*
+    WorldObjectAABBCollider NpcCube = {};
 
     NpcCube.Transform.Position.x = -1.5f;
     NpcCube.Transform.Position.y = 0.0f;
@@ -773,8 +828,25 @@ int main(int argc, char *argv[])
     NpcCube.BoundingBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
 
     Vec3 NpcCubeColor = { 1.0f, 0.0f, 0.0f };
+    */
 
-    WorldObject PlayerCube = {};
+    WorldObjectSphereCollider NpcSphere = {};
+
+    NpcSphere.Transform.Position.x = -1.5f;
+    NpcSphere.Transform.Position.y = 0.0f;
+    NpcSphere.Transform.Position.z = 2.0f;
+
+    NpcSphere.Transform.Scale.x = 1.0f;
+    NpcSphere.Transform.Scale.y = 1.0f;
+    NpcSphere.Transform.Scale.z = 1.0f;
+
+    NpcSphere.BoundingSphere.Center = NpcSphere.Transform.Position; // TODO (ismail): initial Sphere compute need to be implemented
+    NpcSphere.BoundingSphere.Radius = 1.0f; // TODO (ismail): initial Sphere compute need to be implemented
+
+    Vec3 NpcSphereColor = { 1.0f, 0.0f, 0.0f };
+
+    /*
+    WorldObjectAABBCollider PlayerCube = {};
 
     PlayerCube.Transform.Position.x = 1.5f;
     PlayerCube.Transform.Position.y = 0.0f;
@@ -787,9 +859,25 @@ int main(int argc, char *argv[])
     PlayerCube.BoundingBox.Extens.x = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
     PlayerCube.BoundingBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
     PlayerCube.BoundingBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    */
+
+    WorldObjectSphereCollider PlayerSphere = {};
+
+    PlayerSphere.Transform.Position.x = 1.5f;
+    PlayerSphere.Transform.Position.y = 0.0f;
+    PlayerSphere.Transform.Position.z = 2.0f;
+
+    PlayerSphere.Transform.Scale.x = 1.0f;
+    PlayerSphere.Transform.Scale.y = 1.0f;
+    PlayerSphere.Transform.Scale.z = 1.0f;
+
+    PlayerSphere.BoundingSphere.Center = PlayerSphere.Transform.Position; // TODO (ismail): initial Sphere compute need to be implemented
+    PlayerSphere.BoundingSphere.Radius = 1.0f; // TODO (ismail): initial Sphere compute need to be implemented
+    
+    glBindVertexArray(SphereObjectRenderContext.VAO);
 
     while (!Quit) {
-        Vec3 PlayerCubeColor = { 0.0f, 0.0f, 1.0f };
+        Vec3 PlayerSphereColor = { 0.0f, 0.0f, 1.0f };
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         Vec2 MouseMoution = { };
@@ -918,8 +1006,8 @@ int main(int argc, char *argv[])
         // Mat4x4 Scale = MakeScale(&ScaleVector);
         // -------------------------------------------------------------------------------------
 
-        PlayerCube.Transform.Rotate.Heading += RotationDeltaY;
-        PlayerCube.Transform.Rotate.Pitch += RotationDeltaX;
+        PlayerSphere.Transform.Rotate.Heading += RotationDeltaY;
+        PlayerSphere.Transform.Rotate.Pitch += RotationDeltaX;
 
         PlayerCamera.Transform.Rotate.Heading += CameraYRotationDelta + (MouseMoution.x * 0.005);
         PlayerCamera.Transform.Rotate.Pitch += CameraXRotationDelta + (MouseMoution.y * 0.005);
@@ -928,8 +1016,8 @@ int main(int argc, char *argv[])
         Vec3 PlayerRight = {};
         Vec3 PlayerUp = {};
 
-        Mat4x4 PlayerRotation = MakeRotation4x4(&PlayerCube.Transform.Rotate);
-        RotationToVectors(&PlayerCube.Transform.Rotate, &PlayerTarget, &PlayerRight, &PlayerUp);
+        Mat4x4 PlayerRotation = MakeRotation4x4(&PlayerSphere.Transform.Rotate);
+        RotationToVectors(&PlayerSphere.Transform.Rotate, &PlayerTarget, &PlayerRight, &PlayerUp);
 
         Vec3 PlayerTargetTranslation = { 
             PlayerTarget.x * (PlayerTargetTranslationDelta * Speed * 0.0001234f),
@@ -944,25 +1032,31 @@ int main(int argc, char *argv[])
         };
 
         Vec3 FinalPlayerTranslation = PlayerTargetTranslation + PlayerRightTranslation;
-        PlayerCube.Transform.Position += FinalPlayerTranslation;
+        PlayerSphere.Transform.Position += FinalPlayerTranslation;
         
-        Mat4x4 PlayerTranslation = MakeTranslation(&PlayerCube.Transform.Position);
+        Mat4x4 PlayerTranslation = MakeTranslation(&PlayerSphere.Transform.Position);
         Mat4x4 PlayerScale = Identity4x4;
 
-        Mat4x4 NpcRotation = MakeRotation4x4(&NpcCube.Transform.Rotate);
-        Mat4x4 NpcTranslation = MakeTranslation(&NpcCube.Transform.Position);
+        Mat4x4 NpcRotation = MakeRotation4x4(&NpcSphere.Transform.Rotate);
+        Mat4x4 NpcTranslation = MakeTranslation(&NpcSphere.Transform.Position);
         Mat4x4 NpcScale = Identity4x4;
 
+        /*
         AABB TransformedPlayerAABB = {};
-        AABBRecalculate(&PlayerRotation, &PlayerCube.Transform.Position, &PlayerCube.BoundingBox, &TransformedPlayerAABB);
-
+        AABBRecalculate(&PlayerRotation, &PlayerSphere.Transform.Position, &PlayerCube.BoundingBox, &TransformedPlayerAABB);
+        */
+        /*
         AABB TransformedNpcAABB = {};
         AABBRecalculate(&NpcRotation, &NpcCube.Transform.Position, &NpcCube.BoundingBox, &TransformedNpcAABB);
+        */
 
-        if (AABBTestOverlap(&TransformedPlayerAABB, &TransformedNpcAABB) == OVERLAP) {
-            PlayerCubeColor.x = 0.0f;
-            PlayerCubeColor.y = 1.0f;
-            PlayerCubeColor.z = 0.0f;
+        PlayerSphere.BoundingSphere.Center = PlayerSphere.Transform.Position;
+        NpcSphere.BoundingSphere.Center = NpcSphere.Transform.Position;
+
+        if (SphereToSphereTestOverlap(&PlayerSphere.BoundingSphere, &NpcSphere.BoundingSphere)) {
+            PlayerSphereColor.x = 0.0f;
+            PlayerSphereColor.y = 1.0f;
+            PlayerSphereColor.z = 0.0f;
         }
 
         Vec3 Target = {};
@@ -1008,17 +1102,17 @@ int main(int argc, char *argv[])
         // GL_TRUE for row based memory order: (memory - matrix cell)  0x01 - a11, 0x02 - a12, 0x03 - a13
         // GL_FALSE for column based memory order: (memory - matrix cell) 0x01 - a11, 0x02 - a21, 0x03 - a31
         glUniformMatrix4fv(TransformLocation, 1, GL_TRUE, PlayerCubeTransform[0]);
-        glUniform3fv(MeshColorLocation, 1, PlayerCubeColor.ValueHolder);
+        glUniform3fv(MeshColorLocation, 1, PlayerSphereColor.ValueHolder);
 
-        glDrawElements(GL_TRIANGLES, CubeFile.IndexArraySize, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, SphereFile.IndexArraySize, GL_UNSIGNED_INT, 0);
 
         Mat4x4 NpcCubeWorldTransformation = NpcTranslation * NpcScale * NpcRotation;
         Mat4x4 NpcCubeTransform = Projection * CameraTransformation * NpcCubeWorldTransformation;
 
         glUniformMatrix4fv(TransformLocation, 1, GL_TRUE, NpcCubeTransform[0]);
-        glUniform3fv(MeshColorLocation, 1, NpcCubeColor.ValueHolder);
+        glUniform3fv(MeshColorLocation, 1, NpcSphereColor.ValueHolder);
 
-        glDrawElements(GL_TRIANGLES, CubeFile.IndexArraySize, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, SphereFile.IndexArraySize, GL_UNSIGNED_INT, 0);
 
         SDL_GL_SwapWindow(Window);
     }

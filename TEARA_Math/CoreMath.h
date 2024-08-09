@@ -19,6 +19,7 @@
 #define          RAD_TO_DEGREE(Rad)    (Rad * DEGREE_IN_RAD)
 #define               INFINITY		   (1e30f)
 #define         SMALLEST_FLOAT         (1.1754944e-038f)
+#define                 SQUARE(Val)    ((Val) * (Val))
 
 inline real32 Tangens(real32 Rad)
 {

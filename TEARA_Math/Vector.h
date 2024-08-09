@@ -173,7 +173,6 @@ struct Vec3 {
         // | x1 |   | x2 |   | y1 * z2 - z1 * y2 |
         // | y1 | x | y2 | = | z1 * x2 - x1 * z2 |
         // | z1 |   | z2 |   | x1 * y2 - y1 * x1 |
-
         Vec3 Result = { 
                 y * Other.z - z * Other.y, 
                 z * Other.x - x * Other.z,
@@ -212,6 +211,11 @@ inline Vec3 Normalize(const Vec3 &Other) {
 
     Result.Normalize();
 
+    return Result;
+}
+
+inline real32 DotProduct(const Vec3 &A, const Vec3 &B) {
+    real32 Result = A.x * B.x + A.y * B.y + A.z * B.z;
     return Result;
 }
 
