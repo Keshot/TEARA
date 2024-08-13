@@ -1,9 +1,9 @@
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_opengl.h>
 #include <SDL3/SDL_iostream.h>
 #include <SDL3/SDL_stdinc.h>
 #include <stb/stb_image.h>
 
+#include "OpenGL/OGL.h"
 #include "Types.h"
 #include "MatrixTransform.h"
 #include "CoreMath.h"
@@ -101,35 +101,6 @@ static const SDL_InitFlags SDLInitFlags = SDL_INIT_VIDEO;
 
 // TODO (ismail): reading this options from command arguments or from file or from in game settings
 static const SDL_WindowFlags WindowFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL;
-
-// glGenBuffers
-static PFNGLGENBUFFERSPROC                  glGenBuffers;
-static PFNGLBINDBUFFERPROC                  glBindBuffer;
-static PFNGLBUFFERDATAPROC                  glBufferData;
-static PFNGLENABLEVERTEXATTRIBARRAYPROC     glEnableVertexAttribArray;
-static PFNGLVERTEXATTRIBPOINTERPROC         glVertexAttribPointer;
-static PFNGLDISABLEVERTEXATTRIBARRAYPROC    glDisableVertexAttribArray;
-static PFNGLCREATEPROGRAMPROC               glCreateProgram;
-static PFNGLCREATESHADERPROC                glCreateShader;
-static PFNGLSHADERSOURCEPROC                glShaderSource;
-static PFNGLCOMPILESHADERPROC               glCompileShader;
-static PFNGLGETSHADERIVPROC                 glGetShaderiv;
-static PFNGLATTACHSHADERPROC                glAttachShader;
-static PFNGLLINKPROGRAMPROC                 glLinkProgram;
-static PFNGLGETPROGRAMIVPROC                glGetProgramiv;
-static PFNGLVALIDATEPROGRAMPROC             glValidateProgram;
-static PFNGLUSEPROGRAMPROC                  glUseProgram;
-static PFNGLGETPROGRAMINFOLOGPROC           glGetProgramInfoLog;
-static PFNGLGETUNIFORMLOCATIONPROC          glGetUniformLocation;
-static PFNGLUNIFORM1FPROC                   glUniform1f;
-static PFNGLUNIFORMMATRIX4FVPROC            glUniformMatrix4fv;
-static PFNGLUNIFORM1IPROC                   glUniform1i;
-static PFNGLACTIVETEXTUREPROC               glActiveTextureStb;
-static PFNGLGENVERTEXARRAYSPROC             glGenVertexArrays;
-static PFNGLBINDVERTEXARRAYPROC             glBindVertexArray;
-static PFNGLUNIFORM3FVPROC                  glUniform3fv;
-
-#define glActiveTexture glActiveTextureStb
 
 // TODO (ismail): function must return value in order to detect wrong file
 static void ParseObj(const char *Data, ObjFile *LoadedFile)
@@ -362,161 +333,6 @@ static i32 ReadFile(const char *Path, FileData *Buffer)
     return SUCCESS;
 }
 
-static i32 LoadGlFunctions()
-{
-    glGenBuffers = (PFNGLGENBUFFERSPROC) SDL_GL_GetProcAddress("glGenBuffers");
-    if (!glGenBuffers) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glBindBuffer = (PFNGLBINDBUFFERPROC) SDL_GL_GetProcAddress("glBindBuffer");
-    if (!glBindBuffer) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glBufferData = (PFNGLBUFFERDATAPROC) SDL_GL_GetProcAddress("glBufferData");
-    if (!glBufferData) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC) SDL_GL_GetProcAddress("glEnableVertexAttribArray");
-    if (!glEnableVertexAttribArray) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC) SDL_GL_GetProcAddress("glVertexAttribPointer");
-    if (!glVertexAttribPointer) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glDisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC) SDL_GL_GetProcAddress("glDisableVertexAttribArray");
-    if (!glDisableVertexAttribArray) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glCreateProgram = (PFNGLCREATEPROGRAMPROC) SDL_GL_GetProcAddress("glCreateProgram");
-    if (!glCreateProgram) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glCreateShader = (PFNGLCREATESHADERPROC) SDL_GL_GetProcAddress("glCreateShader");
-    if (!glCreateShader) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glShaderSource = (PFNGLSHADERSOURCEPROC) SDL_GL_GetProcAddress("glShaderSource");
-    if (!glShaderSource) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glCompileShader = (PFNGLCOMPILESHADERPROC) SDL_GL_GetProcAddress("glCompileShader");
-    if (!glCompileShader) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glGetShaderiv = (PFNGLGETSHADERIVPROC) SDL_GL_GetProcAddress("glGetShaderiv");
-    if (!glGetShaderiv) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glAttachShader = (PFNGLATTACHSHADERPROC) SDL_GL_GetProcAddress("glAttachShader");
-    if (!glAttachShader) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glLinkProgram = (PFNGLLINKPROGRAMPROC) SDL_GL_GetProcAddress("glLinkProgram");
-    if (!glLinkProgram) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glGetProgramiv = (PFNGLGETPROGRAMIVPROC) SDL_GL_GetProcAddress("glGetProgramiv");
-    if (!glGetProgramiv) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glValidateProgram = (PFNGLVALIDATEPROGRAMPROC) SDL_GL_GetProcAddress("glValidateProgram");
-    if (!glValidateProgram) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glUseProgram = (PFNGLUSEPROGRAMPROC) SDL_GL_GetProcAddress("glUseProgram");
-    if (!glUseProgram) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glGetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC) SDL_GL_GetProcAddress("glGetProgramInfoLog");
-    if (!glGetProgramInfoLog) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC) SDL_GL_GetProcAddress("glGetUniformLocation"); 
-    if (!glGetUniformLocation) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glUniform1f = (PFNGLUNIFORM1FPROC) SDL_GL_GetProcAddress("glUniform1f");
-    if (!glUniform1f) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glUniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC) SDL_GL_GetProcAddress("glUniformMatrix4fv");
-    if (!glUniformMatrix4fv) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glUniform1i = (PFNGLUNIFORM1IPROC) SDL_GL_GetProcAddress("glUniform1i");
-    if (!glUniform1i) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glActiveTexture = (PFNGLACTIVETEXTUREPROC) SDL_GL_GetProcAddress("glActiveTexture");
-    if (!glActiveTexture) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC) SDL_GL_GetProcAddress("glGenVertexArrays");
-    if (!glGenVertexArrays) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC) SDL_GL_GetProcAddress("glBindVertexArray");
-    if (!glGenVertexArrays) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    glUniform3fv = (PFNGLUNIFORM3FVPROC) SDL_GL_GetProcAddress("glUniform3fv");
-    if (!glUniform3fv) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
-    }
-
-    return SUCCESS;
-}
-
 static bool32 AttachShader(GLuint ShaderHandle, const char *ShaderCode, GLint Length, GLenum ShaderType)
 {
     GLuint Shader = glCreateShader(ShaderType);
@@ -606,6 +422,7 @@ int main(int argc, char *argv[])
     SDL_Surface *WindowScreenSurface;
     SDL_GLContext GlContext;
     bool32 Quit = false;
+    i32 OGLResult = 0;
 
     stbi_set_flip_vertically_on_load_thread(1);
 
@@ -614,21 +431,10 @@ int main(int argc, char *argv[])
         return SDL_INIT_FAILURE;
     }
 
-    // TODO (ismail): move all of this staff into separate functions and we must create windows and then load library!!!
-    if (SDL_GL_LoadLibrary("opengl32.dll") < 0) {
-        // TODO (ismail): diagnostic
-        return SDL_OPENGL_LOAD_FAILURE;
+    if ((OGLResult = OGLInit()) != OGL_STATS::LOAD_SUCCESS) {
+        // TODO (ismail): logging
+        return OGLResult;
     }
-
-    // TODO (ismail): check available opengl version
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
-
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    // NOTE (ismail): it must be 24 if not opengl will be intialized with 1.1.0 version
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
     Window = SDL_CreateWindow("TEARA", WINDOW_WIDTH, WINDOW_HEIGHT, WindowFlags);
     if (!Window) {
@@ -649,7 +455,7 @@ int main(int argc, char *argv[])
     }
 
     i32 LoadFunctionsResult;
-    if ((LoadFunctionsResult = LoadGlFunctions())) {
+    if ((LoadFunctionsResult = OGLLoadFunctions())) {
         // TODO (ismail): diagnostic
         return LoadFunctionsResult;
     }
@@ -736,7 +542,7 @@ int main(int argc, char *argv[])
         glGetProgramInfoLog(ShaderProgram, sizeof(ErrorLog), NULL, ErrorLog);
         return SDL_INIT_FAILURE;
     }
-
+    
     GLint TransformLocation = glGetUniformLocation(ShaderProgram, "Transform");
     if (TransformLocation == -1) {
         // TODO (ismail): diagnostic
@@ -1009,8 +815,8 @@ int main(int argc, char *argv[])
         PlayerSphere.Transform.Rotate.Heading += RotationDeltaY;
         PlayerSphere.Transform.Rotate.Pitch += RotationDeltaX;
 
-        PlayerCamera.Transform.Rotate.Heading += CameraYRotationDelta + (MouseMoution.x * 0.005);
-        PlayerCamera.Transform.Rotate.Pitch += CameraXRotationDelta + (MouseMoution.y * 0.005);
+        PlayerCamera.Transform.Rotate.Heading += CameraYRotationDelta + (DEGREE_TO_RAD(MouseMoution.x));
+        PlayerCamera.Transform.Rotate.Pitch += CameraXRotationDelta + (DEGREE_TO_RAD(MouseMoution.y));
 
         Vec3 PlayerTarget = {};
         Vec3 PlayerRight = {};
@@ -1020,15 +826,15 @@ int main(int argc, char *argv[])
         RotationToVectors(&PlayerSphere.Transform.Rotate, &PlayerTarget, &PlayerRight, &PlayerUp);
 
         Vec3 PlayerTargetTranslation = { 
-            PlayerTarget.x * (PlayerTargetTranslationDelta * Speed * 0.0001234f),
-            PlayerTarget.y * (PlayerTargetTranslationDelta * Speed * 0.0001234f),
-            PlayerTarget.z * (PlayerTargetTranslationDelta * Speed * 0.0001234f)
+            PlayerTarget.x * (PlayerTargetTranslationDelta * Speed * 0.0003702f),
+            PlayerTarget.y * (PlayerTargetTranslationDelta * Speed * 0.0003702f),
+            PlayerTarget.z * (PlayerTargetTranslationDelta * Speed * 0.0003702f)
         };
 
         Vec3 PlayerRightTranslation = { 
-            PlayerRight.x * (PlayerRightTranslationDelta * Speed * 0.0001234f),
-            PlayerRight.y * (PlayerRightTranslationDelta * Speed * 0.0001234f),
-            PlayerRight.z * (PlayerRightTranslationDelta * Speed * 0.0001234f)
+            PlayerRight.x * (PlayerRightTranslationDelta * Speed * 0.0003702f),
+            PlayerRight.y * (PlayerRightTranslationDelta * Speed * 0.0003702f),
+            PlayerRight.z * (PlayerRightTranslationDelta * Speed * 0.0003702f)
         };
 
         Vec3 FinalPlayerTranslation = PlayerTargetTranslation + PlayerRightTranslation;
@@ -1070,15 +876,15 @@ int main(int argc, char *argv[])
         // TODO (ismail): if we press up and right(or any other combination of up, down, right, left)
         // we will translate faster because z = 1.0f and x = 1.0f i need fix that
         Vec3 CameraTargetTranslation = { 
-            Target.x * (CameraTargetTranslationDelta * Speed * 0.0001234f),
-            Target.y * (CameraTargetTranslationDelta * Speed * 0.0001234f),
-            Target.z * (CameraTargetTranslationDelta * Speed * 0.0001234f)
+            Target.x * (CameraTargetTranslationDelta * Speed * 0.0003702f),
+            Target.y * (CameraTargetTranslationDelta * Speed * 0.0003702f),
+            Target.z * (CameraTargetTranslationDelta * Speed * 0.0003702f)
         };
 
         Vec3 CameraRightTranslation = { 
-            Right.x * (CameraRightTranslationDelta * Speed * 0.0001234f),
-            Right.y * (CameraRightTranslationDelta * Speed * 0.0001234f),
-            Right.z * (CameraRightTranslationDelta * Speed * 0.0001234f)
+            Right.x * (CameraRightTranslationDelta * Speed * 0.0003702f),
+            Right.y * (CameraRightTranslationDelta * Speed * 0.0003702f),
+            Right.z * (CameraRightTranslationDelta * Speed * 0.0003702f)
         };
 
         Vec3 FinalTranslation = CameraTargetTranslation + CameraRightTranslation;
