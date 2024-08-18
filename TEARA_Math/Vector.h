@@ -170,9 +170,9 @@ struct Vec3 {
     }
 
     inline Vec3 Cross(const Vec3 &Other) {
-        // | x1 |   | x2 |   | y1 * z2 - z1 * y2 |
-        // | y1 | x | y2 | = | z1 * x2 - x1 * z2 |
-        // | z1 |   | z2 |   | x1 * y2 - y1 * x1 |
+        // | THISx1 |   | OTHERx2 |   | y1 * z2 - z1 * y2 |
+        // | THISy1 | x | OTHERy2 | = | z1 * x2 - x1 * z2 |
+        // | THISz1 |   | OTHERz2 |   | x1 * y2 - y1 * x1 |
         Vec3 Result = { 
                 y * Other.z - z * Other.y, 
                 z * Other.x - x * Other.z,

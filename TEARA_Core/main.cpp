@@ -29,6 +29,7 @@ struct Vertex {
     Vec3 Position;
 };
 
+// TODO (ismail:) separate Vertex and ObjFile
 struct ObjFile {
     Vertex      *Vertices;
     i64          VertexArraySize;
@@ -52,6 +53,12 @@ struct Sphere {
     real32  Radius;
 };
 
+struct OBB {
+    Vec3 Center;
+    Vec3 Extens;
+    Vec3 Axis[3];
+};
+
 struct WorldTransform {
     Vec3        Position;
     Rotation    Rotate;
@@ -66,6 +73,11 @@ struct WorldObjectAABBCollider {
 struct WorldObjectSphereCollider {
     WorldTransform          Transform;
     Sphere                  BoundingSphere;
+};
+
+struct WorldObjectOBBCollider {
+    WorldTransform          Transform;
+    OBB                     BoundingOrientedBox;
 };
 
 struct Camera {
@@ -271,13 +283,13 @@ bool32 AABBToAABBTestOverlap(AABB *A, AABB *B)
     // TODO (ismail): convert to SIMD
     // TODO (ismail): may be calculate A.Center - B.Center one time and use it?
     
-    if (SDL_fabsf(A->Center.x - B->Center.x) > (A->Extens.x + B->Extens.x)) {
+    if (Fabs(A->Center.x - B->Center.x) > (A->Extens.x + B->Extens.x)) {
         return 0;
     }
-    if (SDL_fabsf(A->Center.y - B->Center.y) > (A->Extens.y + B->Extens.y)) {
+    if (Fabs(A->Center.y - B->Center.y) > (A->Extens.y + B->Extens.y)) {
         return 0;
     }
-    if (SDL_fabsf(A->Center.z - B->Center.z) > (A->Extens.z + B->Extens.z)) {
+    if (Fabs(A->Center.z - B->Center.z) > (A->Extens.z + B->Extens.z)) {
         return 0;
     }
 
@@ -315,6 +327,157 @@ bool32 SphereToSphereTestOverlap(Sphere *A, Sphere *B)
     real32 RadiusSquare = SQUARE(RadiusSum);
 
     return DistanceSquare < RadiusSquare;
+}
+
+bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
+{
+    enum _local { x = 0, y = 1, z = 2 };
+
+    // TODO (ismail): T * (Ax X Bx) = (T * Az) * (Ay * Bx) - (T * Ay) * (Az * Bx) optimization
+    // TODO (ismail): refactoring
+
+    Mat3x3 R, AbsR;
+    real32 ProjT, MaxA, MaxB;
+    Vec3 EdgesCrossProduct;
+    Vec3 T = B->Center - A->Center;
+
+    // NOTE (ismail): compute Ax * Bx, Ax * By, Ax * Bz 
+    //                        Ay * Bx, Ay * By, Ay * Bz => AT * B
+    //                        Az * Bx, Az * By, Az * Bz
+    for (i32 i = 0; i < 3; ++i) {
+        for (i32 j = 0; j < 3; ++j) {
+            R[i][j] = DotProduct(A->Axis[i], B->Axis[j]);
+            AbsR[i][j] = Fabs(R[i][j]);
+        }
+    }
+
+    // NOTE (ismail): check A three axis first (Ax, Ay, Az)
+    //  L = Ax
+    // |T * Ax| > Eax + |Ebx * Bx * Ax| + |Eby * By * Ax| + |Ebz * Bz * Ax|
+    //  L = Ay
+    // |T * Ay| > Eay + |Ebx * Bx * Ay| + |Eby * By * Ay| + |Ebz * Bz * Ay|
+    //  L = Az
+    // |T * Az| > Eaz + |Ebx * Bx * Az| + |Eby * By * Az| + |Ebz * Bz * Az|
+    for (i32 i = 0; i < 3; ++i) {
+        ProjT = Fabs(DotProduct(T, A->Axis[i]));
+        MaxA = A->Extens[i];
+        MaxB = B->Extens[0] * AbsR[i][0] + B->Extens[1] * AbsR[i][1] + B->Extens[2] * AbsR[i][2];
+
+        if (ProjT > MaxA + MaxB) {
+            return 0;
+        }
+    }
+
+    // NOTE (ismail): check B three axis (Bx, By, Bz)
+    //  L = Bx
+    // |T * Bx| > Ebx + |Eax * Ax * Bx| + |Eay * Ay * Bx| + |Eaz * Az * Bx|
+    //  L = By
+    // |T * By| > Eby + |Eax * Ax * By| + |Eay * Ay * By| + |Eaz * Az * By|
+    //  L = Bz
+    // |T * Bz| > Ebz + |Eax * Ax * Bz| + |Eay * Ay * Bz| + |Eaz * Az * Bz|
+    for (i32 i = 0; i < 3; ++i) {
+        ProjT = Fabs(DotProduct(T, B->Axis[i]));
+        MaxA = A->Extens[0] * AbsR[0][i] + A->Extens[1] * AbsR[1][i] + A->Extens[2] * AbsR[2][i];
+        MaxB = B->Extens[i];
+
+        if (ProjT > MaxA + MaxB) {
+            return 0;
+        }
+    }
+
+    // NOTE (ismail): check nine edges
+
+    //  L = Ax X Bx
+    // |T * (Ax X Bx)| > |-Eay * Bx * Az| + |Eaz * Bx * Ay| + |Eby * Ax * Bz| + |-Ebz * Ax * By|
+    ProjT = DotProduct(T, A->Axis[0].Cross(B->Axis[0]));
+    MaxA = A->Extens[1] * AbsR[2][0] + A->Extens[2] * AbsR[1][0];
+    MaxB = B->Extens[1] * AbsR[0][2] + B->Extens[2] * AbsR[0][1];
+    
+    if (ProjT > MaxA + MaxB) {
+        return 0;
+    }
+
+    //  L = Ax X By
+    // |T * (Ax X By)| > |-Eay * By * Az| + |Eaz * By * Ay| + |-Ebx * Ax * Bz| + |Ebz * Ax * Bx|
+    ProjT = DotProduct(T, A->Axis[x].Cross(B->Axis[y]));
+    MaxA = A->Extens[y] * AbsR[z][y] + A->Extens[z] * AbsR[y][y];
+    MaxB = B->Extens[x] * AbsR[x][z] + B->Extens[z] * AbsR[x][x];
+    
+    if (ProjT > MaxA + MaxB) {
+        return 0;
+    }
+
+    //  L = Ax X Bz
+    // |T * (Ax X Bz)| > |-Eay * Bz * Az| + |Eaz * Bz * Ay| + |Ebx * Ax * By| + |-Eby * Ax * Bx|
+    ProjT = DotProduct(T, A->Axis[x].Cross(B->Axis[z]));
+    MaxA = A->Extens[y] * AbsR[z][z] + A->Extens[z] * AbsR[y][z];
+    MaxB = B->Extens[x] * AbsR[x][y] + B->Extens[y] * AbsR[x][x];
+    
+    if (ProjT > MaxA + MaxB) {
+        return 0;
+    }
+
+    //  L = Ay X Bx
+    // |T * (Ay X Bx)| > |Eax * Bx * Az| + |-Eaz * Bx * Ax| + |Eby * Ay * Bz| + |-Ebz * Ay * By|
+    ProjT = DotProduct(T, A->Axis[y].Cross(B->Axis[x]));
+    MaxA = A->Extens[x] * AbsR[z][x] + A->Extens[z] * AbsR[x][x];
+    MaxB = B->Extens[y] * AbsR[y][z] + B->Extens[z] * AbsR[y][y];
+    
+    if (ProjT > MaxA + MaxB) {
+        return 0;
+    }
+
+    // L = Ay X By
+    // |T * (Ay X By)| > |Eax * By * Az| + |-Eaz * By * Ax| + |-Ebx * Ay * Bz| + |Ebz * Ay * Bx|
+    ProjT = DotProduct(T, A->Axis[y].Cross(B->Axis[y]));
+    MaxA = A->Extens[x] * AbsR[z][y] + A->Extens[z] * AbsR[x][y];
+    MaxB = B->Extens[x] * AbsR[y][z] + B->Extens[z] * AbsR[y][y];
+    
+    if (ProjT > MaxA + MaxB) {
+        return 0;
+    }
+
+    // L = Ay X Bz
+    // |T * (Ay X Bz)| > |Eax * Bz * Az| + |-Eaz * Bz * Ax| + |Ebx * Ay * By| + |-Eby * Ay * Bx|
+    ProjT = DotProduct(T, A->Axis[y].Cross(B->Axis[z]));
+    MaxA = A->Extens[x] * AbsR[z][z] + A->Extens[z] * AbsR[x][z];
+    MaxB = B->Extens[x] * AbsR[y][y] + B->Extens[y] * AbsR[y][x];
+    
+    if (ProjT > MaxA + MaxB) {
+        return 0;
+    }
+
+    //  L = Az X Bx
+    // |T * (Az X Bx)| > |-Eax * Bx * Ay| + |Eay * Bx * Ax| + |Eby * Az * Bz| + |-Ebz * Az * By|
+    ProjT = DotProduct(T, A->Axis[z].Cross(B->Axis[x]));
+    MaxA = A->Extens[x] * AbsR[y][x] + A->Extens[y] * AbsR[x][x];
+    MaxB = B->Extens[y] * AbsR[z][z] + B->Extens[z] * AbsR[z][y];
+    
+    if (ProjT > MaxA + MaxB) {
+        return 0;
+    }
+
+    //  L = Az X By
+    // |T * (Az X By)| > |-Eax * By * Ay| + |Eay * By * Ax| + |-Ebx * Az * Bz| + |Ebz * Az * Bx|
+    ProjT = DotProduct(T, A->Axis[z].Cross(B->Axis[y]));
+    MaxA = A->Extens[x] * AbsR[y][y] + A->Extens[y] * AbsR[x][y];
+    MaxB = B->Extens[x] * AbsR[z][z] + B->Extens[z] * AbsR[z][x];
+    
+    if (ProjT > MaxA + MaxB) {
+        return 0;
+    }
+
+    //  L = Az X Bz
+    // |T * (Az X Bz)| > |-Eax * Bz * Ay| + |Eay * Bz * Ax| + |Ebx * Az * By| + |-Eby * Az * Bx|
+    ProjT = DotProduct(T, A->Axis[z].Cross(B->Axis[z]));
+    MaxA = A->Extens[x] * AbsR[y][z] + A->Extens[y] * AbsR[x][z];
+    MaxB = B->Extens[x] * AbsR[z][y] + B->Extens[y] * AbsR[z][x];
+    
+    if (ProjT > MaxA + MaxB) {
+        return 0;
+    }
+
+    return 1;
 }
 
 static i32 ReadFile(const char *Path, FileData *Buffer)
@@ -636,6 +799,29 @@ int main(int argc, char *argv[])
     Vec3 NpcCubeColor = { 1.0f, 0.0f, 0.0f };
     */
 
+    WorldObjectOBBCollider NpcCube = {};
+
+    NpcCube.Transform.Position.x = -1.5f;
+    NpcCube.Transform.Position.y = 0.0f;
+    NpcCube.Transform.Position.z = 2.0f;
+
+    NpcCube.Transform.Scale.x = 1.0f;
+    NpcCube.Transform.Scale.y = 1.0f;
+    NpcCube.Transform.Scale.z = 1.0f;
+
+    NpcCube.BoundingOrientedBox.Center = NpcCube.Transform.Position;
+
+    NpcCube.BoundingOrientedBox.Axis[0] = { 1.0f, 0.0f, 0.0f };
+    NpcCube.BoundingOrientedBox.Axis[1] = { 0.0f, 1.0f, 0.0f };;
+    NpcCube.BoundingOrientedBox.Axis[2] = { 0.0f, 0.0f, 1.0f };;
+
+    NpcCube.BoundingOrientedBox.Extens.x = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    NpcCube.BoundingOrientedBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    NpcCube.BoundingOrientedBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+
+    Vec3 NpcCubeColor = { 1.0f, 0.0f, 0.0f };
+
+    /*
     WorldObjectSphereCollider NpcSphere = {};
 
     NpcSphere.Transform.Position.x = -1.5f;
@@ -650,6 +836,7 @@ int main(int argc, char *argv[])
     NpcSphere.BoundingSphere.Radius = 1.0f; // TODO (ismail): initial Sphere compute need to be implemented
 
     Vec3 NpcSphereColor = { 1.0f, 0.0f, 0.0f };
+    */
 
     /*
     WorldObjectAABBCollider PlayerCube = {};
@@ -667,6 +854,27 @@ int main(int argc, char *argv[])
     PlayerCube.BoundingBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
     */
 
+    WorldObjectOBBCollider PlayerCube = {};
+
+    PlayerCube.Transform.Position.x = 1.5f;
+    PlayerCube.Transform.Position.y = 0.0f;
+    PlayerCube.Transform.Position.z = 2.0f;
+
+    PlayerCube.Transform.Scale.x = 1.0f;
+    PlayerCube.Transform.Scale.y = 1.0f;
+    PlayerCube.Transform.Scale.z = 1.0f;
+
+    PlayerCube.BoundingOrientedBox.Center = PlayerCube.Transform.Position;
+
+    PlayerCube.BoundingOrientedBox.Axis[0] = { 1.0f, 0.0f, 0.0f };
+    PlayerCube.BoundingOrientedBox.Axis[1] = { 0.0f, 1.0f, 0.0f };;
+    PlayerCube.BoundingOrientedBox.Axis[2] = { 0.0f, 0.0f, 1.0f };;
+
+    PlayerCube.BoundingOrientedBox.Extens.x = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    PlayerCube.BoundingOrientedBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    PlayerCube.BoundingOrientedBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+
+    /*
     WorldObjectSphereCollider PlayerSphere = {};
 
     PlayerSphere.Transform.Position.x = 1.5f;
@@ -679,11 +887,12 @@ int main(int argc, char *argv[])
 
     PlayerSphere.BoundingSphere.Center = PlayerSphere.Transform.Position; // TODO (ismail): initial Sphere compute need to be implemented
     PlayerSphere.BoundingSphere.Radius = 1.0f; // TODO (ismail): initial Sphere compute need to be implemented
-    
-    glBindVertexArray(SphereObjectRenderContext.VAO);
+    */
+
+    glBindVertexArray(CubeObjectRenderContext.VAO);
 
     while (!Quit) {
-        Vec3 PlayerSphereColor = { 0.0f, 0.0f, 1.0f };
+        Vec3 PlayerCubeColor = { 0.0f, 0.0f, 1.0f };
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         Vec2 MouseMoution = { };
@@ -812,8 +1021,8 @@ int main(int argc, char *argv[])
         // Mat4x4 Scale = MakeScale(&ScaleVector);
         // -------------------------------------------------------------------------------------
 
-        PlayerSphere.Transform.Rotate.Heading += RotationDeltaY;
-        PlayerSphere.Transform.Rotate.Pitch += RotationDeltaX;
+        PlayerCube.Transform.Rotate.Heading += RotationDeltaY;
+        PlayerCube.Transform.Rotate.Pitch += RotationDeltaX;
 
         PlayerCamera.Transform.Rotate.Heading += CameraYRotationDelta + (DEGREE_TO_RAD(MouseMoution.x));
         PlayerCamera.Transform.Rotate.Pitch += CameraXRotationDelta + (DEGREE_TO_RAD(MouseMoution.y));
@@ -822,8 +1031,8 @@ int main(int argc, char *argv[])
         Vec3 PlayerRight = {};
         Vec3 PlayerUp = {};
 
-        Mat4x4 PlayerRotation = MakeRotation4x4(&PlayerSphere.Transform.Rotate);
-        RotationToVectors(&PlayerSphere.Transform.Rotate, &PlayerTarget, &PlayerRight, &PlayerUp);
+        Mat4x4 PlayerRotation = MakeRotation4x4(&PlayerCube.Transform.Rotate);
+        RotationToVectors(&PlayerCube.Transform.Rotate, &PlayerTarget, &PlayerRight, &PlayerUp);
 
         Vec3 PlayerTargetTranslation = { 
             PlayerTarget.x * (PlayerTargetTranslationDelta * Speed * 0.0003702f),
@@ -838,14 +1047,20 @@ int main(int argc, char *argv[])
         };
 
         Vec3 FinalPlayerTranslation = PlayerTargetTranslation + PlayerRightTranslation;
-        PlayerSphere.Transform.Position += FinalPlayerTranslation;
+        PlayerCube.Transform.Position += FinalPlayerTranslation;
         
-        Mat4x4 PlayerTranslation = MakeTranslation(&PlayerSphere.Transform.Position);
+        Mat4x4 PlayerTranslation = MakeTranslation(&PlayerCube.Transform.Position);
         Mat4x4 PlayerScale = Identity4x4;
 
-        Mat4x4 NpcRotation = MakeRotation4x4(&NpcSphere.Transform.Rotate);
-        Mat4x4 NpcTranslation = MakeTranslation(&NpcSphere.Transform.Position);
+        Mat4x4 NpcRotation = MakeRotation4x4(&NpcCube.Transform.Rotate);
+        Mat4x4 NpcTranslation = MakeTranslation(&NpcCube.Transform.Position);
         Mat4x4 NpcScale = Identity4x4;
+
+        Vec3 NpcTarget = {};
+        Vec3 NpcRight = {};
+        Vec3 NpcUp = {};
+
+        RotationToVectors(&NpcCube.Transform.Rotate, &NpcTarget, &NpcRight, &NpcUp);
 
         /*
         AABB TransformedPlayerAABB = {};
@@ -856,6 +1071,7 @@ int main(int argc, char *argv[])
         AABBRecalculate(&NpcRotation, &NpcCube.Transform.Position, &NpcCube.BoundingBox, &TransformedNpcAABB);
         */
 
+        /*
         PlayerSphere.BoundingSphere.Center = PlayerSphere.Transform.Position;
         NpcSphere.BoundingSphere.Center = NpcSphere.Transform.Position;
 
@@ -863,6 +1079,25 @@ int main(int argc, char *argv[])
             PlayerSphereColor.x = 0.0f;
             PlayerSphereColor.y = 1.0f;
             PlayerSphereColor.z = 0.0f;
+        }
+        */
+
+        PlayerCube.BoundingOrientedBox.Axis[0] = PlayerRight;
+        PlayerCube.BoundingOrientedBox.Axis[1] = PlayerUp;
+        PlayerCube.BoundingOrientedBox.Axis[2] = PlayerTarget;
+
+        PlayerCube.BoundingOrientedBox.Center = PlayerCube.Transform.Position;
+
+        NpcCube.BoundingOrientedBox.Axis[0] = NpcRight;
+        NpcCube.BoundingOrientedBox.Axis[1] = NpcUp;
+        NpcCube.BoundingOrientedBox.Axis[2] = NpcTarget;
+
+        NpcCube.BoundingOrientedBox.Center = NpcCube.Transform.Position;
+
+        if (OBBToOBBTestOverlap(&PlayerCube.BoundingOrientedBox, &NpcCube.BoundingOrientedBox)) {
+            PlayerCubeColor.x = 0.0f;
+            PlayerCubeColor.y = 1.0f;
+            PlayerCubeColor.z = 0.0f;
         }
 
         Vec3 Target = {};
@@ -908,7 +1143,7 @@ int main(int argc, char *argv[])
         // GL_TRUE for row based memory order: (memory - matrix cell)  0x01 - a11, 0x02 - a12, 0x03 - a13
         // GL_FALSE for column based memory order: (memory - matrix cell) 0x01 - a11, 0x02 - a21, 0x03 - a31
         glUniformMatrix4fv(TransformLocation, 1, GL_TRUE, PlayerCubeTransform[0]);
-        glUniform3fv(MeshColorLocation, 1, PlayerSphereColor.ValueHolder);
+        glUniform3fv(MeshColorLocation, 1, PlayerCubeColor.ValueHolder);
 
         glDrawElements(GL_TRIANGLES, SphereFile.IndexArraySize, GL_UNSIGNED_INT, 0);
 
@@ -916,9 +1151,9 @@ int main(int argc, char *argv[])
         Mat4x4 NpcCubeTransform = Projection * CameraTransformation * NpcCubeWorldTransformation;
 
         glUniformMatrix4fv(TransformLocation, 1, GL_TRUE, NpcCubeTransform[0]);
-        glUniform3fv(MeshColorLocation, 1, NpcSphereColor.ValueHolder);
+        glUniform3fv(MeshColorLocation, 1, NpcCubeColor.ValueHolder);
 
-        glDrawElements(GL_TRIANGLES, SphereFile.IndexArraySize, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, CubeFile.IndexArraySize, GL_UNSIGNED_INT, 0);
 
         SDL_GL_SwapWindow(Window);
     }

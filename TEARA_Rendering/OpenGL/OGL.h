@@ -36,9 +36,9 @@ extern PFNGLGENVERTEXARRAYSPROC             glGenVertexArrays;
 extern PFNGLBINDVERTEXARRAYPROC             glBindVertexArray;
 extern PFNGLUNIFORM3FVPROC                  glUniform3fv;
 
+#define glActiveTexture glActiveTextureStb
+
 i32 OGLInit();
 i32 OGLLoadFunctions();
-
-#define glActiveTexture glActiveTextureStb
 
 #endif

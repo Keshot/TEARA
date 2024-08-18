@@ -1,0 +1,4 @@
+#ifndef _TEARA_ASSETS_LOADER_H_
+#define _TEARA_ASSETS_LOADER_H_
+
+#endif

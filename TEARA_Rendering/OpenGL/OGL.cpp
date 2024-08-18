@@ -27,6 +27,7 @@ PFNGLGENVERTEXARRAYSPROC             glGenVertexArrays              = NULL;
 PFNGLBINDVERTEXARRAYPROC             glBindVertexArray              = NULL;
 PFNGLUNIFORM3FVPROC                  glUniform3fv                   = NULL;
 
+// TODO (ismail): more complecated initialization
 i32 OGLInit()
 {
      // TODO (ismail): move all of this staff into separate functions and we must create windows and then load library!!!
