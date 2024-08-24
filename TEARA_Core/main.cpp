@@ -329,12 +329,15 @@ bool32 SphereToSphereTestOverlap(Sphere *A, Sphere *B)
     return DistanceSquare < RadiusSquare;
 }
 
+#define OBB_EPSILON 0.0001f
+
 bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
 {
     enum _local { x = 0, y = 1, z = 2 };
 
     // TODO (ismail): T * (Ax X Bx) = (T * Az) * (Ay * Bx) - (T * Ay) * (Az * Bx) optimization
     // TODO (ismail): refactoring
+    // TODO (ismail): optimization when we aligned any other three axis
 
     Mat3x3 R, AbsR;
     real32 ProjT, MaxA, MaxB;
@@ -347,7 +350,7 @@ bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
     for (i32 i = 0; i < 3; ++i) {
         for (i32 j = 0; j < 3; ++j) {
             R[i][j] = DotProduct(A->Axis[i], B->Axis[j]);
-            AbsR[i][j] = Fabs(R[i][j]);
+            AbsR[i][j] = Fabs(R[i][j]) + OBB_EPSILON;
         }
     }
 
