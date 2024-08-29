@@ -513,4 +513,18 @@ Mat4x4 &Mat4x4::operator*=(const Mat4x4 &Other)
     return *this;
 }
 
+// TODO (ismail): extern this
+const Mat4x4 Identity4x4 = {
+    1.0f, 0.0f, 0.0f, 0.0f,
+    0.0f, 1.0f, 0.0f, 0.0f,
+    0.0f, 0.0f, 1.0f, 0.0f,
+    0.0f, 0.0f, 0.0f, 1.0f
+};
+
+const Mat3x3 Identity3x3 = {
+    1.0f, 0.0f, 0.0f,
+    0.0f, 1.0f, 0.0f,
+    0.0f, 0.0f, 1.0f
+};
+
 #endif

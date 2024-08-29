@@ -1,11 +1,10 @@
 #ifndef _TEARA_MATH_UTILS_H_
 #define _TEARA_MATH_UTILS_H_
 
-#include "Types.h"
-
 // TODO (ismail): my own SIMD math function or instead my own use SDL
-// TODO (ismail): maybe use SDL_stdinc?
 #include <math.h>
+
+#include "Utils/Types.h"
 
 #define                     PI         (3.14159265358979323846f)
 #define                 TWO_PI         (2.0f * PI)

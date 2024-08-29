@@ -19,4 +19,6 @@ typedef uint64_t    u64;
 typedef i32         bool32;
 typedef i64         bool64;
 
+typedef u8          byte;
+
 #endif
