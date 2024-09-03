@@ -2,6 +2,12 @@
 #include "TEARA_Lib/Math/Vector.h"
 #include "TEARA_Core/Engine.h"
 
+#define MAX_SHADERS (0x0A)
+
+enum RendererInitErrors {
+    Success = 0,
+};
+
 struct Vertex {
     Vec3 Position;
 };
@@ -14,16 +20,34 @@ struct ObjFile {
     i64     IndexArraySize;
 };
 
+struct OpenGLBuffers {
+    u32     VAO;
+    u32     VBO;
+    u32     IBO;
+};
+
 struct ObjectRenderingContext {
-    GLuint      VAO;
-    GLuint      VBO;
-    GLuint      IBO;
-    ObjFile     ObjectFile;
+    OpenGLBuffers   Buffers;
+    ObjFile         ObjectFile;
+    i32             ShaderProgramIndex; 
+};
+
+enum ShaderUniformType {
+    Matrix4f,
+    Vector3f,
+    Max // NOTE (ismail): last element!
+};
+
+struct Shader {
+    ShaderUniformType   UniformType;
+    i32                 Location;
 };
 
 struct ShaderProgram {
     u32     ProgramHandle;
-}
+    i32     ShadersAmount;
+    Shader  Shaders[MAX_SHADERS];
+};
 
 // TODO (ismail): function must return value in order to detect wrong file
 static void ParseObj(const char *Data, ObjFile *LoadedFile)
@@ -193,9 +217,9 @@ GLuint LoadTexture(const char *FileName)
 }
 */
 
-static bool32 RendererInit()
+static RendererInitErrors RendererInit()
 {
-    GLclampf Red = 0.0f, Green = 0.0f, Blue = 0.0f, Alpha = 0.0f;
+    GLclampf Red = 0.f, Green = 0.0f, Blue = 0.0f, Alpha = 0.0f;
     GLclampf ColorValueMask = 1.0f / 256.0f;
 
     // NOTE (ismail): set color values for future call of glClear
@@ -214,6 +238,8 @@ static bool32 RendererInit()
     glEnable(GL_DEPTH_TEST);
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    return RendererInitErrors::Success;
 }
 
 static bool32 AttachShader(GLuint ShaderHandle, const char *ShaderCode, GLint Length, GLenum ShaderType)
@@ -240,7 +266,7 @@ static bool32 AttachShader(GLuint ShaderHandle, const char *ShaderCode, GLint Le
     return 1;
 }
 
-static void LoadObjectToHardware(ObjectRenderingContext *RenderContext, ObjFile *ObjectData)
+static void LoadObjectToHardware(OpenGLBuffers *RenderContext, ObjFile *ObjectData)
 {
     tglGenVertexArrays(1, &(RenderContext->VAO));
     tglBindVertexArray(RenderContext->VAO);

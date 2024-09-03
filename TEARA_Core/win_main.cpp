@@ -31,6 +31,8 @@ enum {
 static real32 AspectRatio = (real32)(WINDOW_WIDTH) / (real32)(WINDOW_HEIGHT);
 
 #include <windows.h>
+#include <windowsx.h>
+
 #include "TEARA_Core/Engine.h"
 #include "TEARA_Lib/Utils/AssetsLoader.h"
 #include "TEARA_Core/Rendering/Renderer.cpp"
@@ -47,21 +49,80 @@ static real32 AspectRatio = (real32)(WINDOW_WIDTH) / (real32)(WINDOW_HEIGHT);
 
 #define OPENGL_PIXEL_FORMAT_FLAGS (PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER)
 
+// TODO (ismail): remove this cringe
+#define SCENE_OBJECT_SIZE       (0x0A)
+#define PLAYER_INDEX            (0x00)
+#define SHADERS_PROGRAMS_SIZE   (0x05)
+
+#define WIN_ARROW_UP_KEY_CODE       (VK_UP)
+#define WIN_ARROW_DOWN_KEY_CODE     (VK_DOWN)
+#define WIN_ARROW_RIGHT_KEY_CODE    (VK_RIGHT)
+#define WIN_ARROW_LEFT_KEY_CODE     (VK_LEFT)
+#define WIN_A_KEY_CODE              (0x41)
+#define WIN_B_KEY_CODE              (0x42)
+#define WIN_C_KEY_CODE              (0x43)
+#define WIN_D_KEY_CODE              (0x44)
+#define WIN_E_KEY_CODE              (0x45)
+#define WIN_F_KEY_CODE              (0x46)
+#define WIN_G_KEY_CODE              (0x47)
+#define WIN_H_KEY_CODE              (0x48)
+#define WIN_I_KEY_CODE              (0x49)
+#define WIN_J_KEY_CODE              (0x4A)
+#define WIN_K_KEY_CODE              (0x4B)
+#define WIN_L_KEY_CODE              (0x4C)
+#define WIN_M_KEY_CODE              (0x4D)
+#define WIN_N_KEY_CODE              (0x4E)
+#define WIN_O_KEY_CODE              (0x4F)
+#define WIN_P_KEY_CODE              (0x50)
+#define WIN_Q_KEY_CODE              (0x51)
+#define WIN_R_KEY_CODE              (0x52)
+#define WIN_S_KEY_CODE              (0x53)
+#define WIN_T_KEY_CODE              (0x54)
+#define WIN_U_KEY_CODE              (0x55)
+#define WIN_V_KEY_CODE              (0x56)
+#define WIN_W_KEY_CODE              (0x57)
+#define WIN_X_KEY_CODE              (0x58)
+#define WIN_Y_KEY_CODE              (0x59)
+#define WIN_Z_KEY_CODE              (0x5A)
+
 struct WorldTransform {
     Vec3        Position;
     Rotation    Rotate;
     Vec3        Scale;
 };
 
+struct MovementComponent {
+    real32  Speed;
+    real32  RotationDelta;
+};
+
 struct WorldObject {
     WorldTransform          Transform;
     BoundingVolume          BoundingVolume;
+    MovementComponent       Movement;
     Vec3                    Color;
     i32                     RendererContextIndex;
 };
 
+struct SceneObjects {
+    WorldObject     Objects[SCENE_OBJECT_SIZE];
+    i64             ObjectsAmount;
+};
+
+struct SceneObjectsRendering {
+    Mat4x4                  PerspectiveProjection;
+    ObjectRenderingContext  ObjectsRenderingContext[SCENE_OBJECT_SIZE];
+    i64                     ObjectsAmount;
+};
+
+struct SceneShaderPrograms {
+    ShaderProgram            ShaderPrograms[SHADERS_PROGRAMS_SIZE];
+    i64                      ProgramsAmount;
+};
+
 struct Camera {
-    WorldTransform Transform;
+    WorldTransform      Transform;
+    MovementComponent   Movement;
 };
 
 enum WinLocalErrors {
@@ -74,6 +135,11 @@ enum WinLocalErrors {
     GLContextCreateFailed           = -6,
 };
 
+enum ErrorStatuses {
+    Success =  0,
+    Failed  = -1,
+};
+
 struct Win32Context {
     HINSTANCE   AppInstance;
     HWND        Window;
@@ -82,14 +148,13 @@ struct Win32Context {
     bool32      Running;
 };
 
-static Win32Context Win32App;
-
-// TODO (ismail): remove this cringe
-#define SCENE_OBJECT_SIZE   (0x0A)
-#define PLAYER_INDEX        (0x00)
-
-static WorldObject              SceneObjects[SCENE_OBJECT_SIZE];
-static ObjectRenderingContext   SceneObjectsRendererContext[SCENE_OBJECT_SIZE];
+static Win32Context             Win32App;
+static SceneObjects             WorldObjects;
+static SceneObjectsRendering    WorldObjectsRendererContext;
+static SceneShaderPrograms      WorldShaderPrograms;
+static Camera                   PlayerCamera;
+static GameInput                Inputs;
+static real32                   DeltaTime;
 
 static File LoadFile(const char *FileName)
 {
@@ -310,79 +375,17 @@ static LRESULT WinMainCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM 
         case WM_SYSKEYUP:
         case WM_KEYDOWN:
         case WM_KEYUP: {
-            u32 VKCode = WParam; // NOTE(ismail): virtual code of that key that was pressed or released
-            bool32 WasDown = ((LParam & (1 << 30)) != 0);
-            bool32 IsDown =  ((LParam & (1 << 31)) == 0);
-
-            if (WasDown != IsDown) {
-                // NOTE(ismail) may be it will be better if i will be use actual virtual codes instead of ascii code
-                switch (VKCode)
-                {
-                    case 'w':
-                    case 'W': {
-                        OutputDebugStringA("W\n");
-                    } break;
-                    
-                    case 'a':
-                    case 'A': {
-
-                    } break;
-
-                    case 's':
-                    case 'S': {
-
-                    } break;
-                    
-                    case 'd':
-                    case 'D': {
-
-                    } break;
-
-                    case 'q':
-                    case 'Q': {
-
-                    } break;
-                    
-                    case 'e':
-                    case 'E': {
-
-                    } break;
-
-                    case VK_UP: {
-
-                    } break;
-
-                    case VK_DOWN: {
-
-                    } break;
-
-                    case VK_LEFT: {
-
-                    } break;
-
-                    case VK_RIGHT: {
-
-                    } break;
-
-                    case VK_ESCAPE: {
-
-                    } break;
-
-                    case VK_SPACE: {
-
-                    } break;
-                    
-                    default: break;
-                }
-            }
-
-            // NOTE(ismail): 29 bit of this parameter check alt key was down
-            bool32 AltWasDown = (LParam & (1 << 29));
-            if (VKCode == VK_F4 && AltWasDown) {
-                Win32App.Running = false;
-            }
-
+            Assert(0); // NOTE (ismail): keys get from main loop
         } break;
+
+        case WM_RBUTTONDOWN:
+		case WM_RBUTTONUP:
+		case WM_MBUTTONDOWN:
+		case WM_MBUTTONUP:
+		case WM_MOUSEMOVE: {
+            Assert(0); // NOTE (ismail): keys get from main loop
+			break;
+		}
 
         default: {
             Result = DefWindowProcA(Window, Message, WParam, LParam);
@@ -390,6 +393,116 @@ static LRESULT WinMainCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM 
     }
 
     return Result;
+}
+
+void ProcessWinMessages()
+{
+    u32     VirtualKeyCode;
+    MSG     Message;
+    bool32  WasDown;
+    bool32  IsDown;
+    bool32  AltWasDown;
+
+    while (PeekMessageA(&Message, Win32App.Window, 0, 0, PM_REMOVE)) {
+        switch (Message.message) {
+            case WM_QUIT: {
+                Win32App.Running = false;
+            } break;
+
+            // NOTE(ismail): check what it mean KEYDOWN and KEYUP and what flags can be usefull 
+            case WM_SYSKEYDOWN:
+            case WM_SYSKEYUP:
+            case WM_KEYDOWN:
+            case WM_KEYUP: {
+
+                VirtualKeyCode  = Message.wParam; // NOTE(ismail): virtual code of that key that was pressed or released
+                AltWasDown      = (Message.lParam & (1 << 29)); // NOTE(ismail): 29 bit of this parameter check alt key was down
+                WasDown         = ((Message.lParam & (1 << 30)) != 0);
+                IsDown          = ((Message.lParam & (1 << 31)) == 0);
+
+                if (WasDown != IsDown) {
+                    // NOTE(ismail) may be it will be better if i will be use actual virtual codes instead of ascii code
+                    switch (VirtualKeyCode) {
+                        case WIN_W_KEY_CODE: {
+                            
+                        } break;
+
+                        case WIN_S_KEY_CODE: {
+
+                        } break;
+                    
+                        case WIN_A_KEY_CODE: {
+
+                        } break;
+
+                        case WIN_D_KEY_CODE: {
+
+                        } break;
+
+                        case WIN_Q_KEY_CODE: {
+
+                        } break;
+                        
+                        case WIN_E_KEY_CODE: {
+
+                        } break;
+
+                        case WIN_I_KEY_CODE: {
+
+                        } break;
+
+                        case WIN_K_KEY_CODE: {
+
+                        } break;
+
+                        case WIN_L_KEY_CODE: {
+
+                        } break;
+
+                        case WIN_J_KEY_CODE: {
+
+                        } break;
+
+                        case WIN_ARROW_UP_KEY_CODE: {
+
+                        } break;
+
+                        case WIN_ARROW_DOWN_KEY_CODE: {
+
+                        } break;
+
+                        case WIN_ARROW_RIGHT_KEY_CODE: {
+
+                        } break;
+
+                        case WIN_ARROW_LEFT_KEY_CODE: {
+
+                        } break;
+                    
+                        default: break;
+                    }
+                }
+                else if (VirtualKeyCode == VK_F4 && AltWasDown) {
+                    Win32App.Running = false;
+                }
+            } break;
+
+            case WM_RBUTTONDOWN:
+		    case WM_RBUTTONUP:
+		    case WM_MBUTTONDOWN:
+		    case WM_MBUTTONUP:
+		    case WM_MOUSEMOVE: {
+                GET_X_LPARAM()
+                Assert(0); // NOTE (ismail): keys get from main loop
+			    return 1;
+		    }
+
+            default: {
+                TranslateMessage(&Message);
+                DispatchMessageA(&Message);
+            } break;
+        }
+    }
 }
 
 static WinLocalErrors WinRegClasses()
@@ -492,333 +605,157 @@ static WinLocalErrors WinInit()
     return WinLocalErrors::Success;
 }
 
-void Frame()
+void CameraTransform(GameInput * Inputs)
 {
+    real32 TranslationMultiplyer        = 1.0f;
+    real32 TargetTranslationMultiplyer  = 1.0f;
+    real32 RightTranslationMultiplyer   = 1.0f;
 
+    Vec3 Target;
+    Vec3 Right;
+    Vec3 Up;
+    Vec3 CameraTargetTranslation;
+    Vec3 CameraRightTranslation;
+
+    PlayerCamera.Transform.Rotate.Heading   += DEGREE_TO_RAD(Inputs->MouseMoution.x * DeltaTime);
+    PlayerCamera.Transform.Rotate.Pitch     += DEGREE_TO_RAD(Inputs->MouseMoution.y * DeltaTime);
+
+    RotationToVectors(&PlayerCamera.Transform.Rotate, &Target, &Right, &Up);
+
+    if ((Inputs->WButton || Inputs->SButton) && (Inputs->AButton || Inputs->DButton)) {
+        TranslationMultiplyer = 0.707f; // NOTE (ismail) 1 / square root of 2
+    }
+
+    TargetTranslationMultiplyer     = TranslationMultiplyer * (Inputs->WButton + (-1.0f * Inputs->SButton)); // 1.0 if W Button -1.0 if S Button and 0 if W and S Button pressed together
+
+    CameraTargetTranslation         = Target * (PlayerCamera.Movement.Speed * DeltaTime * TargetTranslationMultiplyer);
+
+    RightTranslationMultiplyer      = TranslationMultiplyer * (Inputs->DButton + (-1.0f * Inputs->AButton));
+
+    CameraRightTranslation          = Right * (PlayerCamera.Movement.Speed * DeltaTime * TranslationMultiplyer);
+
+    PlayerCamera.Transform.Position += Target + Right;
 }
 
-i32 WorldPrepare()
-{    
-    // NOTE (ismail): i disable textures for now that call need for load texture
-    // GLuint TextureObject = LoadTexture("bricks_textures.jpg");
-    // NOTE (ismail): these calls need later for put it in screen
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, TextureObject);
-    // glUniform1i(SamplerLocation, 0);
-
-    GLuint ShaderProgram = tglCreateProgram();
-    if (!ShaderProgram) {
-        // TODO (ismail): diagnostic
-        return 0; // TODO (ismail): put here actual value
-    }
-
-    File VertexShader = LoadFile("data/shaders/vertex_color.vs");
-    File FragmentShader = LoadFile("data/shaders/fragment_color.fs");
-
-    if (!VertexShader.Data || !FragmentShader.Data) {
-        // TODO (ismail): diagnostic
-        return -1;
-    }
-
-    if (!AttachShader(ShaderProgram, (const char*)VertexShader.Data, (GLint)VertexShader.Size, GL_VERTEX_SHADER)) {
-        return -1; // TODO (ismail): more complicated check here
-    }
-
-    if (!AttachShader(ShaderProgram, (const char*)FragmentShader.Data, (GLint)FragmentShader.Size, GL_FRAGMENT_SHADER)) {
-        return -1; // TODO (ismail): more complicated check here
-    }
-
-    FreeFileMemory(&VertexShader);
-    FreeFileMemory(&FragmentShader);
-
-    GLchar ErrorLog[1024] = { 0 };
-    tglLinkProgram(ShaderProgram);
-
-    GLint Success;
-    tglGetProgramiv(ShaderProgram, GL_LINK_STATUS, &Success);
-    if (!Success) {
-        // TODO (ismail): handle this case with glGetShaderInfoLog and print it in log
-        tglGetProgramInfoLog(ShaderProgram, sizeof(ErrorLog), NULL, ErrorLog);
-        return -1;
-    }
-    
-    GLint TransformLocation = tglGetUniformLocation(ShaderProgram, "Transform");
-    if (TransformLocation == -1) {
-        // TODO (ismail): diagnostic
-        return OPENGL_ERROR;
-    }
-
-    GLint MeshColorLocation = tglGetUniformLocation(ShaderProgram, "MeshColor");
-    if (MeshColorLocation == -1) {
-        // TODO (ismail): diagnostic
-        return OPENGL_ERROR;
-    }
-
-    //  GLint SamplerLocation = glGetUniformLocation(ShaderProgram, "Sampler");
-    //  if (TransformLocation == -1) {
-           // TODO (ismail): diagnostic
-    //     return OPENGL_ERROR;
-    //  }
-
-    tglValidateProgram(ShaderProgram);
-    tglGetProgramiv(ShaderProgram, GL_VALIDATE_STATUS, &Success);
-    if (!Success) {
-        // TODO (ismail): handle this case with glGetShaderInfoLog and print it in log
-        return SDL_INIT_FAILURE;
-    }
-
-    // NOTE (ismail): new scene objects add here
-    u32 IndexBuffer1[4000];
-    Vertex VertexBuffer1[4000];
-
-    ObjFile ObjectCube = { };
-    ObjectCube.Indices = IndexBuffer1;
-    ObjectCube.Vertices = VertexBuffer1;
-
-    LoadObjFile("data/obj/cube.obj", &ObjectCube);
-
-    u32 IndexBuffer2[4000];
-    Vertex VertexBuffer2[4000];
-    
-    ObjFile ObjectSphere = { };
-    ObjectSphere.Indices = IndexBuffer2;
-    ObjectSphere.Vertices = VertexBuffer2;
-
-    LoadObjFile("data/obj/sphere.obj", &ObjectSphere);
-
-    ObjectRenderingContext CubeObjectRenderContext;
-    LoadObjectToHardware(&CubeObjectRenderContext, &ObjectCube);
-
-    ObjectRenderingContext SphereObjectRenderContext;
-    LoadObjectToHardware(&SphereObjectRenderContext, &ObjectSphere);
-
-    SceneObjects[PLAYER_INDEX].Transform.Position.x = 1.5f;
-    SceneObjects[PLAYER_INDEX].Transform.Position.y = 0.0f;
-    SceneObjects[PLAYER_INDEX].Transform.Position.z = 2.0f;
-
-    SceneObjects[PLAYER_INDEX].Transform.Scale.x = 1.0f;
-    SceneObjects[PLAYER_INDEX].Transform.Scale.y = 1.0f;
-    SceneObjects[PLAYER_INDEX].Transform.Scale.z = 1.0f;
-
-    SceneObjects[PLAYER_INDEX].BoundingVolume.VolumeType = BoundingVolumeType::OBBVolume;
-
-    SceneObjects[PLAYER_INDEX].BoundingVolume.VolumeData.OrientedBox.Center = SceneObjects[PLAYER_INDEX].Transform.Position;
-
-    SceneObjects[PLAYER_INDEX].BoundingVolume.VolumeData.OrientedBox.Axis[0] = { 1.0f, 0.0f, 0.0f };
-    SceneObjects[PLAYER_INDEX].BoundingVolume.VolumeData.OrientedBox.Axis[1] = { 0.0f, 1.0f, 0.0f };;
-    SceneObjects[PLAYER_INDEX].BoundingVolume.VolumeData.OrientedBox.Axis[2] = { 0.0f, 0.0f, 1.0f };;
-
-    SceneObjects[PLAYER_INDEX].BoundingVolume.VolumeData.OrientedBox.Extens.x = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-    SceneObjects[PLAYER_INDEX].BoundingVolume.VolumeData.OrientedBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-    SceneObjects[PLAYER_INDEX].BoundingVolume.VolumeData.OrientedBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-
-    SceneObjects[PLAYER_INDEX].Color = { 0.0f, 0.0f, 1.0f };
-
-    SceneObjects[PLAYER_INDEX].RendererContext = CubeObjectRenderContext;
-
-    WorldObjectOBBCollider NpcCube = {};
-
-    NpcCube.Transform.Position.x = -1.5f;
-    NpcCube.Transform.Position.y = 0.0f;
-    NpcCube.Transform.Position.z = 2.0f;
-
-    NpcCube.Transform.Scale.x = 1.0f;
-    NpcCube.Transform.Scale.y = 1.0f;
-    NpcCube.Transform.Scale.z = 1.0f;
-
-    NpcCube.BoundingOrientedBox.Center = NpcCube.Transform.Position;
-
-    NpcCube.BoundingOrientedBox.Axis[0] = { 1.0f, 0.0f, 0.0f };
-    NpcCube.BoundingOrientedBox.Axis[1] = { 0.0f, 1.0f, 0.0f };;
-    NpcCube.BoundingOrientedBox.Axis[2] = { 0.0f, 0.0f, 1.0f };;
-
-    NpcCube.BoundingOrientedBox.Extens.x = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-    NpcCube.BoundingOrientedBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-    NpcCube.BoundingOrientedBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-
-    Vec3 NpcCubeColor = { 1.0f, 0.0f, 0.0f };
-
-    /*
-    WorldObjectAABBCollider NpcCube = {};
-
-    NpcCube.Transform.Position.x = -1.5f;
-    NpcCube.Transform.Position.y = 0.0f;
-    NpcCube.Transform.Position.z = 2.0f;
-
-    NpcCube.Transform.Scale.x = 1.0f;
-    NpcCube.Transform.Scale.y = 1.0f;
-    NpcCube.Transform.Scale.z = 1.0f;
-
-    NpcCube.BoundingBox.Extens.x = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-    NpcCube.BoundingBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-    NpcCube.BoundingBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-
-    Vec3 NpcCubeColor = { 1.0f, 0.0f, 0.0f };
-    */
-
-    /*
-    WorldObjectSphereCollider NpcSphere = {};
-
-    NpcSphere.Transform.Position.x = -1.5f;
-    NpcSphere.Transform.Position.y = 0.0f;
-    NpcSphere.Transform.Position.z = 2.0f;
-
-    NpcSphere.Transform.Scale.x = 1.0f;
-    NpcSphere.Transform.Scale.y = 1.0f;
-    NpcSphere.Transform.Scale.z = 1.0f;
-
-    NpcSphere.BoundingSphere.Center = NpcSphere.Transform.Position; // TODO (ismail): initial Sphere compute need to be implemented
-    NpcSphere.BoundingSphere.Radius = 1.0f; // TODO (ismail): initial Sphere compute need to be implemented
-
-    Vec3 NpcSphereColor = { 1.0f, 0.0f, 0.0f };
-    */
-
-    /*
-    WorldObjectAABBCollider PlayerCube = {};
-
-    PlayerCube.Transform.Position.x = 1.5f;
-    PlayerCube.Transform.Position.y = 0.0f;
-    PlayerCube.Transform.Position.z = 2.0f;
-
-    PlayerCube.Transform.Scale.x = 1.0f;
-    PlayerCube.Transform.Scale.y = 1.0f;
-    PlayerCube.Transform.Scale.z = 1.0f;
-
-    PlayerCube.BoundingBox.Extens.x = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-    PlayerCube.BoundingBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-    PlayerCube.BoundingBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
-    */
-
-    /*
-    WorldObjectSphereCollider PlayerSphere = {};
-
-    PlayerSphere.Transform.Position.x = 1.5f;
-    PlayerSphere.Transform.Position.y = 0.0f;
-    PlayerSphere.Transform.Position.z = 2.0f;
-
-    PlayerSphere.Transform.Scale.x = 1.0f;
-    PlayerSphere.Transform.Scale.y = 1.0f;
-    PlayerSphere.Transform.Scale.z = 1.0f;
-
-    PlayerSphere.BoundingSphere.Center = PlayerSphere.Transform.Position; // TODO (ismail): initial Sphere compute need to be implemented
-    PlayerSphere.BoundingSphere.Radius = 1.0f; // TODO (ismail): initial Sphere compute need to be implemented
-    */
-}
-
-i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance, 
-                      LPSTR CommandLine , int ShowCode)
+void PlayerTransform(GameInput* Inputs)
 {
-    WinLocalErrors              WinIntiError;
-    OpenGLFunctionLoadStatus    OpenGLInitError;
-    MSG                         Message;
+    real32 TranslationMultiplyer        = 1.0f;
+    real32 TargetTranslationMultiplyer  = 1.0f;
+    real32 RightTranslationMultiplyer   = 1.0f;
 
-    LARGE_INTEGER PerfomanceCountFrequencyResult;
-    QueryPerformanceFrequency(&PerfomanceCountFrequencyResult);
-    i64 PerfCountFrequency = PerfomanceCountFrequencyResult.QuadPart;
+    Vec3 Target;
+    Vec3 Right;
+    Vec3 Up;
+    Vec3 TargetTranslation;
+    Vec3 RightTranslation;
 
-    Win32App.Running        = true;
-    Win32App.AppInstance    = Instance;
+    WorldObject *PlayerObject = &WorldObjects.Objects[PLAYER_INDEX];
+    
+    PlayerObject->Transform.Rotate.Pitch    += DEGREE_TO_RAD(PlayerObject->Movement.RotationDelta * (Inputs->IButton + (-1.0f * Inputs->KButton)) * DeltaTime);
+    PlayerObject->Transform.Rotate.Heading  += DEGREE_TO_RAD(PlayerObject->Movement.RotationDelta * (Inputs->LButton + (-1.0f * Inputs->JButton)) * DeltaTime);
 
-    if ( (WinIntiError = WinInit()) != WinLocalErrors::Success) {
-        // TODO (ismail): diagnostics things?
-        return WinIntiError;
+    RotationToVectors(&PlayerObject->Transform.Rotate, &Target, &Right, &Up);
+
+    if ((Inputs->WButton || Inputs->SButton) && (Inputs->AButton || Inputs->DButton)) {
+        TranslationMultiplyer = 0.707f; // NOTE (ismail) 1 / square root of 2
     }
 
-    if ( (OpenGLInitError = LoadGLFunctions()) != OpenGLFunctionLoadStatus::Success) {
-        // TODO (ismail): diagnostics things?
-        return OpenGLInitError;
-    }
+    TargetTranslationMultiplyer      = TranslationMultiplyer * (Inputs->ArrowUp + (-1.0f * Inputs->ArrowDown)); // 1.0 if W Button -1.0 if S Button and 0 if W and S Button pressed together
+    TargetTranslation                = Target * (PlayerObject->Movement.Speed * DeltaTime * TargetTranslationMultiplyer);
 
-    RendererInit();
+    RightTranslationMultiplyer       = TranslationMultiplyer * (Inputs->ArrowRight + (-1.0f * Inputs->ArrowLeft)); // 1.0 if D Button -1.0 if A Button and 0 if D and A Button pressed together
+    RightTranslation                 = Right * (PlayerObject->Movement.Speed * DeltaTime * TranslationMultiplyer);
 
-    AssetsLoaderInit();
+    PlayerObject->Transform.Position += Target + Right;
 
-    LARGE_INTEGER LastCounter;
-    QueryPerformanceCounter(&LastCounter);
-    u64 LastCycleCount = __rdtsc();
+    PlayerObject->BoundingVolume.VolumeData.OrientedBox.Axis[0] = Right;
+    PlayerObject->BoundingVolume.VolumeData.OrientedBox.Axis[1] = Up;
+    PlayerObject->BoundingVolume.VolumeData.OrientedBox.Axis[2] = Target;
 
-    while (Win32App.Running) {
-        while (PeekMessageA(&Message, Win32App.Window, 0, 0, PM_REMOVE)) {
-            if (Message.message == WM_QUIT) {
-                Win32App.Running = false;
+    PlayerObject->BoundingVolume.VolumeData.OrientedBox.Center = PlayerObject->Transform.Position;
+
+    for (i32 ObjectIndex = PLAYER_INDEX + 1; ObjectIndex < WorldObjects.ObjectsAmount; ++ObjectIndex) {
+        WorldObject *SceneObject = &WorldObjects.Objects[ObjectIndex];
+        
+        if (SceneObject->BoundingVolume.VolumeType == BoundingVolumeType::OBBVolume) {
+            RotationToVectors(&PlayerObject->Transform.Rotate, &Target, &Right, &Up);
+
+            SceneObject->BoundingVolume.VolumeData.OrientedBox.Axis[0] = Right;
+            SceneObject->BoundingVolume.VolumeData.OrientedBox.Axis[1] = Up;
+            SceneObject->BoundingVolume.VolumeData.OrientedBox.Axis[2] = Target;
+
+            SceneObject->BoundingVolume.VolumeData.OrientedBox.Center = SceneObject->Transform.Position;
+
+            if (OBBToOBBTestOverlap(&PlayerObject->BoundingVolume.VolumeData.OrientedBox, &PlayerObject->BoundingVolume.VolumeData.OrientedBox)) {
+                PlayerObject->Color = { 0.0f, 1.0f, 0.0f };
             }
-                    
-            TranslateMessage(&Message);
-            DispatchMessageA(&Message);
+        }
+    }
+}
+
+void TransformFrame()
+{
+    CameraTransform(&Inputs);
+    PlayerTransform(&Inputs);
+}
+
+// Mat4x4 OrthoProjection = MakeOrtographProjection(-2.0f * AspectRatio, 2.0f * AspectRatio, -2.0f, 2.0f, 0.1f, 100.0f);
+void RendererFrame()
+{
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    Vec3   CameraInversePosition = PlayerCamera.Transform.Position * -1.0f;
+
+    Mat4x4 ObjectToCameraSpaceTranslation       = MakeTranslation(&CameraInversePosition);
+    Mat4x4 ObjectToCameraSpaceRotation          = MakeRotation4x4Inverse(&PlayerCamera.Transform.Rotate);
+    Mat4x4 ObjectToCameraSpaceTransformation    = ObjectToCameraSpaceRotation * ObjectToCameraSpaceTranslation;
+
+    for (i32 ObjectIndex = 0; ObjectIndex < WorldObjects.ObjectsAmount; ++ObjectIndex) {
+        WorldObject*            Object                  = &WorldObjects.Objects[ObjectIndex];
+        ObjectRenderingContext* ObjectRenderingContext  = &WorldObjectsRendererContext.ObjectsRenderingContext[Object->RendererContextIndex];
+        ShaderProgram*          ShaderProgram           = &WorldShaderPrograms.ShaderPrograms[ObjectRenderingContext->ShaderProgramIndex];
+        
+        tglUseProgram(ShaderProgram->ProgramHandle);
+        tglBindVertexArray(ObjectRenderingContext->Buffers.VAO);
+
+        Mat4x4 ObjectRotation       = MakeRotation4x4Inverse(&Object->Transform.Rotate);
+        Mat4x4 ObjectTranslation    = MakeTranslation(&Object->Transform.Position);
+        Mat4x4 ObjectScale          = Identity4x4;
+
+        Mat4x4 ObjectSpaceTransform = ObjectTranslation * ObjectScale * ObjectRotation;
+        Mat4x4 FinalTransform  = WorldObjectsRendererContext.PerspectiveProjection * ObjectToCameraSpaceTransformation * ObjectSpaceTransform;
+
+        for (i32 ShaderIndex = 0; ShaderIndex < ShaderProgram->ShadersAmount; ++ShaderIndex) {
+            Shader *CurrentShader = &ShaderProgram->Shaders[ShaderIndex];
+
+            switch(ShaderProgram->Shaders[ShaderIndex].UniformType) {
+                case ShaderUniformType::Matrix4f: {
+                    tglUniformMatrix4fv(CurrentShader->Location, 1, GL_TRUE, FinalTransform[0]);
+                } break;
+                case ShaderUniformType::Vector3f: {
+                    tglUniform3fv(CurrentShader->Location, 1, Object->Color.ValueHolder);
+                } break;
+                default: {
+                    // NOTE (ismail): all uniform type should be implemented
+                    Assert(0);
+                }
+            }
         }
 
-        Frame();
-
-        // NOTE(ismail): some very usefull thing for perfomance debuging
-        u64 EndCycleCount = __rdtsc();
-
-        LARGE_INTEGER EndCounter;
-        QueryPerformanceCounter(&EndCounter);
-
-        u64 CyclesElapsed = EndCycleCount - LastCycleCount;
-        i64 CounterElapsed = EndCounter.QuadPart - LastCounter.QuadPart;
-        real64 MSPF = (1000.0f * ((real64)CounterElapsed / (real64)PerfCountFrequency)); // millisecond per frame
-        real64 FPS = (1000.0f / MSPF); // frame per seconds
-        real64 MCPF = (((real64)CyclesElapsed) / (1000.0f * 1000.0f)); // mega cycles per frame, how many cycles on CPU take last frame check rdtsc and hh ep 10
-
-        char Buffer[256];
-        snprintf(Buffer, sizeof(Buffer), "| %.02fms/f | %.02f f/s | %.02f mc/f |\n", MSPF, FPS, MCPF);
-
-        OutputDebugStringA(Buffer);
-
-        LastCycleCount = EndCycleCount;
-        LastCounter = EndCounter;
+        glDrawElements(GL_TRIANGLES, ObjectRenderingContext->ObjectFile.IndexArraySize, GL_UNSIGNED_INT, 0);
     }
 
-    return 0;
+    SwapBuffers(Win32App.WindowDeviceContext);
+
+    tglUseProgram(0);
+    tglBindVertexArray(0);
 }
 
-int hui(int argc, char *argv[])
+void Frame()
 {
-    //TODO (ismail): read width/height from command arguments, from file, from in game settings.
-    SDL_Event Event;
-    SDL_Window *Window;
-    SDL_Surface *WindowScreenSurface;
-    SDL_GLContext GlContext;
-    bool32 Quit = false;
-    i32 OGLResult = 0;
-
-    if (SDL_Init(SDLInitFlags) < 0) {
-        // TODO (ismail): logging
-        return SDL_INIT_FAILURE;
-    }
-
-    if ((OGLResult = OGLInit()) != OGL_STATS::LOAD_SUCCESS) {
-        // TODO (ismail): logging
-        return OGLResult;
-    }
-
-    Window = SDL_CreateWindow("TEARA", WINDOW_WIDTH, WINDOW_HEIGHT, WindowFlags);
-    if (!Window) {
-        // TODO (ismail): logging
-        return SDL_CREATE_WINDOW_FAILURE;
-    }
-
-    GlContext = SDL_GL_CreateContext(Window);
-    if (!GlContext) {
-        const char *error = SDL_GetError();
-        return SDL_OPENGL_CREATE_CONTEXT_FAILURE;
-    }
-
-    // TODO (ismail): check value
-    bool32 Val = SDL_GL_MakeCurrent(Window, GlContext);
-    if (!Val) {
-
-    }
-
-    i32 LoadFunctionsResult;
-    if ((LoadFunctionsResult = OGLLoadFunctions())) {
-        // TODO (ismail): diagnostic
-        return LoadFunctionsResult;
-    }
-
-
-
+    TransformFrame();
+    RendererFrame();
+/*
     // GLfloat MaxRotation = DEGREE_TO_RAD(90.0f);
     // GLfloat MinRotation = MaxRotation * -1.0f;
     GLfloat RotationDeltaY = 0.0f;
@@ -837,8 +774,7 @@ int hui(int argc, char *argv[])
     GLfloat Scale = 0.2f;
     GLfloat ScaleDelta = 0.0001f;
 
-    Mat4x4 OrthoProjection = MakeOrtographProjection(-2.0f * AspectRatio, 2.0f * AspectRatio, -2.0f, 2.0f, 0.1f, 100.0f);
-    Mat4x4 PerspectiveProjection = MakePerspectiveProjection(60.0f, AspectRatio, 0.01f, 50.0f);
+
 
     bool isPerspective = true;
 
@@ -863,12 +799,7 @@ int hui(int argc, char *argv[])
     // TODO (ismail): check what is that
     // glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &texture_units);
 
-    glUseProgram(ShaderProgram);
-    glBindVertexArray(CubeObjectRenderContext.VAO);
-
     while (!Quit) {
-
-
         Vec2 MouseMoution = { };
 
         while (SDL_PollEvent(&Event)) {
@@ -1036,16 +967,12 @@ int hui(int argc, char *argv[])
 
         RotationToVectors(&NpcCube.Transform.Rotate, &NpcTarget, &NpcRight, &NpcUp);
 
-        /*
         AABB TransformedPlayerAABB = {};
         AABBRecalculate(&PlayerRotation, &PlayerSphere.Transform.Position, &PlayerCube.BoundingBox, &TransformedPlayerAABB);
-        */
-        /*
+
         AABB TransformedNpcAABB = {};
         AABBRecalculate(&NpcRotation, &NpcCube.Transform.Position, &NpcCube.BoundingBox, &TransformedNpcAABB);
-        */
 
-        /*
         PlayerSphere.BoundingSphere.Center = PlayerSphere.Transform.Position;
         NpcSphere.BoundingSphere.Center = NpcSphere.Transform.Position;
 
@@ -1054,7 +981,6 @@ int hui(int argc, char *argv[])
             PlayerSphereColor.y = 1.0f;
             PlayerSphereColor.z = 0.0f;
         }
-        */
 
         PlayerCube.BoundingOrientedBox.Axis[0] = PlayerRight;
         PlayerCube.BoundingOrientedBox.Axis[1] = PlayerUp;
@@ -1124,12 +1050,309 @@ int hui(int argc, char *argv[])
         Mat4x4 NpcCubeWorldTransformation = NpcTranslation * NpcScale * NpcRotation;
         Mat4x4 NpcCubeTransform = Projection * CameraTransformation * NpcCubeWorldTransformation;
 
-        glUniformMatrix4fv(TransformLocation, 1, GL_TRUE, NpcCubeTransform[0]);
-        glUniform3fv(MeshColorLocation, 1, NpcCubeColor.ValueHolder);
 
-        glDrawElements(GL_TRIANGLES, CubeFile.IndexArraySize, GL_UNSIGNED_INT, 0);
 
         SDL_GL_SwapWindow(Window);
+    }
+    */
+}
+
+ErrorStatuses WorldPrepare()
+{    
+    // NOTE (ismail): i disable textures for now that call need for load texture
+    // GLuint TextureObject = LoadTexture("bricks_textures.jpg");
+    // NOTE (ismail): these calls need later for put it in screen
+    // glActiveTexture(GL_TEXTURE0);
+    // glBindTexture(GL_TEXTURE_2D, TextureObject);
+    // glUniform1i(SamplerLocation, 0);
+
+    GLuint ShaderProgram = tglCreateProgram();
+    if (!ShaderProgram) {
+        // TODO (ismail): diagnostic
+        return ErrorStatuses::Failed; // TODO (ismail): put here actual value
+    }
+
+    File VertexShader = LoadFile("data/shaders/vertex_color.vs");
+    File FragmentShader = LoadFile("data/shaders/fragment_color.fs");
+
+    if (!VertexShader.Data || !FragmentShader.Data) {
+        // TODO (ismail): diagnostic
+        return ErrorStatuses::Failed;
+    }
+
+    if (!AttachShader(ShaderProgram, (const char*)VertexShader.Data, (GLint)VertexShader.Size, GL_VERTEX_SHADER)) {
+        FreeFileMemory(&VertexShader);
+        return ErrorStatuses::Failed; // TODO (ismail): more complicated check here
+    }
+
+    if (!AttachShader(ShaderProgram, (const char*)FragmentShader.Data, (GLint)FragmentShader.Size, GL_FRAGMENT_SHADER)) {
+        FreeFileMemory(&VertexShader);
+        FreeFileMemory(&FragmentShader);
+        return ErrorStatuses::Failed; // TODO (ismail): more complicated check here
+    }
+
+    FreeFileMemory(&VertexShader);
+    FreeFileMemory(&FragmentShader);
+
+    GLchar ErrorLog[1024] = { 0 };
+    tglLinkProgram(ShaderProgram);
+
+    GLint Success;
+    tglGetProgramiv(ShaderProgram, GL_LINK_STATUS, &Success);
+    if (!Success) {
+        // TODO (ismail): handle this case with glGetShaderInfoLog and print it in log
+        tglGetProgramInfoLog(ShaderProgram, sizeof(ErrorLog), NULL, ErrorLog);
+        return ErrorStatuses::Failed;
+    }
+    
+    GLint TransformLocation = tglGetUniformLocation(ShaderProgram, "Transform");
+    if (TransformLocation == -1) {
+        // TODO (ismail): diagnostic
+        return ErrorStatuses::Failed;
+    }
+
+    GLint MeshColorLocation = tglGetUniformLocation(ShaderProgram, "MeshColor");
+    if (MeshColorLocation == -1) {
+        // TODO (ismail): diagnostic
+        return ErrorStatuses::Failed;
+    }
+
+    //  GLint SamplerLocation = glGetUniformLocation(ShaderProgram, "Sampler");
+    //  if (TransformLocation == -1) {
+           // TODO (ismail): diagnostic
+    //     return OPENGL_ERROR;
+    //  }
+
+    tglValidateProgram(ShaderProgram);
+    tglGetProgramiv(ShaderProgram, GL_VALIDATE_STATUS, &Success);
+    if (!Success) {
+        // TODO (ismail): handle this case with glGetShaderInfoLog and print it in log
+        return ErrorStatuses::Failed;
+    }
+
+    // SHADERS PROGRAMS
+
+    WorldShaderPrograms.ShaderPrograms[0].ProgramHandle = ShaderProgram;
+
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[0].Location = TransformLocation;
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[0].UniformType = ShaderUniformType::Matrix4f;
+
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[1].Location = MeshColorLocation;
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[1].UniformType = ShaderUniformType::Vector3f;
+
+    WorldShaderPrograms.ShaderPrograms[0].ShadersAmount = 2;
+
+    // AMOUNT OF PROGRAMS
+    WorldShaderPrograms.ProgramsAmount = 1;
+
+    // SHADERS PROGRAMS END
+
+    // OBJ FILE LOADING
+
+    LoadObjFile("data/obj/cube.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile);
+    LoadObjFile("data/obj/sphere.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile);
+
+    LoadObjectToHardware(&WorldObjectsRendererContext.ObjectsRenderingContext[0].Buffers, &WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile);
+    LoadObjectToHardware(&WorldObjectsRendererContext.ObjectsRenderingContext[1].Buffers, &WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile);
+
+    // AMOUNT OF OBJECTS MESHES
+    WorldObjectsRendererContext.ObjectsRenderingContext[0].ShaderProgramIndex = 0;
+    WorldObjectsRendererContext.ObjectsRenderingContext[1].ShaderProgramIndex = 0;
+
+    // TODO (ismail): move perspective projection matrix calculs to another place
+    WorldObjectsRendererContext.PerspectiveProjection = MakePerspectiveProjection(60.0f, AspectRatio, 0.01f, 50.0f);
+
+    WorldObjectsRendererContext.ObjectsAmount = 2;
+
+    // OBJ FILE LOADING END
+
+    // SCENE OBJECTS
+
+    PlayerCamera.Movement.Speed = 5.0f;
+    PlayerCamera.Movement.RotationDelta = 1.0f;
+
+    WorldObjects.Objects[PLAYER_INDEX].Transform.Position.x = 1.5f;
+    WorldObjects.Objects[PLAYER_INDEX].Transform.Position.y = 0.0f;
+    WorldObjects.Objects[PLAYER_INDEX].Transform.Position.z = 2.0f;
+
+    WorldObjects.Objects[PLAYER_INDEX].Transform.Scale.x = 1.0f;
+    WorldObjects.Objects[PLAYER_INDEX].Transform.Scale.y = 1.0f;
+    WorldObjects.Objects[PLAYER_INDEX].Transform.Scale.z = 1.0f;
+
+    WorldObjects.Objects[PLAYER_INDEX].BoundingVolume.VolumeType = BoundingVolumeType::OBBVolume;
+    WorldObjects.Objects[PLAYER_INDEX].BoundingVolume.VolumeData.OrientedBox.Center = WorldObjects.Objects[PLAYER_INDEX].Transform.Position;
+
+    WorldObjects.Objects[PLAYER_INDEX].BoundingVolume.VolumeData.OrientedBox.Axis[0] = { 1.0f, 0.0f, 0.0f };
+    WorldObjects.Objects[PLAYER_INDEX].BoundingVolume.VolumeData.OrientedBox.Axis[1] = { 0.0f, 1.0f, 0.0f };;
+    WorldObjects.Objects[PLAYER_INDEX].BoundingVolume.VolumeData.OrientedBox.Axis[2] = { 0.0f, 0.0f, 1.0f };;
+
+    WorldObjects.Objects[PLAYER_INDEX].BoundingVolume.VolumeData.OrientedBox.Extens.x = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    WorldObjects.Objects[PLAYER_INDEX].BoundingVolume.VolumeData.OrientedBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    WorldObjects.Objects[PLAYER_INDEX].BoundingVolume.VolumeData.OrientedBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+
+    WorldObjects.Objects[PLAYER_INDEX].Movement.Speed = 5.0f;
+    WorldObjects.Objects[PLAYER_INDEX].Movement.RotationDelta = 1.0f;
+
+    WorldObjects.Objects[PLAYER_INDEX].Color = { 0.0f, 0.0f, 1.0f };
+
+    WorldObjects.Objects[PLAYER_INDEX].RendererContextIndex = 0;
+
+    WorldObjects.Objects[1].Transform.Position.x = -1.5f;
+    WorldObjects.Objects[1].Transform.Position.y = 0.0f;
+    WorldObjects.Objects[1].Transform.Position.z = 2.0f;
+
+    WorldObjects.Objects[1].Transform.Scale.x = 1.0f;
+    WorldObjects.Objects[1].Transform.Scale.y = 1.0f;
+    WorldObjects.Objects[1].Transform.Scale.z = 1.0f;
+
+    WorldObjects.Objects[1].BoundingVolume.VolumeType = BoundingVolumeType::OBBVolume;
+    WorldObjects.Objects[1].BoundingVolume.VolumeData.OrientedBox.Center = WorldObjects.Objects[1].Transform.Position;
+
+    WorldObjects.Objects[1].BoundingVolume.VolumeData.OrientedBox.Axis[0] = { 1.0f, 0.0f, 0.0f };
+    WorldObjects.Objects[1].BoundingVolume.VolumeData.OrientedBox.Axis[1] = { 0.0f, 1.0f, 0.0f };;
+    WorldObjects.Objects[1].BoundingVolume.VolumeData.OrientedBox.Axis[2] = { 0.0f, 0.0f, 1.0f };;
+
+    WorldObjects.Objects[1].BoundingVolume.VolumeData.OrientedBox.Extens.x = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    WorldObjects.Objects[1].BoundingVolume.VolumeData.OrientedBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    WorldObjects.Objects[1].BoundingVolume.VolumeData.OrientedBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+
+    WorldObjects.Objects[1].Color = { 1.0f, 0.0f, 0.0f };
+
+    WorldObjects.Objects[1].Movement.Speed = 5.0f;
+    WorldObjects.Objects[1].Movement.RotationDelta = 1.0f;
+
+    WorldObjects.Objects[1].RendererContextIndex = 0;
+
+    // AMOUNT OF OBJECTS ON SCENE
+    WorldObjects.ObjectsAmount = 2;
+
+    return ErrorStatuses::Success;
+    /*
+    WorldObjectAABBCollider NpcCube = {};
+
+    NpcCube.Transform.Position.x = -1.5f;
+    NpcCube.Transform.Position.y = 0.0f;
+    NpcCube.Transform.Position.z = 2.0f;
+
+    NpcCube.Transform.Scale.x = 1.0f;
+    NpcCube.Transform.Scale.y = 1.0f;
+    NpcCube.Transform.Scale.z = 1.0f;
+
+    NpcCube.BoundingBox.Extens.x = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    NpcCube.BoundingBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    NpcCube.BoundingBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+
+    Vec3 NpcCubeColor = { 1.0f, 0.0f, 0.0f };
+
+    WorldObjectSphereCollider NpcSphere = {};
+
+    NpcSphere.Transform.Position.x = -1.5f;
+    NpcSphere.Transform.Position.y = 0.0f;
+    NpcSphere.Transform.Position.z = 2.0f;
+
+    NpcSphere.Transform.Scale.x = 1.0f;
+    NpcSphere.Transform.Scale.y = 1.0f;
+    NpcSphere.Transform.Scale.z = 1.0f;
+
+    NpcSphere.BoundingSphere.Center = NpcSphere.Transform.Position; // TODO (ismail): initial Sphere compute need to be implemented
+    NpcSphere.BoundingSphere.Radius = 1.0f; // TODO (ismail): initial Sphere compute need to be implemented
+
+    Vec3 NpcSphereColor = { 1.0f, 0.0f, 0.0f };
+
+    WorldObjectAABBCollider PlayerCube = {};
+
+    PlayerCube.Transform.Position.x = 1.5f;
+    PlayerCube.Transform.Position.y = 0.0f;
+    PlayerCube.Transform.Position.z = 2.0f;
+
+    PlayerCube.Transform.Scale.x = 1.0f;
+    PlayerCube.Transform.Scale.y = 1.0f;
+    PlayerCube.Transform.Scale.z = 1.0f;
+
+    PlayerCube.BoundingBox.Extens.x = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    PlayerCube.BoundingBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+    PlayerCube.BoundingBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
+  
+    WorldObjectSphereCollider PlayerSphere = {};
+
+    PlayerSphere.Transform.Position.x = 1.5f;
+    PlayerSphere.Transform.Position.y = 0.0f;
+    PlayerSphere.Transform.Position.z = 2.0f;
+
+    PlayerSphere.Transform.Scale.x = 1.0f;
+    PlayerSphere.Transform.Scale.y = 1.0f;
+    PlayerSphere.Transform.Scale.z = 1.0f;
+
+    PlayerSphere.BoundingSphere.Center = PlayerSphere.Transform.Position; // TODO (ismail): initial Sphere compute need to be implemented
+    PlayerSphere.BoundingSphere.Radius = 1.0f; // TODO (ismail): initial Sphere compute need to be implemented
+    */
+}
+
+i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance, 
+                      LPSTR CommandLine , int ShowCode)
+{
+    ErrorStatuses               WorldPrepareStatus;
+    RendererInitErrors          RendererInitError;
+    WinLocalErrors              WinIntiError;
+    OpenGLFunctionLoadStatus    OpenGLInitError;
+    MSG                         Message;
+
+    LARGE_INTEGER PerfomanceCountFrequencyResult;
+    QueryPerformanceFrequency(&PerfomanceCountFrequencyResult);
+    i64 PerfCountFrequency = PerfomanceCountFrequencyResult.QuadPart;
+
+    Win32App.Running        = true;
+    Win32App.AppInstance    = Instance;
+
+    if ( (WinIntiError = WinInit()) != WinLocalErrors::Success) {
+        // TODO (ismail): diagnostics things?
+        return WinIntiError;
+    }
+
+    if ( (OpenGLInitError = LoadGLFunctions()) != OpenGLFunctionLoadStatus::Success) {
+        // TODO (ismail): diagnostics things?
+        return OpenGLInitError;
+    }
+
+    if ( (RendererInitError = RendererInit()) != RendererInitErrors::Success) {
+        // TODO (ismail): diagnostics things?
+        return RendererInitError;
+    }
+
+    AssetsLoaderInit();
+
+    if ( (WorldPrepareStatus = WorldPrepare()) != ErrorStatuses::Success) {
+        // TODO (ismail): diagnostics things?
+        return WorldPrepareStatus;
+    }
+
+    LARGE_INTEGER LastCounter;
+    QueryPerformanceCounter(&LastCounter);
+    u64 LastCycleCount = __rdtsc();
+
+    while (Win32App.Running) {
+        ProcessWinMessages();
+        Frame();
+
+        // NOTE(ismail): some very usefull thing for perfomance debuging
+        u64 EndCycleCount = __rdtsc();
+
+        LARGE_INTEGER EndCounter;
+        QueryPerformanceCounter(&EndCounter);
+
+        u64 CyclesElapsed   = EndCycleCount - LastCycleCount;
+        i64 CounterElapsed  = EndCounter.QuadPart - LastCounter.QuadPart;
+        real64 DeltaTime    = (1000.0f * ((real64)CounterElapsed / (real64)PerfCountFrequency)); // millisecond per frame
+        real64 FPS          = (1000.0f / DeltaTime); // frame per seconds
+        real64 MCPF         = (((real64)CyclesElapsed) / (1000.0f * 1000.0f)); // mega cycles per frame, how many cycles on CPU take last frame check rdtsc and hh ep 10
+
+        char Buffer[256];
+        snprintf(Buffer, sizeof(Buffer), "| %.02fms/f | %.02f f/s | %.02f mc/f |\n", DeltaTime, FPS, MCPF);
+
+        OutputDebugStringA(Buffer);
+
+        LastCycleCount = EndCycleCount;
+        LastCounter = EndCounter;
     }
 
     return 0;

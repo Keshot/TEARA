@@ -9,6 +9,37 @@ struct File {
     byte    *Data;
 };
 
+enum KeyState {
+    Pressed     = 0,
+    Released    = 1
+};
+
+struct Key {
+    i32         TransactionCount;
+    KeyState    State;
+};
+
+struct GameInput {
+    bool32  IsAnalog;
+    Vec2    MouseMoution;
+
+    Key     QButton;
+    Key     EButton;
+    Key     WButton;
+    Key     SButton;
+    Key     DButton;
+    Key     AButton;
+    Key     IButton;
+    Key     KButton;
+    Key     LButton;
+    Key     JButton;
+
+    Key     ArrowUp;
+    Key     ArrowDown;
+    Key     ArrowRight;
+    Key     ArrowLeft;
+};
+
 inline i32 SafeTruncateI64(i64 Val)
 {
     Assert(Val <= 0xFFFFFFFF)
