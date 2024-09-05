@@ -4,7 +4,7 @@
 // TODO (ismail): my own SIMD math function or instead my own use SDL
 #include <math.h>
 
-#include "Utils/Types.h"
+#include "TEARA_Lib/Utils/Types.h"
 
 #define                     PI         (3.14159265358979323846f)
 #define                 TWO_PI         (2.0f * PI)
@@ -53,6 +53,18 @@ inline void SineCosine(real32 Rad, real32 *SineVal, real32 *CosineVal)
 inline real32 Fabs(real32 Scalar)
 {
     real32 Result = fabsf(Scalar);
+    return Result;
+}
+
+inline real32 Atof(const char *String)
+{
+    real32 Result = atof(String);
+    return Result;
+}
+
+inline real32 Atoi(const char *String)
+{
+    real32 Result = atoi(String);
     return Result;
 }
 

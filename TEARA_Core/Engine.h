@@ -3,6 +3,7 @@
 
 #include "TEARA_Lib/Utils/Types.h"
 #include "TEARA_Lib/Utils/Debug.h"
+#include "TEARA_Lib/Math/Vector.h"
 
 struct File {
     u64      Size;
@@ -10,8 +11,8 @@ struct File {
 };
 
 enum KeyState {
-    Pressed     = 0,
-    Released    = 1
+    Released    = 0,
+    Pressed     = 1,
 };
 
 struct Key {
@@ -19,9 +20,16 @@ struct Key {
     KeyState    State;
 };
 
+struct Mouse {
+    Vec2    Moution;
+    real32  Sensitive;
+    real32  NormalizedWidth;
+    real32  NormalizedHeight;
+};
+
 struct GameInput {
     bool32  IsAnalog;
-    Vec2    MouseMoution;
+    Mouse   MouseInput;
 
     Key     QButton;
     Key     EButton;

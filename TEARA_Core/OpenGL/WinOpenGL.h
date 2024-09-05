@@ -18,11 +18,10 @@
 #define GL_ARRAY_BUFFER                             (0x8892)
 #define GL_STATIC_DRAW                              (0x88E4)
 #define GL_ELEMENT_ARRAY_BUFFER                     (0x8893)
-
-enum OpenGLFunctionLoadStatus {
-    Success =  0,
-    Failed  = -1,
-};
+#define GL_LINK_STATUS                              (0x8B82)
+#define GL_VERTEX_SHADER                            (0x8B31)
+#define GL_FRAGMENT_SHADER                          (0x8B30)
+#define GL_VALIDATE_STATUS                          (0x8B83)
 
 typedef signed long long      GLsizeiptr;
 typedef signed long long      GLintptr;
@@ -84,6 +83,6 @@ extern TEARA_glGenVertexArrays              tglGenVertexArrays;
 extern TEARA_glBindVertexArray              tglBindVertexArray;
 extern TEARA_glUniform3fv                   tglUniform3fv;
 
-OpenGLFunctionLoadStatus LoadGLFunctions();
+Statuses LoadGLFunctions();
 
 #endif

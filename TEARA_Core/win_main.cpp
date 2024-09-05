@@ -1,39 +1,11 @@
-#include <SDL3/SDL.h>
-#include <SDL3/SDL_iostream.h>
-#include <SDL3/SDL_stdinc.h>
-#include <SDL3/SDL_opengl.h>
-
-#include "TEARA_Lib/Utils/Types.h"
-#include "TEARA_Lib/Math/MatrixTransform.h"
-#include "TEARA_Lib/Math/CoreMath.h"
-#include "TEARA_Lib/Physics/CollisionDetection.h"
-
-#define FILE_READ_BUFFER_LEN 5000
-#define MOUSE_EVENT(type) ((type == SDL_EVENT_MOUSE_MOTION)||(type == SDL_EVENT_MOUSE_BUTTON_UP)||(type == SDL_EVENT_MOUSE_BUTTON_DOWN))
-
-enum {
-    SUCCESS = 0,
-    SDL_INIT_FAILURE = -1,
-    SDL_CREATE_WINDOW_FAILURE = -2,
-    SDL_OPENGL_LOAD_FAILURE = -3,
-    SDL_OPENGL_CREATE_CONTEXT_FAILURE = -4,
-    OPENGL_ERROR = -5,
-    SDL_ERROR = -6,
-
-    OVERLAP = 11,
-    SEPARATE = -11,
-
-    // TODO (ismail): make these configurable
-    WINDOW_WIDTH = 1600,
-    WINDOW_HEIGHT = 900
-};
-
-static real32 AspectRatio = (real32)(WINDOW_WIDTH) / (real32)(WINDOW_HEIGHT);
-
 #include <windows.h>
 #include <windowsx.h>
 
 #include "TEARA_Core/Engine.h"
+#include "TEARA_Lib/Utils/Types.h"
+#include "TEARA_Lib/Math/MatrixTransform.h"
+#include "TEARA_Lib/Math/CoreMath.h"
+#include "TEARA_Lib/Physics/CollisionDetection.h"
 #include "TEARA_Lib/Utils/AssetsLoader.h"
 #include "TEARA_Core/Rendering/Renderer.cpp"
 
@@ -125,27 +97,26 @@ struct Camera {
     MovementComponent   Movement;
 };
 
-enum WinLocalErrors {
-    Success                         =  0,
-    RegisterClassFailed             = -1,
-    WindowCreateFailed              = -2,
-    GetDCCallFailed                 = -3,
-    LibraryDllLoadFailed            = -4,
-    FunctionLoadFailed              = -5,
-    GLContextCreateFailed           = -6,
-};
-
-enum ErrorStatuses {
-    Success =  0,
-    Failed  = -1,
+struct ScreenOptions {
+    i32     Width;
+    i32     Height;
+    real32  AspectRatio;
+    i32     CenterW;
+    i32     CenterH;
 };
 
 struct Win32Context {
-    HINSTANCE   AppInstance;
-    HWND        Window;
-    HDC         WindowDeviceContext;
-    HGLRC       GLDeviceContext;
-    bool32      Running;
+    HINSTANCE       AppInstance;
+    HWND            Window;
+    HDC             WindowDeviceContext;
+    HGLRC           GLDeviceContext;
+    bool32          Running;
+    ScreenOptions   ScreenOpt;
+};
+
+enum {
+    WINDOW_WIDTH = 1600,
+    WINDOW_HEIGHT = 900
 };
 
 static Win32Context             Win32App;
@@ -240,7 +211,7 @@ static LRESULT WinFakeMainCallback(HWND Window, UINT Message, WPARAM WParam, LPA
     return DefWindowProcA(Window, Message, WParam, LParam);
 }
 
-static WinLocalErrors WinLoadOpenGLExtensions(const char *DllName)
+static Statuses WinLoadOpenGLExtensions(const char *DllName)
 {
     MSG                     Message;
     HGLRC                   FakeGLContext;
@@ -259,7 +230,7 @@ static WinLocalErrors WinLoadOpenGLExtensions(const char *DllName)
     
     if (!FakeWindow) {
         // TODO (ismail): file or/and console logging? and Assert
-        return WinLocalErrors::WindowCreateFailed;
+        return Statuses::WindowCreateFailed;
     }
 
     FakeDeviceContext = GetDC(FakeWindow);
@@ -273,19 +244,19 @@ static WinLocalErrors WinLoadOpenGLExtensions(const char *DllName)
     FakeGLContext = wglCreateContext(FakeDeviceContext);
     if (!wglMakeCurrent(FakeDeviceContext, FakeGLContext)) {
         // TODO (ismail): file or/and console logging? and Assert
-        return WinLocalErrors::GLContextCreateFailed;
+        return Statuses::GLContextCreateFailed;
     }
 
     tglCreateContextAttribsARB = (TEARA_glCreateContextAttribsARB) wglGetProcAddress("wglCreateContextAttribsARB");
     if (!tglCreateContextAttribsARB) {
         // TODO (ismail): file or/and console logging and Assert?
-        return WinLocalErrors::FunctionLoadFailed;
+        return Statuses::FunctionLoadFailed;
     }
 
     tglChoosePixelFormatARB = (TEARA_glChoosePixelFormatARB) wglGetProcAddress("wglChoosePixelFormatARB");
     if (!tglChoosePixelFormatARB) {
         // TODO (ismail): file or/and console logging and Assert?
-        return WinLocalErrors::FunctionLoadFailed;
+        return Statuses::FunctionLoadFailed;
     }
 
     wglMakeCurrent(NULL, NULL);
@@ -301,10 +272,10 @@ static WinLocalErrors WinLoadOpenGLExtensions(const char *DllName)
 
     UnregisterClassA(WIN32_FAKE_CLASS_NAME, Win32App.AppInstance);
     
-    return WinLocalErrors::Success;
+    return Statuses::Success;
 }
 
-static WinLocalErrors WinInitOpenGLContext()
+static Statuses WinInitOpenGLContext()
 {
     int                     SuggestedPixelFormatIndex;
     PIXELFORMATDESCRIPTOR   DesiredPixelFormat, SuggestedPixelFormat;
@@ -332,7 +303,7 @@ static WinLocalErrors WinInitOpenGLContext()
 
     if (!wglMakeCurrent(Win32App.WindowDeviceContext, Win32App.GLDeviceContext)) {
         // TODO (ismail): file or/and console logging and Assert?
-        return WinLocalErrors::GLContextCreateFailed;
+        return Statuses::GLContextCreateFailed;
     }
 
     // TODO (ismail): print opengl version to logs
@@ -340,7 +311,7 @@ static WinLocalErrors WinInitOpenGLContext()
 
     // NOTE (ismail): we do not need call a ReleaseDC because our window class was created with CS_OWNDC
 
-    return WinLocalErrors::Success;
+    return Statuses::Success;
 }
 
 static LRESULT WinMainCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam)
@@ -395,13 +366,22 @@ static LRESULT WinMainCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM 
     return Result;
 }
 
-void ProcessWinMessages()
+void WinProcessKey(Key *ProcessKey, KeyState NewKeyState)
 {
-    u32     VirtualKeyCode;
-    MSG     Message;
-    bool32  WasDown;
-    bool32  IsDown;
-    bool32  AltWasDown;
+    if (ProcessKey->State != NewKeyState) {
+        ProcessKey->State = NewKeyState;
+        ++(ProcessKey->TransactionCount);
+    }
+}
+
+void WinProcessMessages()
+{
+    u32         VirtualKeyCode;
+    MSG         Message;
+    KeyState    PreviousState;
+    KeyState    NewState;
+    bool32      AltWasDown;
+    POINT       CursorCenterPos;
 
     while (PeekMessageA(&Message, Win32App.Window, 0, 0, PM_REMOVE)) {
         switch (Message.message) {
@@ -417,66 +397,67 @@ void ProcessWinMessages()
 
                 VirtualKeyCode  = Message.wParam; // NOTE(ismail): virtual code of that key that was pressed or released
                 AltWasDown      = (Message.lParam & (1 << 29)); // NOTE(ismail): 29 bit of this parameter check alt key was down
-                WasDown         = ((Message.lParam & (1 << 30)) != 0);
-                IsDown          = ((Message.lParam & (1 << 31)) == 0);
 
-                if (WasDown != IsDown) {
+                PreviousState   = (KeyState)(Message.lParam & (1 << 30));
+                NewState        = (KeyState)!(Message.lParam & (1 << 31));
+
+                if (PreviousState != NewState) {
                     // NOTE(ismail) may be it will be better if i will be use actual virtual codes instead of ascii code
                     switch (VirtualKeyCode) {
                         case WIN_W_KEY_CODE: {
-                            
+                            WinProcessKey(&Inputs.WButton, NewState);
                         } break;
 
                         case WIN_S_KEY_CODE: {
-
+                            WinProcessKey(&Inputs.SButton, NewState);
                         } break;
                     
                         case WIN_A_KEY_CODE: {
-
+                            WinProcessKey(&Inputs.AButton, NewState);
                         } break;
 
                         case WIN_D_KEY_CODE: {
-
+                            WinProcessKey(&Inputs.DButton, NewState);
                         } break;
 
                         case WIN_Q_KEY_CODE: {
-
+                            WinProcessKey(&Inputs.QButton, NewState);
                         } break;
                         
                         case WIN_E_KEY_CODE: {
-
+                            WinProcessKey(&Inputs.EButton, NewState);
                         } break;
 
                         case WIN_I_KEY_CODE: {
-
+                            WinProcessKey(&Inputs.IButton, NewState);
                         } break;
 
                         case WIN_K_KEY_CODE: {
-
+                            WinProcessKey(&Inputs.KButton, NewState);
                         } break;
 
                         case WIN_L_KEY_CODE: {
-
+                            WinProcessKey(&Inputs.LButton, NewState);
                         } break;
 
                         case WIN_J_KEY_CODE: {
-
+                            WinProcessKey(&Inputs.JButton, NewState);
                         } break;
 
                         case WIN_ARROW_UP_KEY_CODE: {
-
+                            WinProcessKey(&Inputs.ArrowUp, NewState);
                         } break;
 
                         case WIN_ARROW_DOWN_KEY_CODE: {
-
+                            WinProcessKey(&Inputs.ArrowDown, NewState);
                         } break;
 
                         case WIN_ARROW_RIGHT_KEY_CODE: {
-
+                            WinProcessKey(&Inputs.ArrowRight, NewState);
                         } break;
 
                         case WIN_ARROW_LEFT_KEY_CODE: {
-
+                            WinProcessKey(&Inputs.ArrowLeft, NewState);
                         } break;
                     
                         default: break;
@@ -492,10 +473,18 @@ void ProcessWinMessages()
 		    case WM_MBUTTONDOWN:
 		    case WM_MBUTTONUP:
 		    case WM_MOUSEMOVE: {
-                GET_X_LPARAM()
-                Assert(0); // NOTE (ismail): keys get from main loop
-			    return 1;
-		    }
+                real32 x = (real32)GET_X_LPARAM(Message.lParam);
+                real32 y = (real32)GET_Y_LPARAM(Message.lParam);
+                Inputs.MouseInput.Moution.x = ((x * Inputs.MouseInput.NormalizedWidth)  - 1.0f) * Inputs.MouseInput.Sensitive;
+                Inputs.MouseInput.Moution.y = ((y * Inputs.MouseInput.NormalizedHeight) - 1.0f) * Inputs.MouseInput.Sensitive;
+
+                CursorCenterPos = { 
+                    Win32App.ScreenOpt.CenterW, 
+                    Win32App.ScreenOpt.CenterH
+                };
+                ClientToScreen(Win32App.Window, &CursorCenterPos);
+                SetCursorPos(CursorCenterPos.x, CursorCenterPos.y);
+		    } break;
 
             default: {
                 TranslateMessage(&Message);
@@ -505,7 +494,7 @@ void ProcessWinMessages()
     }
 }
 
-static WinLocalErrors WinRegClasses()
+static Statuses WinRegClasses()
 {
     ATOM        WinClassAtom, FakeWinClassAtom;
     WNDCLASSA   WinClass, FakeWinClass;
@@ -527,7 +516,7 @@ static WinLocalErrors WinRegClasses()
 
     if (!WinClassAtom) {
         // TODO (ismail): file or/and console logging?
-        return WinLocalErrors::RegisterClassFailed;
+        return Statuses::RegisterClassFailed;
     }
 
     FakeWinClass.style          = CS_OWNDC;
@@ -545,64 +534,86 @@ static WinLocalErrors WinRegClasses()
 
     if (!FakeWinClassAtom) {
         // TODO (ismail): file or/and console logging? and Assert
-        return WinLocalErrors::RegisterClassFailed;
+        return Statuses::RegisterClassFailed;
     }
 
-    return WinLocalErrors::Success;
+    return Statuses::Success;
 }
 
-static WinLocalErrors WinCreateWindow()
+static Statuses WinCreateWindow()
 {
-    DWORD       WindowExStyles;
+    POINT   CursorCenterPos;
+    RECT    ClientRect;
+    DWORD   WindowExStyles;
     // TODO (ismail): why i need WS_MAXIMIZEBOX or WS_MINIMIZEBOX that include to WS_OVERLAPPEDWINDOW?
-    DWORD       WindowStyle = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+    DWORD   WindowStyle = WS_OVERLAPPEDWINDOW | WS_VISIBLE;
 
     // TODO (ismail): if fullscreen style = WS_EX_TOPMOST
     WindowExStyles = 0;
+
+    Win32App.ScreenOpt.Height   = WINDOW_HEIGHT;
+    Win32App.ScreenOpt.Width    = WINDOW_WIDTH;
+
+    Win32App.ScreenOpt.CenterH   = WINDOW_HEIGHT / 2;
+    Win32App.ScreenOpt.CenterW   = WINDOW_WIDTH  / 2;
 
     // TODO (ismail): set actual x, y and width and height
     Win32App.Window = CreateWindowExA(WindowExStyles, WIN32_WINDOW_CLASS_NAME, 
                                       GAME_NAME, WindowStyle, 
                                       CW_USEDEFAULT , CW_USEDEFAULT, 
-                                      CW_USEDEFAULT, CW_USEDEFAULT, 
+                                      Win32App.ScreenOpt.Width, Win32App.ScreenOpt.Height, 
                                       0, 0, 
                                       Win32App.AppInstance, 0);
     
     if (!Win32App.Window) {
         // TODO (ismail): file or/and console logging?
-        return WinLocalErrors::WindowCreateFailed;
+        return Statuses::WindowCreateFailed;
     }
+
+    Win32App.ScreenOpt.AspectRatio = (real32)WINDOW_WIDTH / (real32)WINDOW_HEIGHT;
 
     Win32App.WindowDeviceContext = GetDC(Win32App.Window);
     if (!Win32App.WindowDeviceContext) {
         // TODO (ismail): file or/and console logging?
-        return WinLocalErrors::GetDCCallFailed;
+        return Statuses::GetDCCallFailed;
     }
 
-    return WinLocalErrors::Success;
+    GetClientRect(Win32App.Window, &ClientRect);
+    ClipCursor(&ClientRect);
+
+    ShowCursor(FALSE);
+
+    CursorCenterPos = { 
+        Win32App.ScreenOpt.CenterW, 
+        Win32App.ScreenOpt.CenterH
+    };
+    ClientToScreen(Win32App.Window, &CursorCenterPos);
+    SetCursorPos(CursorCenterPos.x, CursorCenterPos.y);
+
+    return Statuses::Success;
 }
 
-static WinLocalErrors WinInit()
+static Statuses WinInit()
 {
-    WinLocalErrors Result;
+    Statuses Result;
 
-    if ( (Result = WinRegClasses()) != WinLocalErrors::Success) {
+    if ( (Result = WinRegClasses()) != Statuses::Success) {
         return Result;
     }
 
-    if ( (Result = WinLoadOpenGLExtensions("opengl32.dll")) != WinLocalErrors::Success) {
+    if ( (Result = WinLoadOpenGLExtensions("opengl32.dll")) != Statuses::Success) {
         return Result;
     }
 
-    if ( (Result = WinCreateWindow()) != WinLocalErrors::Success) {
+    if ( (Result = WinCreateWindow()) != Statuses::Success) {
         return Result;
     }
 
-    if ( (Result = WinInitOpenGLContext()) != WinLocalErrors::Success) {
+    if ( (Result = WinInitOpenGLContext()) != Statuses::Success) {
         return Result;
     }
 
-    return WinLocalErrors::Success;
+    return Statuses::Success;
 }
 
 void CameraTransform(GameInput * Inputs)
@@ -617,24 +628,24 @@ void CameraTransform(GameInput * Inputs)
     Vec3 CameraTargetTranslation;
     Vec3 CameraRightTranslation;
 
-    PlayerCamera.Transform.Rotate.Heading   += DEGREE_TO_RAD(Inputs->MouseMoution.x * DeltaTime);
-    PlayerCamera.Transform.Rotate.Pitch     += DEGREE_TO_RAD(Inputs->MouseMoution.y * DeltaTime);
+    PlayerCamera.Transform.Rotate.Heading   += DEGREE_TO_RAD(Inputs->MouseInput.Moution.x * 0.003);
+    PlayerCamera.Transform.Rotate.Pitch     += DEGREE_TO_RAD(Inputs->MouseInput.Moution.y * 0.003);
 
     RotationToVectors(&PlayerCamera.Transform.Rotate, &Target, &Right, &Up);
 
-    if ((Inputs->WButton || Inputs->SButton) && (Inputs->AButton || Inputs->DButton)) {
+    if ((Inputs->WButton.State || Inputs->SButton.State) && (Inputs->AButton.State || Inputs->DButton.State)) {
         TranslationMultiplyer = 0.707f; // NOTE (ismail) 1 / square root of 2
     }
 
-    TargetTranslationMultiplyer     = TranslationMultiplyer * (Inputs->WButton + (-1.0f * Inputs->SButton)); // 1.0 if W Button -1.0 if S Button and 0 if W and S Button pressed together
+    TargetTranslationMultiplyer     = TranslationMultiplyer * ((real32)Inputs->WButton.State + (-1.0f * (real32)Inputs->SButton.State)); // 1.0 if W Button -1.0 if S Button and 0 if W and S Button pressed together
 
-    CameraTargetTranslation         = Target * (PlayerCamera.Movement.Speed * DeltaTime * TargetTranslationMultiplyer);
+    CameraTargetTranslation         = Target * (PlayerCamera.Movement.Speed * 0.003 * TargetTranslationMultiplyer);
 
-    RightTranslationMultiplyer      = TranslationMultiplyer * (Inputs->DButton + (-1.0f * Inputs->AButton));
+    RightTranslationMultiplyer      = TranslationMultiplyer * ((real32)Inputs->DButton.State + (-1.0f * (real32)Inputs->AButton.State));
 
-    CameraRightTranslation          = Right * (PlayerCamera.Movement.Speed * DeltaTime * TranslationMultiplyer);
+    CameraRightTranslation          = Right * (PlayerCamera.Movement.Speed * 0.003 * RightTranslationMultiplyer);
 
-    PlayerCamera.Transform.Position += Target + Right;
+    PlayerCamera.Transform.Position += CameraTargetTranslation + CameraRightTranslation;
 }
 
 void PlayerTransform(GameInput* Inputs)
@@ -651,22 +662,22 @@ void PlayerTransform(GameInput* Inputs)
 
     WorldObject *PlayerObject = &WorldObjects.Objects[PLAYER_INDEX];
     
-    PlayerObject->Transform.Rotate.Pitch    += DEGREE_TO_RAD(PlayerObject->Movement.RotationDelta * (Inputs->IButton + (-1.0f * Inputs->KButton)) * DeltaTime);
-    PlayerObject->Transform.Rotate.Heading  += DEGREE_TO_RAD(PlayerObject->Movement.RotationDelta * (Inputs->LButton + (-1.0f * Inputs->JButton)) * DeltaTime);
+    PlayerObject->Transform.Rotate.Pitch    += DEGREE_TO_RAD(PlayerObject->Movement.RotationDelta * ((real32)Inputs->IButton.State + (-1.0f * (real32)Inputs->KButton.State)) * 0.03);
+    PlayerObject->Transform.Rotate.Heading  += DEGREE_TO_RAD(PlayerObject->Movement.RotationDelta * ((real32)Inputs->LButton.State + (-1.0f * (real32)Inputs->JButton.State)) * 0.03);
 
     RotationToVectors(&PlayerObject->Transform.Rotate, &Target, &Right, &Up);
 
-    if ((Inputs->WButton || Inputs->SButton) && (Inputs->AButton || Inputs->DButton)) {
+    if ((Inputs->WButton.State || Inputs->SButton.State) && (Inputs->AButton.State || Inputs->DButton.State)) {
         TranslationMultiplyer = 0.707f; // NOTE (ismail) 1 / square root of 2
     }
 
-    TargetTranslationMultiplyer      = TranslationMultiplyer * (Inputs->ArrowUp + (-1.0f * Inputs->ArrowDown)); // 1.0 if W Button -1.0 if S Button and 0 if W and S Button pressed together
-    TargetTranslation                = Target * (PlayerObject->Movement.Speed * DeltaTime * TargetTranslationMultiplyer);
+    TargetTranslationMultiplyer      = TranslationMultiplyer * ((real32)Inputs->ArrowUp.State + (-1.0f * (real32)Inputs->ArrowDown.State)); // 1.0 if W Button -1.0 if S Button and 0 if W and S Button pressed together
+    TargetTranslation                = Target * (PlayerObject->Movement.Speed * 0.003 * TargetTranslationMultiplyer);
 
-    RightTranslationMultiplyer       = TranslationMultiplyer * (Inputs->ArrowRight + (-1.0f * Inputs->ArrowLeft)); // 1.0 if D Button -1.0 if A Button and 0 if D and A Button pressed together
-    RightTranslation                 = Right * (PlayerObject->Movement.Speed * DeltaTime * TranslationMultiplyer);
+    RightTranslationMultiplyer       = TranslationMultiplyer * ((real32)Inputs->ArrowRight.State + (-1.0f * (real32)Inputs->ArrowLeft.State)); // 1.0 if D Button -1.0 if A Button and 0 if D and A Button pressed together
+    RightTranslation                 = Right * (PlayerObject->Movement.Speed * 0.003 * RightTranslationMultiplyer);
 
-    PlayerObject->Transform.Position += Target + Right;
+    PlayerObject->Transform.Position += TargetTranslation + RightTranslation;
 
     PlayerObject->BoundingVolume.VolumeData.OrientedBox.Axis[0] = Right;
     PlayerObject->BoundingVolume.VolumeData.OrientedBox.Axis[1] = Up;
@@ -674,11 +685,13 @@ void PlayerTransform(GameInput* Inputs)
 
     PlayerObject->BoundingVolume.VolumeData.OrientedBox.Center = PlayerObject->Transform.Position;
 
+    PlayerObject->Color = { 0.0f, 0.0f, 1.0f };
+
     for (i32 ObjectIndex = PLAYER_INDEX + 1; ObjectIndex < WorldObjects.ObjectsAmount; ++ObjectIndex) {
         WorldObject *SceneObject = &WorldObjects.Objects[ObjectIndex];
         
         if (SceneObject->BoundingVolume.VolumeType == BoundingVolumeType::OBBVolume) {
-            RotationToVectors(&PlayerObject->Transform.Rotate, &Target, &Right, &Up);
+            RotationToVectors(&SceneObject->Transform.Rotate, &Target, &Right, &Up);
 
             SceneObject->BoundingVolume.VolumeData.OrientedBox.Axis[0] = Right;
             SceneObject->BoundingVolume.VolumeData.OrientedBox.Axis[1] = Up;
@@ -686,7 +699,7 @@ void PlayerTransform(GameInput* Inputs)
 
             SceneObject->BoundingVolume.VolumeData.OrientedBox.Center = SceneObject->Transform.Position;
 
-            if (OBBToOBBTestOverlap(&PlayerObject->BoundingVolume.VolumeData.OrientedBox, &PlayerObject->BoundingVolume.VolumeData.OrientedBox)) {
+            if (OBBToOBBTestOverlap(&PlayerObject->BoundingVolume.VolumeData.OrientedBox, &SceneObject->BoundingVolume.VolumeData.OrientedBox)) {
                 PlayerObject->Color = { 0.0f, 1.0f, 0.0f };
             }
         }
@@ -718,7 +731,7 @@ void RendererFrame()
         tglUseProgram(ShaderProgram->ProgramHandle);
         tglBindVertexArray(ObjectRenderingContext->Buffers.VAO);
 
-        Mat4x4 ObjectRotation       = MakeRotation4x4Inverse(&Object->Transform.Rotate);
+        Mat4x4 ObjectRotation       = MakeRotation4x4(&Object->Transform.Rotate);
         Mat4x4 ObjectTranslation    = MakeTranslation(&Object->Transform.Position);
         Mat4x4 ObjectScale          = Identity4x4;
 
@@ -1057,7 +1070,7 @@ void Frame()
     */
 }
 
-ErrorStatuses WorldPrepare()
+Statuses WorldPrepare()
 {    
     // NOTE (ismail): i disable textures for now that call need for load texture
     // GLuint TextureObject = LoadTexture("bricks_textures.jpg");
@@ -1069,7 +1082,7 @@ ErrorStatuses WorldPrepare()
     GLuint ShaderProgram = tglCreateProgram();
     if (!ShaderProgram) {
         // TODO (ismail): diagnostic
-        return ErrorStatuses::Failed; // TODO (ismail): put here actual value
+        return Statuses::Failed; // TODO (ismail): put here actual value
     }
 
     File VertexShader = LoadFile("data/shaders/vertex_color.vs");
@@ -1077,18 +1090,18 @@ ErrorStatuses WorldPrepare()
 
     if (!VertexShader.Data || !FragmentShader.Data) {
         // TODO (ismail): diagnostic
-        return ErrorStatuses::Failed;
+        return Statuses::Failed;
     }
 
     if (!AttachShader(ShaderProgram, (const char*)VertexShader.Data, (GLint)VertexShader.Size, GL_VERTEX_SHADER)) {
         FreeFileMemory(&VertexShader);
-        return ErrorStatuses::Failed; // TODO (ismail): more complicated check here
+        return Statuses::Failed; // TODO (ismail): more complicated check here
     }
 
     if (!AttachShader(ShaderProgram, (const char*)FragmentShader.Data, (GLint)FragmentShader.Size, GL_FRAGMENT_SHADER)) {
         FreeFileMemory(&VertexShader);
         FreeFileMemory(&FragmentShader);
-        return ErrorStatuses::Failed; // TODO (ismail): more complicated check here
+        return Statuses::Failed; // TODO (ismail): more complicated check here
     }
 
     FreeFileMemory(&VertexShader);
@@ -1102,19 +1115,19 @@ ErrorStatuses WorldPrepare()
     if (!Success) {
         // TODO (ismail): handle this case with glGetShaderInfoLog and print it in log
         tglGetProgramInfoLog(ShaderProgram, sizeof(ErrorLog), NULL, ErrorLog);
-        return ErrorStatuses::Failed;
+        return Statuses::Failed;
     }
     
     GLint TransformLocation = tglGetUniformLocation(ShaderProgram, "Transform");
     if (TransformLocation == -1) {
         // TODO (ismail): diagnostic
-        return ErrorStatuses::Failed;
+        return Statuses::Failed;
     }
 
     GLint MeshColorLocation = tglGetUniformLocation(ShaderProgram, "MeshColor");
     if (MeshColorLocation == -1) {
         // TODO (ismail): diagnostic
-        return ErrorStatuses::Failed;
+        return Statuses::Failed;
     }
 
     //  GLint SamplerLocation = glGetUniformLocation(ShaderProgram, "Sampler");
@@ -1127,7 +1140,7 @@ ErrorStatuses WorldPrepare()
     tglGetProgramiv(ShaderProgram, GL_VALIDATE_STATUS, &Success);
     if (!Success) {
         // TODO (ismail): handle this case with glGetShaderInfoLog and print it in log
-        return ErrorStatuses::Failed;
+        return Statuses::Failed;
     }
 
     // SHADERS PROGRAMS
@@ -1160,7 +1173,7 @@ ErrorStatuses WorldPrepare()
     WorldObjectsRendererContext.ObjectsRenderingContext[1].ShaderProgramIndex = 0;
 
     // TODO (ismail): move perspective projection matrix calculs to another place
-    WorldObjectsRendererContext.PerspectiveProjection = MakePerspectiveProjection(60.0f, AspectRatio, 0.01f, 50.0f);
+    WorldObjectsRendererContext.PerspectiveProjection = MakePerspectiveProjection(60.0f, Win32App.ScreenOpt.AspectRatio, 0.01f, 50.0f);
 
     WorldObjectsRendererContext.ObjectsAmount = 2;
 
@@ -1226,7 +1239,11 @@ ErrorStatuses WorldPrepare()
     // AMOUNT OF OBJECTS ON SCENE
     WorldObjects.ObjectsAmount = 2;
 
-    return ErrorStatuses::Success;
+    Inputs.MouseInput.NormalizedHeight = (1.0f / Win32App.ScreenOpt.Height) * 2.0f;
+    Inputs.MouseInput.NormalizedWidth = (1.0f / Win32App.ScreenOpt.Width) * 2.0f;
+    Inputs.MouseInput.Sensitive = 5000.0f;
+
+    return Statuses::Success;
     /*
     WorldObjectAABBCollider NpcCube = {};
 
@@ -1291,11 +1308,8 @@ ErrorStatuses WorldPrepare()
 i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance, 
                       LPSTR CommandLine , int ShowCode)
 {
-    ErrorStatuses               WorldPrepareStatus;
-    RendererInitErrors          RendererInitError;
-    WinLocalErrors              WinIntiError;
-    OpenGLFunctionLoadStatus    OpenGLInitError;
-    MSG                         Message;
+    Statuses    InitializationStatuses;
+    MSG         Message;
 
     LARGE_INTEGER PerfomanceCountFrequencyResult;
     QueryPerformanceFrequency(&PerfomanceCountFrequencyResult);
@@ -1304,26 +1318,23 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
     Win32App.Running        = true;
     Win32App.AppInstance    = Instance;
 
-    if ( (WinIntiError = WinInit()) != WinLocalErrors::Success) {
+    if ( (InitializationStatuses = WinInit()) != Statuses::Success) {
         // TODO (ismail): diagnostics things?
-        return WinIntiError;
+        return InitializationStatuses;
     }
 
-    if ( (OpenGLInitError = LoadGLFunctions()) != OpenGLFunctionLoadStatus::Success) {
+    if ( (InitializationStatuses = LoadGLFunctions()) != Statuses::Success) {
         // TODO (ismail): diagnostics things?
-        return OpenGLInitError;
+        return InitializationStatuses;
     }
 
-    if ( (RendererInitError = RendererInit()) != RendererInitErrors::Success) {
-        // TODO (ismail): diagnostics things?
-        return RendererInitError;
-    }
+    RendererInit();
 
     AssetsLoaderInit();
 
-    if ( (WorldPrepareStatus = WorldPrepare()) != ErrorStatuses::Success) {
+    if ( (InitializationStatuses = WorldPrepare()) != Statuses::Success) {
         // TODO (ismail): diagnostics things?
-        return WorldPrepareStatus;
+        return InitializationStatuses;
     }
 
     LARGE_INTEGER LastCounter;
@@ -1331,7 +1342,7 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
     u64 LastCycleCount = __rdtsc();
 
     while (Win32App.Running) {
-        ProcessWinMessages();
+        WinProcessMessages();
         Frame();
 
         // NOTE(ismail): some very usefull thing for perfomance debuging

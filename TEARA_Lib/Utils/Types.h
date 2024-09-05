@@ -21,4 +21,15 @@ typedef i64         bool64;
 
 typedef u8          byte;
 
+enum Statuses {
+    Success                         =  0,
+    Failed                          = -1,
+    RegisterClassFailed             = -2,
+    WindowCreateFailed              = -3,
+    GetDCCallFailed                 = -4,
+    LibraryDllLoadFailed            = -5,
+    FunctionLoadFailed              = -6,
+    GLContextCreateFailed           = -7,
+};
+
 #endif

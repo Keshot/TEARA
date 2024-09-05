@@ -4,10 +4,6 @@
 
 #define MAX_SHADERS (0x0A)
 
-enum RendererInitErrors {
-    Success = 0,
-};
-
 struct Vertex {
     Vec3 Position;
 };
@@ -98,7 +94,7 @@ static void ParseObj(const char *Data, ObjFile *LoadedFile)
                         case '9':
                         case '-': {
                             // TODO (ismail): VertexIndex > 3?
-                            VertexStorage[VertexIndex++] = SDL_atof(VertexStart);
+                            VertexStorage[VertexIndex++] = Atof(VertexStart);
                             for (const char *FetchToNextValue = VertexStart;; ++FetchToNextValue) {
                                 InnerSym = *FetchToNextValue;
 
@@ -134,10 +130,10 @@ static void ParseObj(const char *Data, ObjFile *LoadedFile)
                 for (const char *FaceStart = (Data + 2); !Finish;) {
                     char InnerSym = *FaceStart;
 
-                    if (SDL_isdigit(InnerSym)) {
-                        IndexArray[IndexArraySize++] = SDL_atoi((const char*)FaceStart) - 1;
+                    if (isdigit(InnerSym)) {
+                        IndexArray[IndexArraySize++] = Atoi((const char*)FaceStart) - 1;
                         ++FaceStart;
-                        for (; SDL_isdigit(*FaceStart); ++FaceStart);
+                        for (; isdigit(*FaceStart); ++FaceStart);
 
                         continue;
                     }
@@ -217,7 +213,7 @@ GLuint LoadTexture(const char *FileName)
 }
 */
 
-static RendererInitErrors RendererInit()
+static void RendererInit()
 {
     GLclampf Red = 0.f, Green = 0.0f, Blue = 0.0f, Alpha = 0.0f;
     GLclampf ColorValueMask = 1.0f / 256.0f;
@@ -238,8 +234,6 @@ static RendererInitErrors RendererInit()
     glEnable(GL_DEPTH_TEST);
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    return RendererInitErrors::Success;
 }
 
 static bool32 AttachShader(GLuint ShaderHandle, const char *ShaderCode, GLint Length, GLenum ShaderType)
