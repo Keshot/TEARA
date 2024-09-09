@@ -30,6 +30,7 @@ enum Statuses {
     LibraryDllLoadFailed            = -5,
     FunctionLoadFailed              = -6,
     GLContextCreateFailed           = -7,
+    FileLoadFailed                  = -8,
 };
 
 #endif

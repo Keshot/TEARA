@@ -1,9 +1,9 @@
 #ifndef _TEARA_CORE_ENGINE_H_
 #define _TEARA_CORE_ENGINE_H_
 
-#include "TEARA_Lib/Utils/Types.h"
-#include "TEARA_Lib/Utils/Debug.h"
-#include "TEARA_Lib/Math/Vector.h"
+#include "TLib/Utils/Types.h"
+#include "TLib/Utils/Debug.h"
+#include "TLib/Math/Vector.h"
 
 struct File {
     u64      Size;

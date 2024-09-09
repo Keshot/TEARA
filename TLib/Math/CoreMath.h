@@ -3,8 +3,9 @@
 
 // TODO (ismail): my own SIMD math function or instead my own use SDL
 #include <math.h>
+#include <stdlib.h>
 
-#include "TEARA_Lib/Utils/Types.h"
+#include "TLib/Utils/Types.h"
 
 #define                     PI         (3.14159265358979323846f)
 #define                 TWO_PI         (2.0f * PI)

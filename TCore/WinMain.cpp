@@ -1,13 +1,14 @@
 #include <windows.h>
 #include <windowsx.h>
+#include <stdio.h>
 
-#include "TEARA_Core/Engine.h"
-#include "TEARA_Lib/Utils/Types.h"
-#include "TEARA_Lib/Math/MatrixTransform.h"
-#include "TEARA_Lib/Math/CoreMath.h"
-#include "TEARA_Lib/Physics/CollisionDetection.h"
-#include "TEARA_Lib/Utils/AssetsLoader.h"
-#include "TEARA_Core/Rendering/Renderer.cpp"
+#include "TCore/Engine.h"
+#include "TLib/Utils/Types.h"
+#include "TLib/Math/MatrixTransform.h"
+#include "TLib/Math/CoreMath.h"
+#include "TLib/Physics/CollisionDetection.h"
+#include "TLib/Utils/AssetsLoader.h"
+#include "TCore/Rendering/Renderer.cpp"
 
 #ifndef WIN32_CLASS_NAME
     #define WIN32_WINDOW_CLASS_NAME ("TEARA Engine")
@@ -68,11 +69,16 @@ struct MovementComponent {
     real32  RotationDelta;
 };
 
+struct ObjectMaterial {
+    TextureObject   Texture;
+    Vec3            FlatColor;
+};
+
 struct WorldObject {
     WorldTransform          Transform;
     BoundingVolume          BoundingVolume;
+    ObjectMaterial          Material;
     MovementComponent       Movement;
-    Vec3                    Color;
     i32                     RendererContextIndex;
 };
 
@@ -1160,7 +1166,23 @@ Statuses WorldPrepare()
 
     // SHADERS PROGRAMS END
 
+    // TEXTURE FILE LOADING
+    TextureObject TextObj;
+
+    LoadTexture2D("data/textures/bricks_textures.jpg", &TextObj);
+
+    // END TEXTURE FILE LOADING
+
     // OBJ FILE LOADING
+
+    // NOTE (ismail): just for now in future i must rewrite it
+    WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile.Positions = (Vec3*)VirtualAlloc(0, sizeof(Vec3) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile.TextureCoord = (Vec2*)VirtualAlloc(0, sizeof(Vec2) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile.Indices = (u32*)VirtualAlloc(0, sizeof(u32) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+
+    WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile.Positions = (Vec3*)VirtualAlloc(0, sizeof(Vec3) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile.TextureCoord = (Vec2*)VirtualAlloc(0, sizeof(Vec2) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile.Indices = (u32*)VirtualAlloc(0, sizeof(u32) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
     LoadObjFile("data/obj/cube.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile);
     LoadObjFile("data/obj/sphere.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile);
@@ -1168,13 +1190,13 @@ Statuses WorldPrepare()
     LoadObjectToHardware(&WorldObjectsRendererContext.ObjectsRenderingContext[0].Buffers, &WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile);
     LoadObjectToHardware(&WorldObjectsRendererContext.ObjectsRenderingContext[1].Buffers, &WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile);
 
-    // AMOUNT OF OBJECTS MESHES
     WorldObjectsRendererContext.ObjectsRenderingContext[0].ShaderProgramIndex = 0;
     WorldObjectsRendererContext.ObjectsRenderingContext[1].ShaderProgramIndex = 0;
 
     // TODO (ismail): move perspective projection matrix calculs to another place
     WorldObjectsRendererContext.PerspectiveProjection = MakePerspectiveProjection(60.0f, Win32App.ScreenOpt.AspectRatio, 0.01f, 50.0f);
 
+    // AMOUNT OF OBJECTS MESHES
     WorldObjectsRendererContext.ObjectsAmount = 2;
 
     // OBJ FILE LOADING END
@@ -1206,7 +1228,7 @@ Statuses WorldPrepare()
     WorldObjects.Objects[PLAYER_INDEX].Movement.Speed = 5.0f;
     WorldObjects.Objects[PLAYER_INDEX].Movement.RotationDelta = 1.0f;
 
-    WorldObjects.Objects[PLAYER_INDEX].Color = { 0.0f, 0.0f, 1.0f };
+    WorldObjects.Objects[PLAYER_INDEX].Material.FlatColor = { 0.0f, 0.0f, 1.0f };
 
     WorldObjects.Objects[PLAYER_INDEX].RendererContextIndex = 0;
 
@@ -1229,7 +1251,7 @@ Statuses WorldPrepare()
     WorldObjects.Objects[1].BoundingVolume.VolumeData.OrientedBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
     WorldObjects.Objects[1].BoundingVolume.VolumeData.OrientedBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
 
-    WorldObjects.Objects[1].Color = { 1.0f, 0.0f, 0.0f };
+    WorldObjects.Objects[1].Material.FlatColor = { 1.0f, 0.0f, 0.0f };
 
     WorldObjects.Objects[1].Movement.Speed = 5.0f;
     WorldObjects.Objects[1].Movement.RotationDelta = 1.0f;
