@@ -14,6 +14,7 @@
 #define WGL_CONTEXT_CORE_PROFILE_BIT_ARB            (0x00000001)
 #define WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB   (0x00000002)
 
+#define GL_INVALID_UNIFORM_NAME                     ((i8)0xFF)
 #define GL_COMPILE_STATUS                           (0x8B81)
 #define GL_ARRAY_BUFFER                             (0x8892)
 #define GL_STATIC_DRAW                              (0x88E4)
@@ -88,6 +89,7 @@ typedef void         (GLAPIENTRY TEARA_glActiveTexture)(GLenum);
 typedef void         (GLAPIENTRY TEARA_glGenVertexArrays)(GLsizei, GLuint*);
 typedef void         (GLAPIENTRY TEARA_glBindVertexArray)(GLuint);
 typedef void         (GLAPIENTRY TEARA_glUniform3fv)(GLint, GLsizei, const GLfloat*);
+typedef void         (GLAPIENTRY TEARA_glDrawElementsBaseVertex)(GLenum, GLsizei, GLenum, void*, GLint);
 
 extern TEARA_glCreateContextAttribsARB      tglCreateContextAttribsARB;
 extern TEARA_glChoosePixelFormatARB         tglChoosePixelFormatARB;
@@ -116,6 +118,7 @@ extern TEARA_glActiveTexture                tglActiveTexture;
 extern TEARA_glGenVertexArrays              tglGenVertexArrays;
 extern TEARA_glBindVertexArray              tglBindVertexArray;
 extern TEARA_glUniform3fv                   tglUniform3fv;
+extern TEARA_glDrawElementsBaseVertex       tglDrawElementsBaseVertex;
 
 Statuses LoadGLFunctions();
 

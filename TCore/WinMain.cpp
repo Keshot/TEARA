@@ -120,6 +120,8 @@ struct Win32Context {
     ScreenOptions   ScreenOpt;
 };
 
+// TODO (ismail): check bug with camera when screen scale is biger than 100%
+// when i set screen scale on 125% camera control feels worse
 enum {
     WINDOW_WIDTH = 1600,
     WINDOW_HEIGHT = 900
@@ -129,6 +131,7 @@ static Win32Context             Win32App;
 static SceneObjects             WorldObjects;
 static SceneObjectsRendering    WorldObjectsRendererContext;
 static SceneShaderPrograms      WorldShaderPrograms;
+static BasicLight               WorldLight;
 static Camera                   PlayerCamera;
 static GameInput                Inputs;
 static real32                   DeltaTime;
@@ -640,7 +643,7 @@ void CameraTransform(GameInput * Inputs)
     RotationToVectors(&PlayerCamera.Transform.Rotate, &Target, &Right, &Up);
 
     if ((Inputs->WButton.State || Inputs->SButton.State) && (Inputs->AButton.State || Inputs->DButton.State)) {
-        TranslationMultiplyer = 0.707f; // NOTE (ismail) 1 / square root of 2
+        TranslationMultiplyer = 0.707f; // NOTE (ismail): 1 / square root of 2
     }
 
     TargetTranslationMultiplyer     = TranslationMultiplyer * ((real32)Inputs->WButton.State + (-1.0f * (real32)Inputs->SButton.State)); // 1.0 if W Button -1.0 if S Button and 0 if W and S Button pressed together
@@ -674,7 +677,7 @@ void PlayerTransform(GameInput* Inputs)
     RotationToVectors(&PlayerObject->Transform.Rotate, &Target, &Right, &Up);
 
     if ((Inputs->WButton.State || Inputs->SButton.State) && (Inputs->AButton.State || Inputs->DButton.State)) {
-        TranslationMultiplyer = 0.707f; // NOTE (ismail) 1 / square root of 2
+        TranslationMultiplyer = 0.707f; // NOTE (ismail): 1 / square root of 2
     }
 
     TargetTranslationMultiplyer      = TranslationMultiplyer * ((real32)Inputs->ArrowUp.State + (-1.0f * (real32)Inputs->ArrowDown.State)); // 1.0 if W Button -1.0 if S Button and 0 if W and S Button pressed together
@@ -691,7 +694,7 @@ void PlayerTransform(GameInput* Inputs)
 
     PlayerObject->BoundingVolume.VolumeData.OrientedBox.Center = PlayerObject->Transform.Position;
 
-    PlayerObject->Color = { 0.0f, 0.0f, 1.0f };
+    PlayerObject->Material.FlatColor = { 0.0f, 0.0f, 1.0f };
 
     for (i32 ObjectIndex = PLAYER_INDEX + 1; ObjectIndex < WorldObjects.ObjectsAmount; ++ObjectIndex) {
         WorldObject *SceneObject = &WorldObjects.Objects[ObjectIndex];
@@ -706,7 +709,7 @@ void PlayerTransform(GameInput* Inputs)
             SceneObject->BoundingVolume.VolumeData.OrientedBox.Center = SceneObject->Transform.Position;
 
             if (OBBToOBBTestOverlap(&PlayerObject->BoundingVolume.VolumeData.OrientedBox, &SceneObject->BoundingVolume.VolumeData.OrientedBox)) {
-                PlayerObject->Color = { 0.0f, 1.0f, 0.0f };
+                PlayerObject->Material.FlatColor = { 0.0f, 1.0f, 0.0f };
             }
         }
     }
@@ -744,6 +747,8 @@ void RendererFrame()
         Mat4x4 ObjectSpaceTransform = ObjectTranslation * ObjectScale * ObjectRotation;
         Mat4x4 FinalTransform  = WorldObjectsRendererContext.PerspectiveProjection * ObjectToCameraSpaceTransformation * ObjectSpaceTransform;
 
+        ActivateTexture2D(GL_TEXTURE0, &Object->Material.Texture);
+
         for (i32 ShaderIndex = 0; ShaderIndex < ShaderProgram->ShadersAmount; ++ShaderIndex) {
             Shader *CurrentShader = &ShaderProgram->Shaders[ShaderIndex];
 
@@ -752,7 +757,18 @@ void RendererFrame()
                     tglUniformMatrix4fv(CurrentShader->Location, 1, GL_TRUE, FinalTransform[0]);
                 } break;
                 case ShaderUniformType::Vector3f: {
-                    tglUniform3fv(CurrentShader->Location, 1, Object->Color.ValueHolder);
+                    if (!CurrentShader->Light) {
+                        tglUniform3fv(CurrentShader->Location, 1, Object->Material.FlatColor.ValueHolder);
+                    }
+                    else {
+                        tglUniform3fv(CurrentShader->Location, 1, WorldLight.LightColor.ValueHolder);
+                    }                    
+                } break;
+                case ShaderUniformType::Value1i: {
+                    tglUniform1i(CurrentShader->Location, GL_TEXTURE_UNIT0);
+                } break;
+                case ShaderUniformType::Value1f: {
+                    tglUniform1f(CurrentShader->Location, WorldLight.AmbientIntensity);
                 } break;
                 default: {
                     // NOTE (ismail): all uniform type should be implemented
@@ -761,7 +777,8 @@ void RendererFrame()
             }
         }
 
-        glDrawElements(GL_TRIANGLES, ObjectRenderingContext->ObjectFile.IndexArraySize, GL_UNSIGNED_INT, 0);
+        
+        tglDrawElementsBaseVertex(GL_TRIANGLES, ObjectRenderingContext->ObjectFile.IndicesCount, GL_UNSIGNED_INT, 0, 0);
     }
 
     SwapBuffers(Win32App.WindowDeviceContext);
@@ -1091,8 +1108,8 @@ Statuses WorldPrepare()
         return Statuses::Failed; // TODO (ismail): put here actual value
     }
 
-    File VertexShader = LoadFile("data/shaders/vertex_color.vs");
-    File FragmentShader = LoadFile("data/shaders/fragment_color.fs");
+    File VertexShader = LoadFile("data/shaders/common_object_shader.vs");
+    File FragmentShader = LoadFile("data/shaders/common_object_shader.fs");
 
     if (!VertexShader.Data || !FragmentShader.Data) {
         // TODO (ismail): diagnostic
@@ -1125,22 +1142,34 @@ Statuses WorldPrepare()
     }
     
     GLint TransformLocation = tglGetUniformLocation(ShaderProgram, "Transform");
-    if (TransformLocation == -1) {
+    if (TransformLocation == GL_INVALID_UNIFORM_NAME) {
         // TODO (ismail): diagnostic
         return Statuses::Failed;
     }
 
-    GLint MeshColorLocation = tglGetUniformLocation(ShaderProgram, "MeshColor");
-    if (MeshColorLocation == -1) {
+    GLint ColorMultiplyerLocation = tglGetUniformLocation(ShaderProgram, "ColorMultiplyer");
+    if (ColorMultiplyerLocation == GL_INVALID_UNIFORM_NAME) {
         // TODO (ismail): diagnostic
         return Statuses::Failed;
     }
 
-    //  GLint SamplerLocation = glGetUniformLocation(ShaderProgram, "Sampler");
-    //  if (TransformLocation == -1) {
-           // TODO (ismail): diagnostic
-    //     return OPENGL_ERROR;
-    //  }
+    GLint SamplerLocation = tglGetUniformLocation(ShaderProgram, "TextureSampler");
+    if (TransformLocation == GL_INVALID_UNIFORM_NAME) {
+        // TODO (ismail): diagnostic
+        return Statuses::Failed;
+    }
+
+    GLint BasicLightColor = tglGetUniformLocation(ShaderProgram, "Light.LightColor");
+    if (TransformLocation == GL_INVALID_UNIFORM_NAME) {
+        // TODO (ismail): diagnostic
+        return Statuses::Failed;
+    }
+
+    GLint BasicLightAmbientIntensity = tglGetUniformLocation(ShaderProgram, "Light.AmbientIntensity");
+    if (TransformLocation == GL_INVALID_UNIFORM_NAME) {
+        // TODO (ismail): diagnostic
+        return Statuses::Failed;
+    }
 
     tglValidateProgram(ShaderProgram);
     tglGetProgramiv(ShaderProgram, GL_VALIDATE_STATUS, &Success);
@@ -1153,13 +1182,23 @@ Statuses WorldPrepare()
 
     WorldShaderPrograms.ShaderPrograms[0].ProgramHandle = ShaderProgram;
 
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[0].Location = TransformLocation;
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[0].UniformType = ShaderUniformType::Matrix4f;
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[0].Location       = TransformLocation;
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[0].UniformType    = ShaderUniformType::Matrix4f;
 
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[1].Location = MeshColorLocation;
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[1].UniformType = ShaderUniformType::Vector3f;
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[1].Location       = ColorMultiplyerLocation;
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[1].UniformType    = ShaderUniformType::Vector3f;
 
-    WorldShaderPrograms.ShaderPrograms[0].ShadersAmount = 2;
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[2].Location       = SamplerLocation;
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[2].UniformType    = ShaderUniformType::Value1i;
+
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[3].Location       = BasicLightColor;
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[3].UniformType    = ShaderUniformType::Vector3f;
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[3].Light          = 1;
+
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[4].Location       = BasicLightAmbientIntensity;
+    WorldShaderPrograms.ShaderPrograms[0].Shaders[4].UniformType    = ShaderUniformType::Value1f;
+
+    WorldShaderPrograms.ShaderPrograms[0].ShadersAmount = 3;
 
     // AMOUNT OF PROGRAMS
     WorldShaderPrograms.ProgramsAmount = 1;
@@ -1175,7 +1214,8 @@ Statuses WorldPrepare()
 
     // OBJ FILE LOADING
 
-    // NOTE (ismail): just for now in future i must rewrite it
+    // TODO (ismail): just for now in future i must rewrite it
+    // and also i don't deallocate this buffers now
     WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile.Positions = (Vec3*)VirtualAlloc(0, sizeof(Vec3) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile.TextureCoord = (Vec2*)VirtualAlloc(0, sizeof(Vec2) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile.Indices = (u32*)VirtualAlloc(0, sizeof(u32) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -1184,8 +1224,8 @@ Statuses WorldPrepare()
     WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile.TextureCoord = (Vec2*)VirtualAlloc(0, sizeof(Vec2) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile.Indices = (u32*)VirtualAlloc(0, sizeof(u32) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
-    LoadObjFile("data/obj/cube.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile);
-    LoadObjFile("data/obj/sphere.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile);
+    LoadObjFile("data/obj/cuber_textured.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile);
+    LoadObjFile("data/obj/cube.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile);
 
     LoadObjectToHardware(&WorldObjectsRendererContext.ObjectsRenderingContext[0].Buffers, &WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile);
     LoadObjectToHardware(&WorldObjectsRendererContext.ObjectsRenderingContext[1].Buffers, &WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile);
@@ -1200,6 +1240,13 @@ Statuses WorldPrepare()
     WorldObjectsRendererContext.ObjectsAmount = 2;
 
     // OBJ FILE LOADING END
+
+    // LIGHTNING SETUP
+
+    WorldLight.LightColor           = { 1.0f, 1.0f, 1.0f };
+    WorldLight.AmbientIntensity     = 1.0f;
+
+    // LIGHTNING SETUP END
 
     // SCENE OBJECTS
 
@@ -1228,6 +1275,7 @@ Statuses WorldPrepare()
     WorldObjects.Objects[PLAYER_INDEX].Movement.Speed = 5.0f;
     WorldObjects.Objects[PLAYER_INDEX].Movement.RotationDelta = 1.0f;
 
+    WorldObjects.Objects[PLAYER_INDEX].Material.Texture = TextObj;
     WorldObjects.Objects[PLAYER_INDEX].Material.FlatColor = { 0.0f, 0.0f, 1.0f };
 
     WorldObjects.Objects[PLAYER_INDEX].RendererContextIndex = 0;
@@ -1251,7 +1299,8 @@ Statuses WorldPrepare()
     WorldObjects.Objects[1].BoundingVolume.VolumeData.OrientedBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
     WorldObjects.Objects[1].BoundingVolume.VolumeData.OrientedBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
 
-    WorldObjects.Objects[1].Material.FlatColor = { 1.0f, 0.0f, 0.0f };
+    WorldObjects.Objects[1].Material.Texture = TextObj;
+    WorldObjects.Objects[1].Material.FlatColor = { 1.0f, 1.0f, 1.0f };
 
     WorldObjects.Objects[1].Movement.Speed = 5.0f;
     WorldObjects.Objects[1].Movement.RotationDelta = 1.0f;
@@ -1263,6 +1312,8 @@ Statuses WorldPrepare()
 
     Inputs.MouseInput.NormalizedHeight = (1.0f / Win32App.ScreenOpt.Height) * 2.0f;
     Inputs.MouseInput.NormalizedWidth = (1.0f / Win32App.ScreenOpt.Width) * 2.0f;
+
+    // TODO (ismail): look at this thing, sensitive 5000 sounds weired
     Inputs.MouseInput.Sensitive = 5000.0f;
 
     return Statuses::Success;

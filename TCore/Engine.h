@@ -50,7 +50,7 @@ struct GameInput {
 
 inline i32 SafeTruncateI64(i64 Val)
 {
-    Assert(Val <= 0xFFFFFFFF)
+    Assert(Val <= 0xFFFFFFFF);
     i32 Result = (i32)Val;
     return Result;
 }

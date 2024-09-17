@@ -4,8 +4,12 @@
 #include "TLib/3rdparty/fastobj/fast_obj.h"
 
 struct MeshCache {
-    u32 TextureIndex;
-    u32 ActualIndex;
+    struct ActualCacheIndex {
+        u32     ActualIndex;
+        bool32  Valid;
+    };
+
+    ActualCacheIndex Indices[100];
 };
 
 void AssetsLoaderInit()
@@ -16,12 +20,13 @@ void AssetsLoaderInit()
 // NOTE (ismail): for now in File variable we must store actual buffers outside of function
 Statuses LoadObjFile(const char *Path, ObjFile *File)
 {
-    MeshCache Cache[30000] = {};
+    MeshCache Cache[1000] = {};
     // NOTE (ismail): for now we use fast_obj in oreder to read .obj but in future i prefere to use own .obj parser
     // fast_obj set in every buffer (position, textcoord, normals) a dummy entry so we skip first elemen of every array
     u32     PosCount        = 0;
     u32     TexCoordCount   = 0;
     u32     IndicesCount    = 0;
+    // NOTE (ismail): need to hug alina 
 
     Vec3 *Pos       = File->Positions;
     Vec2 *TexCoord  = File->TextureCoord;
@@ -40,18 +45,23 @@ Statuses LoadObjFile(const char *Path, ObjFile *File)
     fastObjIndex *LoadIndices   = LoadedMesh->indices;
 
     for (u32 Index = 0; Index < LoadedMesh->index_count; ++Index) {
-        MeshCache CacheElem = Cache[LoadIndices[Index].p];
+        u32 PosIndex    = LoadIndices[Index].p;
+        u32 TextIndex   = LoadIndices[Index].t;
+        MeshCache::ActualCacheIndex ActualValue = Cache[PosIndex].Indices[TextIndex];
 
-        if (CacheElem.ActualIndex != 0 && CacheElem.TextureIndex == LoadIndices[Index].t) {
-            Indices[Index] = CacheElem.ActualIndex;
+        if (ActualValue.Valid) {
+            Indices[IndicesCount++] = ActualValue.ActualIndex;
         }
         else {
-            Pos[PosCount++]             = *((Vec3*)(LoadPos + LoadIndices[Index].p));
-            TexCoord[TexCoordCount++]   = *((Vec2*)(LoadTexCoord + LoadIndices[Index].t));
-            Indices[IndicesCount++]     = Index;
+            Indices[IndicesCount++]     = PosCount;
+            Pos[PosCount++]             = *((Vec3*)LoadPos + PosIndex);
+            if (TextIndex > 0) { // NOTE (ismail): quick fix but later i need make up something
+                TexCoord[TexCoordCount++]   = *((Vec2*)LoadTexCoord + TextIndex);   
+            }
 
-            Cache[LoadIndices[Index].p].ActualIndex     = Index;
-            Cache[LoadIndices[Index].p].TextureIndex    = LoadIndices[Index].t;
+            MeshCache::ActualCacheIndex *ActualValue = &Cache[PosIndex].Indices[TextIndex];
+            ActualValue->ActualIndex                 = Index;
+            ActualValue->Valid                       = 1;
         }
     }
 
@@ -70,7 +80,7 @@ Statuses LoadTextureFile(const char *Path, TextureFile *ReadedFile)
 
     if (!ImageData) {
         // TODO (ismail): diagnostic and write to log some info
-        Assert(image_data);
+        Assert(ImageData);
         return Statuses::FileLoadFailed;
     }
 

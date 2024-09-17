@@ -30,14 +30,18 @@ struct ObjectRenderingContext {
 enum ShaderUniformType {
     Matrix4f,
     Vector3f,
+    Value1f,
+    Value1i,
     Max // NOTE (ismail): last element!
 };
 
 struct Shader {
     ShaderUniformType   UniformType;
     i32                 Location;
+    bool32              Light;
 };
 
+// TODO (ismail): rework shaders in order to we can use multiple same uniform types in one shader program
 struct ShaderProgram {
     u32     ProgramHandle;
     i32     ShadersAmount;
@@ -48,6 +52,11 @@ struct TextureObject {
     u32 TextureHandle;
 };
 
+struct BasicLight {
+    Vec3    LightColor;
+    real32  AmbientIntensity;
+};
+
 void LoadTexture2D(const char *FileName, TextureObject *Texture)
 {
     TextureFile TextureFl;
@@ -56,6 +65,7 @@ void LoadTexture2D(const char *FileName, TextureObject *Texture)
         return;
     }
 
+    // TODO (ismail): make for these function t prefix tglGetTextures, tglBindTextures, tglTexImage2D etc.
     glGenTextures(1, &Texture->TextureHandle);
     glBindTexture(GL_TEXTURE_2D, Texture->TextureHandle);
 
@@ -70,6 +80,12 @@ void LoadTexture2D(const char *FileName, TextureObject *Texture)
     glBindTexture(GL_TEXTURE_2D, 0);
 
     FreeTextureFile(&TextureFl);
+}
+
+void ActivateTexture2D(GLenum TextureUnit, TextureObject *Texture)
+{
+    tglActiveTexture(TextureUnit);
+    glBindTexture(GL_TEXTURE_2D, Texture->TextureHandle);
 }
 
 static void RendererInit()

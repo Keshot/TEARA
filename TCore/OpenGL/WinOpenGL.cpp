@@ -27,6 +27,7 @@ TEARA_glActiveTexture                tglActiveTexture;
 TEARA_glGenVertexArrays              tglGenVertexArrays;
 TEARA_glBindVertexArray              tglBindVertexArray;
 TEARA_glUniform3fv                   tglUniform3fv;
+TEARA_glDrawElementsBaseVertex       tglDrawElementsBaseVertex;
 
 Statuses LoadGLFunctions()
 {
@@ -176,6 +177,12 @@ Statuses LoadGLFunctions()
 
     tglUniform3fv = (TEARA_glUniform3fv) wglGetProcAddress("glUniform3fv");
     if (!tglUniform3fv) {
+        // TODO (ismail): diagnostic?
+        return Statuses::Failed;
+    }
+
+    tglDrawElementsBaseVertex = (TEARA_glDrawElementsBaseVertex) wglGetProcAddress("glDrawElementsBaseVertex");
+    if (!tglDrawElementsBaseVertex) {
         // TODO (ismail): diagnostic?
         return Statuses::Failed;
     }
