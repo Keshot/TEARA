@@ -5,6 +5,14 @@
 #include "TLib/Utils/Debug.h"
 #include "TLib/Math/Vector.h"
 
+// TODO (ismail): may be move Engine.h from TCore to TLib?
+#define TEARA_PLATFORM_ALLOCATE_MEMORY(Name) void* (Name)(u64 Size)
+typedef TEARA_PLATFORM_ALLOCATE_MEMORY(*TEARA_PlatformAllocateMemory);
+
+struct EnginePlatform {
+    TEARA_PlatformAllocateMemory AllocMem;
+};
+
 struct File {
     u64      Size;
     byte    *Data;

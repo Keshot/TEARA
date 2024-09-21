@@ -136,6 +136,12 @@ static Camera                   PlayerCamera;
 static GameInput                Inputs;
 static real32                   DeltaTime;
 
+TEARA_PLATFORM_ALLOCATE_MEMORY(WinMemoryAllocate)
+{
+    Assert(Size > 0);
+    return VirtualAlloc(0, Size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+}
+
 static File LoadFile(const char *FileName)
 {
     LARGE_INTEGER   FileSize;
@@ -600,6 +606,11 @@ static Statuses WinCreateWindow()
     SetCursorPos(CursorCenterPos.x, CursorCenterPos.y);
 
     return Statuses::Success;
+}
+
+static void WinPlatformInit(EnginePlatform *PlatformContext)
+{
+    PlatformContext->AllocMem = &WinMemoryAllocate;
 }
 
 static Statuses WinInit()
@@ -1198,7 +1209,7 @@ Statuses WorldPrepare()
     WorldShaderPrograms.ShaderPrograms[0].Shaders[4].Location       = BasicLightAmbientIntensity;
     WorldShaderPrograms.ShaderPrograms[0].Shaders[4].UniformType    = ShaderUniformType::Value1f;
 
-    WorldShaderPrograms.ShaderPrograms[0].ShadersAmount = 3;
+    WorldShaderPrograms.ShaderPrograms[0].ShadersAmount             = 5;
 
     // AMOUNT OF PROGRAMS
     WorldShaderPrograms.ProgramsAmount = 1;
@@ -1217,10 +1228,12 @@ Statuses WorldPrepare()
     // TODO (ismail): just for now in future i must rewrite it
     // and also i don't deallocate this buffers now
     WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile.Positions = (Vec3*)VirtualAlloc(0, sizeof(Vec3) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile.Normals = (Vec3*)VirtualAlloc(0, sizeof(Vec3) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile.TextureCoord = (Vec2*)VirtualAlloc(0, sizeof(Vec2) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile.Indices = (u32*)VirtualAlloc(0, sizeof(u32) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
     WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile.Positions = (Vec3*)VirtualAlloc(0, sizeof(Vec3) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile.Normals = (Vec3*)VirtualAlloc(0, sizeof(Vec3) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile.TextureCoord = (Vec2*)VirtualAlloc(0, sizeof(Vec2) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile.Indices = (u32*)VirtualAlloc(0, sizeof(u32) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
@@ -1381,8 +1394,10 @@ Statuses WorldPrepare()
 i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance, 
                       LPSTR CommandLine , int ShowCode)
 {
-    Statuses    InitializationStatuses;
-    MSG         Message;
+    AssetsLoaderVars    AssetsLoadVars;
+    EnginePlatform      WinPlatform;
+    Statuses            InitializationStatuses;
+    MSG                 Message;
 
     LARGE_INTEGER PerfomanceCountFrequencyResult;
     QueryPerformanceFrequency(&PerfomanceCountFrequencyResult);
@@ -1401,9 +1416,12 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
         return InitializationStatuses;
     }
 
+    WinPlatformInit(&WinPlatform);
+
     RendererInit();
 
-    AssetsLoaderInit();
+    AssetsLoadVars.AssetsLoaderCacheSize = 100000;
+    AssetsLoaderInit(&WinPlatform, &AssetsLoadVars);
 
     if ( (InitializationStatuses = WorldPrepare()) != Statuses::Success) {
         // TODO (ismail): diagnostics things?
