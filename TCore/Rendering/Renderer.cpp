@@ -52,9 +52,15 @@ struct TextureObject {
     u32 TextureHandle;
 };
 
-struct BasicLight {
+struct AmbientLight {
     Vec3    LightColor;
     real32  AmbientIntensity;
+};
+
+struct DirectionLight {
+    Vec3    LightDirection;
+    Vec3    LightColor;
+    real32  LightItensity;
 };
 
 void LoadTexture2D(const char *FileName, TextureObject *Texture)

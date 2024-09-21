@@ -120,6 +120,11 @@ struct Win32Context {
     ScreenOptions   ScreenOpt;
 };
 
+struct WorldLightSource {
+    AmbientLight    Ambient;
+    DirectionLight  Light;
+};
+
 // TODO (ismail): check bug with camera when screen scale is biger than 100%
 // when i set screen scale on 125% camera control feels worse
 enum {
@@ -131,7 +136,7 @@ static Win32Context             Win32App;
 static SceneObjects             WorldObjects;
 static SceneObjectsRendering    WorldObjectsRendererContext;
 static SceneShaderPrograms      WorldShaderPrograms;
-static BasicLight               WorldLight;
+static WorldLightSource         WorldLight;
 static Camera                   PlayerCamera;
 static GameInput                Inputs;
 static real32                   DeltaTime;
@@ -1256,8 +1261,12 @@ Statuses WorldPrepare()
 
     // LIGHTNING SETUP
 
-    WorldLight.LightColor           = { 1.0f, 1.0f, 1.0f };
-    WorldLight.AmbientIntensity     = 1.0f;
+    WorldLight.Ambient.LightColor       = { 1.0f, 1.0f, 1.0f };
+    WorldLight.Ambient.AmbientIntensity = 1.0f;
+
+    WorldLight.Light.LightDirection = { -1.0f, -1.0f, -1.0f };
+    WorldLight.Light.LightColor     = { 1.0f, 1.0f, 1.0f };
+    WorldLight.Light.LightItensity  = 1.0f;
 
     // LIGHTNING SETUP END
 
