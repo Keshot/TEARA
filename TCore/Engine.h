@@ -9,13 +9,21 @@
 #define TEARA_PLATFORM_ALLOCATE_MEMORY(Name) void* (Name)(u64 Size)
 typedef TEARA_PLATFORM_ALLOCATE_MEMORY(*TEARA_PlatformAllocateMemory);
 
-struct EnginePlatform {
-    TEARA_PlatformAllocateMemory AllocMem;
-};
-
 struct File {
     u64      Size;
     byte    *Data;
+};
+
+#define TEARA_PLATFORM_READ_FILE(Name) File (Name)(const char *FileName)
+typedef TEARA_PLATFORM_READ_FILE(*TEARA_PlatformReadFile);
+
+#define TEARA_PLATFORM_FREE_FILE_DATA(Name) void (Name)(File *FileData)
+typedef TEARA_PLATFORM_FREE_FILE_DATA(*TEARA_PlatformFreeFileData);
+
+struct EnginePlatform {
+    TEARA_PlatformAllocateMemory    AllocMem;
+    TEARA_PlatformReadFile          ReadFile;
+    TEARA_PlatformFreeFileData      FreeFileData;
 };
 
 enum KeyState {
@@ -62,9 +70,5 @@ inline i32 SafeTruncateI64(i64 Val)
     i32 Result = (i32)Val;
     return Result;
 }
-
-File LoadFile(const char *FileName);
-
-inline void FreeFileMemory(File *FileData);
 
 #endif

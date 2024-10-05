@@ -90,6 +90,7 @@ typedef void         (GLAPIENTRY TEARA_glGenVertexArrays)(GLsizei, GLuint*);
 typedef void         (GLAPIENTRY TEARA_glBindVertexArray)(GLuint);
 typedef void         (GLAPIENTRY TEARA_glUniform3fv)(GLint, GLsizei, const GLfloat*);
 typedef void         (GLAPIENTRY TEARA_glDrawElementsBaseVertex)(GLenum, GLsizei, GLenum, void*, GLint);
+typedef void         (GLAPIENTRY TEARA_glGetShaderInfoLog)(GLuint, GLsizei, GLsizei*, GLchar*);
 
 extern TEARA_glCreateContextAttribsARB      tglCreateContextAttribsARB;
 extern TEARA_glChoosePixelFormatARB         tglChoosePixelFormatARB;
@@ -119,6 +120,7 @@ extern TEARA_glGenVertexArrays              tglGenVertexArrays;
 extern TEARA_glBindVertexArray              tglBindVertexArray;
 extern TEARA_glUniform3fv                   tglUniform3fv;
 extern TEARA_glDrawElementsBaseVertex       tglDrawElementsBaseVertex;
+extern TEARA_glGetShaderInfoLog             tglGetShaderInfoLog;
 
 Statuses LoadGLFunctions();
 

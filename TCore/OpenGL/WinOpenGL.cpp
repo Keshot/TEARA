@@ -28,6 +28,7 @@ TEARA_glGenVertexArrays              tglGenVertexArrays;
 TEARA_glBindVertexArray              tglBindVertexArray;
 TEARA_glUniform3fv                   tglUniform3fv;
 TEARA_glDrawElementsBaseVertex       tglDrawElementsBaseVertex;
+TEARA_glGetShaderInfoLog             tglGetShaderInfoLog;
 
 Statuses LoadGLFunctions()
 {
@@ -183,6 +184,12 @@ Statuses LoadGLFunctions()
 
     tglDrawElementsBaseVertex = (TEARA_glDrawElementsBaseVertex) wglGetProcAddress("glDrawElementsBaseVertex");
     if (!tglDrawElementsBaseVertex) {
+        // TODO (ismail): diagnostic?
+        return Statuses::Failed;
+    }
+
+    tglGetShaderInfoLog = (TEARA_glGetShaderInfoLog) wglGetProcAddress ("glGetShaderInfoLog");
+    if (!tglGetShaderInfoLog) {
         // TODO (ismail): diagnostic?
         return Statuses::Failed;
     }

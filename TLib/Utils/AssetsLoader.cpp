@@ -147,7 +147,7 @@ Statuses LoadObjFile(const char *Path, ObjFile *File)
             Pos[PosCount++]             = *((Vec3*)LoadPos + PosIndex);
 
             if (NormalsIndex > 0) { // NOTE (ismail): quick fix but later i need make up something
-                Normals[NormCount++]   = *((Vec3*)LoadNormals + NormCount);   
+                Normals[NormCount++]   = *((Vec3*)LoadNormals + NormalsIndex);   
             }
 
             if (TextIndex > 0) { // NOTE (ismail): quick fix but later i need make up something

@@ -72,6 +72,7 @@ struct MovementComponent {
 struct ObjectMaterial {
     TextureObject   Texture;
     Vec3            FlatColor;
+    bool32          RenderInNextFrame;
 };
 
 struct WorldObject {
@@ -120,11 +121,6 @@ struct Win32Context {
     ScreenOptions   ScreenOpt;
 };
 
-struct WorldLightSource {
-    AmbientLight    Ambient;
-    DirectionLight  Light;
-};
-
 // TODO (ismail): check bug with camera when screen scale is biger than 100%
 // when i set screen scale on 125% camera control feels worse
 enum {
@@ -136,7 +132,8 @@ static Win32Context             Win32App;
 static SceneObjects             WorldObjects;
 static SceneObjectsRendering    WorldObjectsRendererContext;
 static SceneShaderPrograms      WorldShaderPrograms;
-static WorldLightSource         WorldLight;
+static AmbientLight             WorldAmbientLight;
+static DirectionLight           WorldDirectionLight;
 static Camera                   PlayerCamera;
 static GameInput                Inputs;
 static real32                   DeltaTime;
@@ -147,7 +144,14 @@ TEARA_PLATFORM_ALLOCATE_MEMORY(WinMemoryAllocate)
     return VirtualAlloc(0, Size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
-static File LoadFile(const char *FileName)
+TEARA_PLATFORM_FREE_FILE_DATA(WinFreeFileData)
+{
+    if (FileData->Data) {
+        VirtualFree(FileData->Data, 0, MEM_RELEASE);
+    }
+}
+
+TEARA_PLATFORM_READ_FILE(WinReadFile)
 {
     LARGE_INTEGER   FileSize;
     i32             TruncatedFileSize;
@@ -165,7 +169,7 @@ static File LoadFile(const char *FileName)
                     Result.Size = (u64)BytesRead;
                 }
                 else {
-                    FreeFileMemory(&Result);
+                    WinFreeFileData(&Result);
                     Result.Data = 0;
                 }
             }
@@ -184,13 +188,6 @@ static File LoadFile(const char *FileName)
     }
 
     return Result;
-}
-
-static inline void FreeFileMemory(File *FileData)
-{
-    if (FileData->Data) {
-        VirtualFree(FileData->Data, 0, MEM_RELEASE);
-    }
 }
 
 static inline void WinGetDesiredPixelFormat(PIXELFORMATDESCRIPTOR *PixelFormat)
@@ -615,7 +612,9 @@ static Statuses WinCreateWindow()
 
 static void WinPlatformInit(EnginePlatform *PlatformContext)
 {
-    PlatformContext->AllocMem = &WinMemoryAllocate;
+    PlatformContext->AllocMem       = &WinMemoryAllocate;
+    PlatformContext->ReadFile       = &WinReadFile;
+    PlatformContext->FreeFileData   = &WinFreeFileData;
 }
 
 static Statuses WinInit()
@@ -710,7 +709,7 @@ void PlayerTransform(GameInput* Inputs)
 
     PlayerObject->BoundingVolume.VolumeData.OrientedBox.Center = PlayerObject->Transform.Position;
 
-    PlayerObject->Material.FlatColor = { 0.0f, 0.0f, 1.0f };
+    PlayerObject->Material.FlatColor = { 1.0f, 1.0f, 1.0f };
 
     for (i32 ObjectIndex = PLAYER_INDEX + 1; ObjectIndex < WorldObjects.ObjectsAmount; ++ObjectIndex) {
         WorldObject *SceneObject = &WorldObjects.Objects[ObjectIndex];
@@ -752,47 +751,36 @@ void RendererFrame()
         WorldObject*            Object                  = &WorldObjects.Objects[ObjectIndex];
         ObjectRenderingContext* ObjectRenderingContext  = &WorldObjectsRendererContext.ObjectsRenderingContext[Object->RendererContextIndex];
         ShaderProgram*          ShaderProgram           = &WorldShaderPrograms.ShaderPrograms[ObjectRenderingContext->ShaderProgramIndex];
-        
-        tglUseProgram(ShaderProgram->ProgramHandle);
-        tglBindVertexArray(ObjectRenderingContext->Buffers.VAO);
 
-        Mat4x4 ObjectRotation       = MakeRotation4x4(&Object->Transform.Rotate);
-        Mat4x4 ObjectTranslation    = MakeTranslation(&Object->Transform.Position);
-        Mat4x4 ObjectScale          = Identity4x4;
-
-        Mat4x4 ObjectSpaceTransform = ObjectTranslation * ObjectScale * ObjectRotation;
-        Mat4x4 FinalTransform  = WorldObjectsRendererContext.PerspectiveProjection * ObjectToCameraSpaceTransformation * ObjectSpaceTransform;
-
-        ActivateTexture2D(GL_TEXTURE0, &Object->Material.Texture);
-
-        for (i32 ShaderIndex = 0; ShaderIndex < ShaderProgram->ShadersAmount; ++ShaderIndex) {
-            Shader *CurrentShader = &ShaderProgram->Shaders[ShaderIndex];
-
-            switch(ShaderProgram->Shaders[ShaderIndex].UniformType) {
-                case ShaderUniformType::Matrix4f: {
-                    tglUniformMatrix4fv(CurrentShader->Location, 1, GL_TRUE, FinalTransform[0]);
-                } break;
-                case ShaderUniformType::Vector3f: {
-                    if (!CurrentShader->Light) {
-                        tglUniform3fv(CurrentShader->Location, 1, Object->Material.FlatColor.ValueHolder);
-                    }
-                    else {
-                        tglUniform3fv(CurrentShader->Location, 1, WorldLight.LightColor.ValueHolder);
-                    }                    
-                } break;
-                case ShaderUniformType::Value1i: {
-                    tglUniform1i(CurrentShader->Location, GL_TEXTURE_UNIT0);
-                } break;
-                case ShaderUniformType::Value1f: {
-                    tglUniform1f(CurrentShader->Location, WorldLight.AmbientIntensity);
-                } break;
-                default: {
-                    // NOTE (ismail): all uniform type should be implemented
-                    Assert(0);
-                }
-            }
+        if (!Object->Material.RenderInNextFrame) {
+            continue;
         }
 
+        switch (ShaderProgram->Type) {
+            case ShaderProgramTypes::StaticObjectShader: {
+                StaticObjectRenderingShader_Setup *Setup = &ShaderProgram->Setup.ShaderSetup.StaticObjectShader;
+
+                Mat4x4 ObjectRotation       = MakeRotation4x4(&Object->Transform.Rotate);
+                Mat4x4 ObjectTranslation    = MakeTranslation(&Object->Transform.Position);
+                Mat4x4 ObjectScale          = Identity4x4;
+
+                Setup->VAO                          = ObjectRenderingContext->Buffers.VAO;
+                Setup->TextureHandle                = Object->Material.Texture.TextureHandle;
+                Setup->TextureSamplerID             = GL_TEXTURE_UNIT0;
+                Setup->ObjectFlatColor              = Object->Material.FlatColor;
+                Setup->ObjectRotation               = ObjectRotation;
+                Setup->ObjectScale                  = ObjectScale;
+                Setup->ObjectTranslation            = ObjectTranslation;
+                Setup->ObjToCameraSpaceTransform    = ObjectToCameraSpaceTransformation;
+
+            } break;
+
+            default: {
+                Assert(0);
+            }
+        }
+        
+        ProcessShader(ShaderProgram);
         
         tglDrawElementsBaseVertex(GL_TRIANGLES, ObjectRenderingContext->ObjectFile.IndicesCount, GL_UNSIGNED_INT, 0, 0);
     }
@@ -1109,7 +1097,7 @@ void Frame()
     */
 }
 
-Statuses WorldPrepare()
+Statuses WorldPrepare(EnginePlatform *Platform)
 {    
     // NOTE (ismail): i disable textures for now that call need for load texture
     // GLuint TextureObject = LoadTexture("bricks_textures.jpg");
@@ -1118,106 +1106,45 @@ Statuses WorldPrepare()
     // glBindTexture(GL_TEXTURE_2D, TextureObject);
     // glUniform1i(SamplerLocation, 0);
 
-    GLuint ShaderProgram = tglCreateProgram();
-    if (!ShaderProgram) {
-        // TODO (ismail): diagnostic
-        return Statuses::Failed; // TODO (ismail): put here actual value
-    }
+    // TODO (ismail): move perspective projection matrix calculs to another place
+    WorldObjectsRendererContext.PerspectiveProjection = MakePerspectiveProjection(60.0f, Win32App.ScreenOpt.AspectRatio, 0.01f, 50.0f);
 
-    File VertexShader = LoadFile("data/shaders/common_object_shader.vs");
-    File FragmentShader = LoadFile("data/shaders/common_object_shader.fs");
+    // LIGHTNING SETUP
 
-    if (!VertexShader.Data || !FragmentShader.Data) {
-        // TODO (ismail): diagnostic
-        return Statuses::Failed;
-    }
+    WorldAmbientLight.Color        = { 1.0f, 1.0f, 1.0f };
+    WorldAmbientLight.Intensity    = 0.02f;
 
-    if (!AttachShader(ShaderProgram, (const char*)VertexShader.Data, (GLint)VertexShader.Size, GL_VERTEX_SHADER)) {
-        FreeFileMemory(&VertexShader);
-        return Statuses::Failed; // TODO (ismail): more complicated check here
-    }
+    WorldDirectionLight.Direction   = { 0.0f, 0.0f, 1.0f };
+    WorldDirectionLight.Color       = { 1.0f, 1.0f, 1.0f };
+    WorldDirectionLight.Intensity   = 0.65f;
 
-    if (!AttachShader(ShaderProgram, (const char*)FragmentShader.Data, (GLint)FragmentShader.Size, GL_FRAGMENT_SHADER)) {
-        FreeFileMemory(&VertexShader);
-        FreeFileMemory(&FragmentShader);
-        return Statuses::Failed; // TODO (ismail): more complicated check here
-    }
-
-    FreeFileMemory(&VertexShader);
-    FreeFileMemory(&FragmentShader);
-
-    GLchar ErrorLog[1024] = { 0 };
-    tglLinkProgram(ShaderProgram);
-
-    GLint Success;
-    tglGetProgramiv(ShaderProgram, GL_LINK_STATUS, &Success);
-    if (!Success) {
-        // TODO (ismail): handle this case with glGetShaderInfoLog and print it in log
-        tglGetProgramInfoLog(ShaderProgram, sizeof(ErrorLog), NULL, ErrorLog);
-        return Statuses::Failed;
-    }
-    
-    GLint TransformLocation = tglGetUniformLocation(ShaderProgram, "Transform");
-    if (TransformLocation == GL_INVALID_UNIFORM_NAME) {
-        // TODO (ismail): diagnostic
-        return Statuses::Failed;
-    }
-
-    GLint ColorMultiplyerLocation = tglGetUniformLocation(ShaderProgram, "ColorMultiplyer");
-    if (ColorMultiplyerLocation == GL_INVALID_UNIFORM_NAME) {
-        // TODO (ismail): diagnostic
-        return Statuses::Failed;
-    }
-
-    GLint SamplerLocation = tglGetUniformLocation(ShaderProgram, "TextureSampler");
-    if (TransformLocation == GL_INVALID_UNIFORM_NAME) {
-        // TODO (ismail): diagnostic
-        return Statuses::Failed;
-    }
-
-    GLint BasicLightColor = tglGetUniformLocation(ShaderProgram, "Light.LightColor");
-    if (TransformLocation == GL_INVALID_UNIFORM_NAME) {
-        // TODO (ismail): diagnostic
-        return Statuses::Failed;
-    }
-
-    GLint BasicLightAmbientIntensity = tglGetUniformLocation(ShaderProgram, "Light.AmbientIntensity");
-    if (TransformLocation == GL_INVALID_UNIFORM_NAME) {
-        // TODO (ismail): diagnostic
-        return Statuses::Failed;
-    }
-
-    tglValidateProgram(ShaderProgram);
-    tglGetProgramiv(ShaderProgram, GL_VALIDATE_STATUS, &Success);
-    if (!Success) {
-        // TODO (ismail): handle this case with glGetShaderInfoLog and print it in log
-        return Statuses::Failed;
-    }
+    // LIGHTNING SETUP END
 
     // SHADERS PROGRAMS
 
-    WorldShaderPrograms.ShaderPrograms[0].ProgramHandle = ShaderProgram;
+    ShaderProgram* Shader = &WorldShaderPrograms.ShaderPrograms[0];
 
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[0].Location       = TransformLocation;
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[0].UniformType    = ShaderUniformType::Matrix4f;
+    Shader->Type = ShaderProgramTypes::StaticObjectShader;
 
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[1].Location       = ColorMultiplyerLocation;
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[1].UniformType    = ShaderUniformType::Vector3f;
+    ShaderSetupOption ShaderSetups[2] = {};
 
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[2].Location       = SamplerLocation;
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[2].UniformType    = ShaderUniformType::Value1i;
+    ShaderSetups[0].LoadFromFile    = 1;
+    
+    ShaderSetups[0].FileName        = "data/shaders/common_object_shader.vs";
+    ShaderSetups[0].Type            = ShaderType::VertexShader;
 
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[3].Location       = BasicLightColor;
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[3].UniformType    = ShaderUniformType::Vector3f;
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[3].Light          = 1;
+    ShaderSetups[1].LoadFromFile    = 1;
 
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[4].Location       = BasicLightAmbientIntensity;
-    WorldShaderPrograms.ShaderPrograms[0].Shaders[4].UniformType    = ShaderUniformType::Value1f;
+    ShaderSetups[1].FileName        = "data/shaders/common_object_shader.fs";
+    ShaderSetups[1].Type            = ShaderType::FragmentShader;
 
-    WorldShaderPrograms.ShaderPrograms[0].ShadersAmount             = 5;
+    SetupShader(Platform, Shader, ShaderSetups, 2);
 
-    // AMOUNT OF PROGRAMS
-    WorldShaderPrograms.ProgramsAmount = 1;
+    StaticObjectRenderingShader_Setup *Setup = &Shader->Setup.ShaderSetup.StaticObjectShader;
+
+    Setup->AmbLight     = WorldAmbientLight;
+    Setup->DirLight     = WorldDirectionLight;
+    Setup->PerspProj    = WorldObjectsRendererContext.PerspectiveProjection;
 
     // SHADERS PROGRAMS END
 
@@ -1242,7 +1169,7 @@ Statuses WorldPrepare()
     WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile.TextureCoord = (Vec2*)VirtualAlloc(0, sizeof(Vec2) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile.Indices = (u32*)VirtualAlloc(0, sizeof(u32) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
-    LoadObjFile("data/obj/cuber_textured.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile);
+    LoadObjFile("data/obj/cuber_textured_normals.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile);
     LoadObjFile("data/obj/cube.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile);
 
     LoadObjectToHardware(&WorldObjectsRendererContext.ObjectsRenderingContext[0].Buffers, &WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile);
@@ -1251,24 +1178,10 @@ Statuses WorldPrepare()
     WorldObjectsRendererContext.ObjectsRenderingContext[0].ShaderProgramIndex = 0;
     WorldObjectsRendererContext.ObjectsRenderingContext[1].ShaderProgramIndex = 0;
 
-    // TODO (ismail): move perspective projection matrix calculs to another place
-    WorldObjectsRendererContext.PerspectiveProjection = MakePerspectiveProjection(60.0f, Win32App.ScreenOpt.AspectRatio, 0.01f, 50.0f);
-
     // AMOUNT OF OBJECTS MESHES
     WorldObjectsRendererContext.ObjectsAmount = 2;
 
     // OBJ FILE LOADING END
-
-    // LIGHTNING SETUP
-
-    WorldLight.Ambient.LightColor       = { 1.0f, 1.0f, 1.0f };
-    WorldLight.Ambient.AmbientIntensity = 1.0f;
-
-    WorldLight.Light.LightDirection = { -1.0f, -1.0f, -1.0f };
-    WorldLight.Light.LightColor     = { 1.0f, 1.0f, 1.0f };
-    WorldLight.Light.LightItensity  = 1.0f;
-
-    // LIGHTNING SETUP END
 
     // SCENE OBJECTS
 
@@ -1297,8 +1210,9 @@ Statuses WorldPrepare()
     WorldObjects.Objects[PLAYER_INDEX].Movement.Speed = 5.0f;
     WorldObjects.Objects[PLAYER_INDEX].Movement.RotationDelta = 1.0f;
 
-    WorldObjects.Objects[PLAYER_INDEX].Material.Texture = TextObj;
-    WorldObjects.Objects[PLAYER_INDEX].Material.FlatColor = { 0.0f, 0.0f, 1.0f };
+    WorldObjects.Objects[PLAYER_INDEX].Material.Texture             = TextObj;
+    WorldObjects.Objects[PLAYER_INDEX].Material.FlatColor           = { 1.0f, 1.0f, 1.0f };
+    WorldObjects.Objects[PLAYER_INDEX].Material.RenderInNextFrame   = 1;
 
     WorldObjects.Objects[PLAYER_INDEX].RendererContextIndex = 0;
 
@@ -1321,8 +1235,9 @@ Statuses WorldPrepare()
     WorldObjects.Objects[1].BoundingVolume.VolumeData.OrientedBox.Extens.y = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
     WorldObjects.Objects[1].BoundingVolume.VolumeData.OrientedBox.Extens.z = 1.0f; // TODO (ismail): initial AABB compute need to be implemented
 
-    WorldObjects.Objects[1].Material.Texture = TextObj;
-    WorldObjects.Objects[1].Material.FlatColor = { 1.0f, 1.0f, 1.0f };
+    WorldObjects.Objects[1].Material.Texture            = TextObj;
+    WorldObjects.Objects[1].Material.FlatColor          = { 1.0f, 1.0f, 1.0f };
+    WorldObjects.Objects[1].Material.RenderInNextFrame  = 1;
 
     WorldObjects.Objects[1].Movement.Speed = 5.0f;
     WorldObjects.Objects[1].Movement.RotationDelta = 1.0f;
@@ -1432,7 +1347,7 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
     AssetsLoadVars.AssetsLoaderCacheSize = 100000;
     AssetsLoaderInit(&WinPlatform, &AssetsLoadVars);
 
-    if ( (InitializationStatuses = WorldPrepare()) != Statuses::Success) {
+    if ( (InitializationStatuses = WorldPrepare(&WinPlatform)) != Statuses::Success) {
         // TODO (ismail): diagnostics things?
         return InitializationStatuses;
     }

@@ -4,7 +4,7 @@
 #include <inttypes.h>
 
 typedef float       real32;
-typedef double      real64; 
+typedef double      real64;
 
 typedef int8_t      i8;
 typedef int16_t     i16;
