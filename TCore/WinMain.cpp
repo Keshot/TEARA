@@ -1112,7 +1112,7 @@ Statuses WorldPrepare(EnginePlatform *Platform)
     // LIGHTNING SETUP
 
     WorldAmbientLight.Color        = { 1.0f, 1.0f, 1.0f };
-    WorldAmbientLight.Intensity    = 0.1f;
+    WorldAmbientLight.Intensity    = 0.05f;
 
     WorldDirectionLight.Direction   = { 0.0f, 0.0f, 1.0f };
     WorldDirectionLight.Color       = { 1.0f, 1.0f, 1.0f };

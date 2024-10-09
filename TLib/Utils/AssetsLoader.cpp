@@ -25,9 +25,9 @@ struct MeshCache {
 
 MeshCache MeshLoadCache;
 
-static inline bool32 FindInCacheArray(u32 *Array, u32 ArraySize, u32 FindingIndex, u32 *RealIndex)
+static inline bool32 FindInCacheArray(u32 *Array, u32 ArraySize, u32 Offset, u32 FindingIndex, u32 *RealIndex)
 {
-    for (u32 Index = 0; Index < ArraySize; ++Index) {
+    for (u32 Index = Offset; Index < ArraySize; ++Index) {
         if (Array[Index] == FindingIndex) {
             *RealIndex = Index;
             return 1;
@@ -43,30 +43,36 @@ static bool32 FindInCache(MeshCache *ThreadCache, u32 PosIndex, u32 TextureIndex
     u32*            CurrentArray;
     bool32          IndexFound  = 0;
     u32             FoundIndex  = 0;
+    u32             Offset = 0;
     MeshCacheData*  CacheData   = &ThreadCache->Cache[PosIndex - 1]; // NOTE (ismail): -1 because position index starts from 1
 
     if (CacheData->Amount == 0) {
         return 0;
     }
 
-    if (TextureIndex > 0) {
-        IndexFound = FindInCacheArray(CacheData->TextureIndex, CacheData->Amount, TextureIndex, &FoundIndex);
-        if (!IndexFound) {
-            return 0;
-        }
-    }
-
-    if (NormalIndex > 0) {
-        if (!IndexFound) {
-            IndexFound = FindInCacheArray(CacheData->NormalIndex, CacheData->Amount, NormalIndex, &FoundIndex);
-
+    for (;;) {
+        if (TextureIndex > 0) {
+            IndexFound = FindInCacheArray(CacheData->TextureIndex, CacheData->Amount, Offset, TextureIndex, &FoundIndex);
             if (!IndexFound) {
                 return 0;
             }
         }
-        else if (CacheData->NormalIndex[FoundIndex] != NormalIndex) {
-            return 0;
+
+        if (NormalIndex > 0) {
+            if (!IndexFound) {
+                IndexFound = FindInCacheArray(CacheData->NormalIndex, CacheData->Amount, Offset, NormalIndex, &FoundIndex);
+
+                if (!IndexFound) {
+                    return 0;
+                }
+            }
+            else if (CacheData->NormalIndex[FoundIndex] != NormalIndex) {
+                Offset = FoundIndex + 1;
+                continue;
+            }
         }
+
+        break;
     }
 
     *ResultIndex = CacheData->RealIndex[FoundIndex];
