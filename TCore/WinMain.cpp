@@ -1112,11 +1112,11 @@ Statuses WorldPrepare(EnginePlatform *Platform)
     // LIGHTNING SETUP
 
     WorldAmbientLight.Color        = { 1.0f, 1.0f, 1.0f };
-    WorldAmbientLight.Intensity    = 0.02f;
+    WorldAmbientLight.Intensity    = 0.1f;
 
     WorldDirectionLight.Direction   = { 0.0f, 0.0f, 1.0f };
     WorldDirectionLight.Color       = { 1.0f, 1.0f, 1.0f };
-    WorldDirectionLight.Intensity   = 0.65f;
+    WorldDirectionLight.Intensity   = 0.75f;
 
     // LIGHTNING SETUP END
 
@@ -1169,8 +1169,16 @@ Statuses WorldPrepare(EnginePlatform *Platform)
     WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile.TextureCoord = (Vec2*)VirtualAlloc(0, sizeof(Vec2) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile.Indices = (u32*)VirtualAlloc(0, sizeof(u32) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
-    LoadObjFile("data/obj/cuber_textured_normals.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile);
-    LoadObjFile("data/obj/cube.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile);
+    ObjFileLoaderFlags LoadFlags {
+        /*GenerateSmoothNormals*/   1,  
+        /*SelfGenerateNormals*/     0
+    };
+
+    LoadObjFile("data/obj/cuber_textured_normals.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile, LoadFlags);
+
+    LoadFlags.GenerateSmoothNormals = 0;
+
+    LoadObjFile("data/obj/cube.obj", &WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile, LoadFlags);
 
     LoadObjectToHardware(&WorldObjectsRendererContext.ObjectsRenderingContext[0].Buffers, &WorldObjectsRendererContext.ObjectsRenderingContext[0].ObjectFile);
     LoadObjectToHardware(&WorldObjectsRendererContext.ObjectsRenderingContext[1].Buffers, &WorldObjectsRendererContext.ObjectsRenderingContext[1].ObjectFile);

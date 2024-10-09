@@ -35,8 +35,13 @@ struct TextureFile {
 
 void AssetsLoaderInit(EnginePlatform *PlatformContext, AssetsLoaderVars *LoaderVars);
 
+struct ObjFileLoaderFlags {
+    unsigned int GenerateSmoothNormals  : 1;
+    unsigned int SelfGenerateNormals    : 1;
+};
+
 // NOTE (ismail): for now in File variable we must store actual buffers outside of function
-Statuses LoadObjFile(const char *Path, ObjFile *ReadedFile);
+Statuses LoadObjFile(const char *Path, ObjFile *ReadedFile, ObjFileLoaderFlags Flags);
 
 Statuses LoadTextureFile(const char *Path, TextureFile *ReadedFile);
 void FreeTextureFile(TextureFile *ReadedFile);

@@ -10,14 +10,16 @@
 #endif
 
 struct MeshCacheData {
-    u32 TextureIndex[TEARA_MAXIMUM_NEIGHBOURS];
-    u32 NormalIndex[TEARA_MAXIMUM_NEIGHBOURS];
-    u32 RealIndex[TEARA_MAXIMUM_NEIGHBOURS];
-    u32 Amount;
+    u32     TextureIndex[TEARA_MAXIMUM_NEIGHBOURS];
+    u32     NormalIndex[TEARA_MAXIMUM_NEIGHBOURS];
+    u32     RealIndex[TEARA_MAXIMUM_NEIGHBOURS];
+    Vec3    SmoothNormals;
+    u32     Amount;
 };
 
 struct MeshCache {
     MeshCacheData*  Cache;
+    u32*            NormalsCache;
     u32             CacheSize;
 };
 
@@ -86,30 +88,39 @@ static inline void AddInCache(MeshCache *ThreadCache, u32 PosIndex, u32 TextureI
     ++CacheData->Amount;
 }
 
+static inline void AddNormalInCache(MeshCache *ThreadCache, u32 PosIndex, Vec3 *Normal)
+{
+    Assert(ThreadCache->CacheSize > (PosIndex - 1));
+
+    MeshCacheData *CacheData = &ThreadCache->Cache[PosIndex - 1];
+
+    CacheData->SmoothNormals += *Normal;
+}
+
 static inline void RenewCache(MeshCache *ThreadCache)
 {
     memset((void*)ThreadCache->Cache, 0, ThreadCache->CacheSize);
+    memset((void*)ThreadCache->NormalsCache, 0, ThreadCache->CacheSize);
 }
 
 void AssetsLoaderInit(EnginePlatform *PlatformContext, AssetsLoaderVars *LoaderVars)
 {
     stbi_set_flip_vertically_on_load_thread(1);
 
-    MeshLoadCache.Cache     = (MeshCacheData*)PlatformContext->AllocMem(sizeof(MeshCacheData) * LoaderVars->AssetsLoaderCacheSize);
-    MeshLoadCache.CacheSize = LoaderVars->AssetsLoaderCacheSize;
+    MeshLoadCache.Cache         = (MeshCacheData*)PlatformContext->AllocMem(sizeof(MeshCacheData) * LoaderVars->AssetsLoaderCacheSize);
+    MeshLoadCache.NormalsCache  = (u32*)PlatformContext->AllocMem(sizeof(u32) * LoaderVars->AssetsLoaderCacheSize);
+    MeshLoadCache.CacheSize     = LoaderVars->AssetsLoaderCacheSize;
 
     RenewCache(&MeshLoadCache);
 }
 
 // NOTE (ismail): for now in File variable we must store actual buffers outside of function
-Statuses LoadObjFile(const char *Path, ObjFile *File)
+Statuses LoadObjFile(const char *Path, ObjFile *File, ObjFileLoaderFlags Flags)
 {
     // NOTE (ismail): need to hug Alina 
     // NOTE (ismail): for now we use fast_obj in oreder to read .obj but in future i prefere to use own .obj parser
     // fast_obj set in every buffer (position, textcoord, normals) a dummy entry so we skip first elemen of every array
-    u32     PosCount        = 0;
-    u32     NormCount       = 0;
-    u32     TexCoordCount   = 0;
+    u32     ElementsCount   = 0;
     u32     IndicesCount    = 0;
 
     Vec3 *Pos       = File->Positions;
@@ -131,39 +142,59 @@ Statuses LoadObjFile(const char *Path, ObjFile *File)
 
     fastObjIndex *LoadIndices   = LoadedMesh->indices;
 
-    for (u32 Index = 0; Index < LoadedMesh->index_count; ++Index) {
-        u32 PosIndex        = LoadIndices[Index].p;
-        u32 TextIndex       = LoadIndices[Index].t;
-        u32 NormalsIndex    = LoadIndices[Index].n;
+    for (; IndicesCount < LoadedMesh->index_count; ++IndicesCount) {
+        u32 PosIndex        = LoadIndices[IndicesCount].p;
+        u32 TextIndex       = LoadIndices[IndicesCount].t;
+        u32 NormalsIndex    = LoadIndices[IndicesCount].n;
         u32 FoundIndex;
 
         bool32 Found = FindInCache(&MeshLoadCache, PosIndex, TextIndex, NormalsIndex, &FoundIndex);
 
         if (Found) {
-            Indices[IndicesCount++] = FoundIndex;
+            Indices[IndicesCount] = FoundIndex;
         }
         else {
-            Indices[IndicesCount++]     = PosCount;
-            Pos[PosCount++]             = *((Vec3*)LoadPos + PosIndex);
+            Indices[IndicesCount]   = ElementsCount;
+            Pos[ElementsCount]      = *((Vec3*)LoadPos + PosIndex);
 
             if (NormalsIndex > 0) { // NOTE (ismail): quick fix but later i need make up something
-                Normals[NormCount++]   = *((Vec3*)LoadNormals + NormalsIndex);   
+                if (Flags.GenerateSmoothNormals) {
+                    MeshLoadCache.NormalsCache[ElementsCount] = PosIndex;
+
+                    Vec3 *Normal = ((Vec3*)LoadNormals + NormalsIndex);
+                    AddNormalInCache(&MeshLoadCache, PosIndex, Normal);
+                }
+                else {
+                    Normals[ElementsCount]  = *((Vec3*)LoadNormals + NormalsIndex);
+                }
             }
 
             if (TextIndex > 0) { // NOTE (ismail): quick fix but later i need make up something
-                TexCoord[TexCoordCount++]   = *((Vec2*)LoadTexCoord + TextIndex);   
+                TexCoord[ElementsCount] = *((Vec2*)LoadTexCoord + TextIndex);   
             }
 
-            AddInCache(&MeshLoadCache, PosIndex, TextIndex, NormalsIndex, Index);
+            AddInCache(&MeshLoadCache, PosIndex, TextIndex, NormalsIndex, ElementsCount);
+
+            ++ElementsCount;
+        }
+    }
+
+    if (Flags.GenerateSmoothNormals) {
+        for (u32 Index = 0; Index < ElementsCount; ++Index) {
+            MeshLoadCache.Cache[MeshLoadCache.NormalsCache[Index] - 1].SmoothNormals.Normalize();
+        }
+
+        for (u32 Index = 0; Index < ElementsCount; ++Index) {
+            Normals[Index] = MeshLoadCache.Cache[MeshLoadCache.NormalsCache[Index] - 1].SmoothNormals;
         }
     }
 
     fast_obj_destroy(LoadedMesh);
 
     File->IndicesCount      = IndicesCount;
-    File->PositionsCount    = PosCount;
-    File->NormalsCount      = NormCount;
-    File->TexturesCount     = TexCoordCount;
+    File->PositionsCount    = ElementsCount;
+    File->NormalsCount      = ElementsCount;
+    File->TexturesCount     = ElementsCount;
 
     RenewCache(&MeshLoadCache);
 
