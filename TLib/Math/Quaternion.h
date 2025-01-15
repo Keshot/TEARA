@@ -1,7 +1,7 @@
-#ifndef _TEARA_MATH_QUATERNION_H_
-#define _TEARA_MATH_QUATERNION_H_
+#ifndef _TEARA_LIB_MATH_QUATERNION_H_
+#define _TEARA_LIB_MATH_QUATERNION_H_
 
-#include "CoreMath.h"
+#include "TLib/Math/Math.h"
 
 struct Quaternion {
     real32 w;

@@ -1,5 +1,5 @@
-#include "TCore/Engine.h"
-#include "TCore/OpenGL/WinOpenGL.h"
+#include "TCore/OpenGL/WinOGL.h"
+#include "TLib/Core/Engine.h"
 #include "TLib/Math/Vector.h"
 #include "TLib/Math/Matrix.h"
 #include "TLib/Utils/AssetsLoader.h"

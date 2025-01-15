@@ -1,8 +1,8 @@
-#ifndef _TEARA_MATH_UTILS_H_
-#define _TEARA_MATH_UTILS_H_
+#ifndef _TEARA_LIB_MATH_UTILS_H_
+#define _TEARA_LIB_MATH_UTILS_H_
 
 // TODO (ismail): my own SIMD math function or instead my own use SDL
-#include <math.h>
+#include <corecrt_math.h>
 #include <stdlib.h>
 
 #include "TLib/Utils/Types.h"
@@ -89,6 +89,13 @@ inline real32 WrapPi(real32 Theta)
     }
 
     return Theta;
+}
+
+inline i32 SafeTruncateI64(i64 Val)
+{
+    Assert(Val <= 0xFFFFFFFF);
+    i32 Result = (i32)Val;
+    return Result;
 }
 
 #endif

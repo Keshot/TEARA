@@ -1,8 +1,8 @@
-#ifndef _TEARA_MATH_MATRIX_H_
-#define _TEARA_MATH_MATRIX_H_
+#ifndef _TEARA_LIB_MATH_MATRIX_H_
+#define _TEARA_LIB_MATH_MATRIX_H_
 
-#include "CoreMath.h"
-#include "Vector.h"
+#include "TLib/Math/Math.h"
+#include "TLib/Math/Vector.h"
 
 // TODO(ismail): convert all to SIMD
 // TODO(ismail): add tests

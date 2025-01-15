@@ -1,9 +1,9 @@
-#ifndef _TEARA_MATH_MATRIX_TRANSFORMATION_H_
-#define _TEARA_MATH_MATRIX_TRANSFORMATION_H_
+#ifndef _TEARA_LIB_MATH_MATRIX_TRANSFORMATION_H_
+#define _TEARA_LIB_MATH_MATRIX_TRANSFORMATION_H_
 
-#include "CoreMath.h"
-#include "Matrix.h"
-#include "Vector.h"
+#include "TLib/Math/Math.h"
+#include "TLib/Math/Matrix.h"
+#include "TLib/Math/Vector.h"
 
 struct Rotation {
     real32 Heading;

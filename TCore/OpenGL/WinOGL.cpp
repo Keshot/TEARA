@@ -1,4 +1,4 @@
-#include "WinOpenGL.h"
+#include "WinOGL.h"
 
 TEARA_glCreateContextAttribsARB      tglCreateContextAttribsARB;
 TEARA_glChoosePixelFormatARB         tglChoosePixelFormatARB;

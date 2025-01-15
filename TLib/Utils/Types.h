@@ -1,5 +1,5 @@
-#ifndef _TEARA_MATH_TYPES_H_
-#define _TEARA_MATH_TYPES_H_
+#ifndef _TEARA_LIB_UTILS_TYPES_H_
+#define _TEARA_LIB_UTILS_TYPES_H_
 
 #include <inttypes.h>
 

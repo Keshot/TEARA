@@ -1,7 +1,7 @@
-#ifndef _TEARA_MATH_VECTOR_H_
-#define _TEARA_MATH_VECTOR_H_
+#ifndef _TEARA_LIB_MATH_VECTOR_H_
+#define _TEARA_LIB_MATH_VECTOR_H_
 
-#include "CoreMath.h"
+#include "TLib/Math/Math.h"
 
 #define VECTOR_EPSILON 0.001f
 

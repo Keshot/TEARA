@@ -2,10 +2,10 @@
 #include <windowsx.h>
 #include <stdio.h>
 
-#include "TCore/Engine.h"
+#include "TLib/Core/Engine.h"
 #include "TLib/Utils/Types.h"
 #include "TLib/Math/MatrixTransform.h"
-#include "TLib/Math/CoreMath.h"
+#include "TLib/Math/Math.h"
 #include "TLib/Physics/CollisionDetection.h"
 #include "TLib/Utils/AssetsLoader.h"
 #include "TCore/Rendering/Renderer.cpp"
@@ -1114,7 +1114,7 @@ Statuses WorldPrepare(EnginePlatform *Platform)
     WorldAmbientLight.Color        = { 1.0f, 1.0f, 1.0f };
     WorldAmbientLight.Intensity    = 0.05f;
 
-    WorldDirectionLight.Direction   = { 0.0f, 0.0f, 1.0f };
+    WorldDirectionLight.Direction   = { 0.0f, -0.707f, 0.707f };
     WorldDirectionLight.Color       = { 1.0f, 1.0f, 1.0f };
     WorldDirectionLight.Intensity   = 0.75f;
 
