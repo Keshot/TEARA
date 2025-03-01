@@ -321,6 +321,10 @@ inline void Mat3x3::Transpose()
     tmp = Matrix[1][2];
     Matrix[1][2] = Matrix[2][1];
     Matrix[2][1] = tmp;
+
+    // | 1  2  3 |
+    // | 1  2  3 |
+    // | 1  2  3 |
 }
 
 struct Mat4x4 {

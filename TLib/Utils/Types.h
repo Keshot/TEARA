@@ -31,6 +31,9 @@ enum Statuses {
     FunctionLoadFailed              = -6,
     GLContextCreateFailed           = -7,
     FileLoadFailed                  = -8,
+    OALOpenDeviceFailed             = -9,
+    OALCreateContextFailed          = -10,
+    OALMakeContextCurrentFailed     = -11
 };
 
 #endif

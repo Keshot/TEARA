@@ -10,6 +10,11 @@
 #include "TLib/Utils/AssetsLoader.h"
 #include "TCore/Rendering/Renderer.cpp"
 
+#include <AL/al.h>
+#include <AL/alc.h>
+#include <AL/alext.h>
+#include "TLib/3rdparty/dr_wav/dr_wav.h"
+
 #ifndef WIN32_CLASS_NAME
     #define WIN32_WINDOW_CLASS_NAME ("TEARA Engine")
 #endif
@@ -142,6 +147,13 @@ TEARA_PLATFORM_ALLOCATE_MEMORY(WinMemoryAllocate)
 {
     Assert(Size > 0);
     return VirtualAlloc(0, Size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+}
+
+TEARA_PLATFORM_RELEASE_MEMORY(WinMemoryRelease)
+{
+    if (Ptr) {
+        VirtualFree(Ptr, 0, MEM_RELEASE);
+    }
 }
 
 TEARA_PLATFORM_FREE_FILE_DATA(WinFreeFileData)
@@ -613,6 +625,7 @@ static Statuses WinCreateWindow()
 static void WinPlatformInit(EnginePlatform *PlatformContext)
 {
     PlatformContext->AllocMem       = &WinMemoryAllocate;
+    PlatformContext->ReleaseMem     = &WinMemoryRelease;
     PlatformContext->ReadFile       = &WinReadFile;
     PlatformContext->FreeFileData   = &WinFreeFileData;
 }
@@ -638,6 +651,112 @@ static Statuses WinInit()
     }
 
     return Statuses::Success;
+}
+
+struct AudioSystemOpenAL {
+    ALCdevice   *Device;
+    ALCcontext  *Context;
+    bool32      FloatFormatPresent;
+};
+
+static void AudioDestroy(AudioSystemOpenAL *AudioSys)
+{
+    if (AudioSys->Context) {
+        alcDestroyContext(AudioSys->Context);
+    }
+    if (AudioSys->Device) {
+        alcCloseDevice(AudioSys->Device);
+    }
+}
+
+static Statuses AudioSystemInit(AudioSystemOpenAL *AudioSys)
+{
+    ALCdevice *Device;
+    ALCcontext *Context;
+
+    Device = alcOpenDevice(NULL);
+    if (!Device) {
+        // error info!
+
+        return Statuses::OALOpenDeviceFailed;
+    }
+
+    Context = alcCreateContext(Device, NULL);
+    if (!Context) {
+        // error info!
+        alcCloseDevice(Device);
+
+        return Statuses::OALCreateContextFailed;
+    }
+
+    if (alcMakeContextCurrent(Context) == ALC_FALSE) {
+        // error info!
+        alcDestroyContext(Context);
+        alcCloseDevice(Device);
+
+        return Statuses::OALMakeContextCurrentFailed;
+    }
+
+    AudioSys->Device                = Device;
+    AudioSys->Context               = Context;
+    AudioSys->FloatFormatPresent    = alIsExtensionPresent("AL_EXT_FLOAT32");
+
+    return Statuses::Success;
+}
+
+u32 LoadSound(const char *FileName, EnginePlatform *Platform, bool32 FloatFormatPresent)
+{
+    drwav WavFileInfo   = {};
+    void *SoundBuffer   = NULL;
+    i32 Err             = 0;
+    u32 Buffer          = 0;
+    u64 TotalBytes      = 0;
+    u64 BlockAlign      = 0;
+    i32 SoundFormat     = 0;
+
+    if (!drwav_init_file(&WavFileInfo, FileName, NULL)) {
+        // error handling
+        Assert(false); // can't read file
+
+        return 0;
+    }
+
+    if (WavFileInfo.fmt.formatTag != DR_WAVE_FORMAT_PCM) {
+        Assert(false); // need to add support for format
+
+    }
+
+    if (FloatFormatPresent) {
+        BlockAlign      = WavFileInfo.channels * 4; // cuz we read 4 bytes numbers then we need to align it correct
+        TotalBytes      = BlockAlign * WavFileInfo.totalPCMFrameCount; // check is it correct number?
+        SoundFormat     = AL_FORMAT_STEREO_FLOAT32;
+
+        SoundBuffer = Platform->AllocMem(TotalBytes);
+
+        drwav_uint64 Read = drwav_read_pcm_frames_f32(&WavFileInfo, WavFileInfo.totalPCMFrameCount, (real32*)SoundBuffer);
+
+        if (Read != WavFileInfo.totalPCMFrameCount) {
+            Assert(false); // we need to read whole file now
+        }
+    }
+    else {
+        Assert(false); // not present now mb later?
+    }
+
+    alGenBuffers(1, &Buffer);
+
+    alBufferData(Buffer, SoundFormat, SoundBuffer, TotalBytes, WavFileInfo.fmt.sampleRate);
+
+    Platform->ReleaseMem(SoundBuffer);
+    drwav_uninit(&WavFileInfo);
+
+    Err = alGetError();
+    if(Err != AL_NO_ERROR) {
+        // error handling
+        Assert(false);
+    }
+
+    return Buffer;
 }
 
 void CameraTransform(GameInput * Inputs)
@@ -1328,12 +1447,15 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
 {
     AssetsLoaderVars    AssetsLoadVars;
     EnginePlatform      WinPlatform;
+    AudioSystemOpenAL   Audio;
     Statuses            InitializationStatuses;
     MSG                 Message;
 
     LARGE_INTEGER PerfomanceCountFrequencyResult;
     QueryPerformanceFrequency(&PerfomanceCountFrequencyResult);
     i64 PerfCountFrequency = PerfomanceCountFrequencyResult.QuadPart;
+
+    WinPlatformInit(&WinPlatform);
 
     Win32App.Running        = true;
     Win32App.AppInstance    = Instance;
@@ -1348,7 +1470,10 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
         return InitializationStatuses;
     }
 
-    WinPlatformInit(&WinPlatform);
+    if ( (InitializationStatuses = AudioSystemInit(&Audio)) != Statuses::Success) {
+        // TODO (ismail): diagnostics things?
+        return InitializationStatuses;
+    }
 
     RendererInit();
 
@@ -1363,6 +1488,17 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
     LARGE_INTEGER LastCounter;
     QueryPerformanceCounter(&LastCounter);
     u64 LastCycleCount = __rdtsc();
+
+    u32 SoundHandle = LoadSound("data/sfx/spell.wav", &WinPlatform, Audio.FloatFormatPresent);
+
+    u32 Source = 0;
+    alGenSources(1, &Source);
+    alSourcei(Source, AL_BUFFER, (ALint)SoundHandle);
+
+    i32 Err = alGetError();
+
+    alSourcePlay(Source);
+    Err = alGetError();
 
     while (Win32App.Running) {
         WinProcessMessages();

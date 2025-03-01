@@ -13,6 +13,9 @@ struct File {
 #define TEARA_PLATFORM_ALLOCATE_MEMORY(Name) void* (Name)(u64 Size)
 typedef TEARA_PLATFORM_ALLOCATE_MEMORY(*TEARA_PlatformAllocateMemory);
 
+#define TEARA_PLATFORM_RELEASE_MEMORY(Name) void (Name)(void *Ptr)
+typedef TEARA_PLATFORM_RELEASE_MEMORY(*TEARA_PlatformReleaseMemory);
+
 #define TEARA_PLATFORM_READ_FILE(Name) File (Name)(const char *FileName)
 typedef TEARA_PLATFORM_READ_FILE(*TEARA_PlatformReadFile);
 
@@ -21,6 +24,7 @@ typedef TEARA_PLATFORM_FREE_FILE_DATA(*TEARA_PlatformFreeFileData);
 
 struct EnginePlatform {
     TEARA_PlatformAllocateMemory    AllocMem;
+    TEARA_PlatformReleaseMemory     ReleaseMem;
     TEARA_PlatformReadFile          ReadFile;
     TEARA_PlatformFreeFileData      FreeFileData;
 };
