@@ -13,6 +13,7 @@ struct Rotation {
 
 // TODO (ismail): refactor this change separate cos sin on SineCosine
 // TODO (ismail): add canonical Euler function
+// TODO (ismail): rotation about an arbitrary axis
 
 inline Mat4x4 MakeRotation4x4(Rotation *Rotation)
 {
