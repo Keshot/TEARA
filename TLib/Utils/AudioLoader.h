@@ -2,7 +2,6 @@
 #define _TEARA_LIB_UTILS_AUDIO_LOADER_H_
 
 #include "TLib/Utils/Types.h"
-#include "TLib/Core/Engine.h"
 
 enum AudioFormat {
     WAV,

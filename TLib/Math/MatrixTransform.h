@@ -31,7 +31,7 @@ inline Mat4x4 MakeRotation4x4(Rotation *Rotation)
     }
     else if (Rotation->Pitch >= 90.0f) {
         Pitch = 90.0f;
-        Bank = 0;
+        Bank = 0.0f;
     }
     else {
         Pitch = Rotation->Pitch;

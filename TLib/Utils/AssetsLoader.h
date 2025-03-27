@@ -1,7 +1,7 @@
 #ifndef _TEARA_LIB_UTILS_ASSETS_LOADER_H_
 #define _TEARA_LIB_UTILS_ASSETS_LOADER_H_
 
-#include "TLib/Core/Engine.h"
+#include "TCore/EnginePlatform.h"
 #include "TLib/Utils/Types.h"
 #include "TLib/Math/Vector.h"
 
@@ -33,7 +33,7 @@ struct TextureFile {
 
 // ASSETS TYPES END
 
-void AssetsLoaderInit(EnginePlatform *PlatformContext, AssetsLoaderVars *LoaderVars);
+void AssetsLoaderInit(Platform *PlatformContext, AssetsLoaderVars *LoaderVars);
 
 struct ObjFileLoaderFlags {
     unsigned int GenerateSmoothNormals  : 1;

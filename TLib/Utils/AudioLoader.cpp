@@ -1,5 +1,6 @@
 #include "AudioLoader.h"
 #include <AL/alext.h>
+#include "TLib/Utils/Debug.h"
 
 #define DR_WAV_IMPLEMENTATION
 #include "TLib/3rdparty/audio/dr_wav.h"

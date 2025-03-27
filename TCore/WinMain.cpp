@@ -2,14 +2,12 @@
 #include <windowsx.h>
 #include <stdio.h>
 
-#include "TLib/Core/Engine.h"
 #include "TLib/Utils/Types.h"
-#include "TLib/Math/MatrixTransform.h"
 #include "TLib/Math/Math.h"
 #include "TLib/Physics/CollisionDetection.h"
 #include "TLib/Utils/AssetsLoader.h"
 #include "TLib/Audio/OpenALSoft/OpenALAudioSystem.h"
-#include "TCore/Rendering/Renderer.cpp"
+#include "Game.cpp"
 
 #ifndef WIN32_CLASS_NAME
     #define WIN32_WINDOW_CLASS_NAME ("TEARA Engine")
@@ -59,6 +57,7 @@
 #define WIN_Y_KEY_CODE              (0x59)
 #define WIN_Z_KEY_CODE              (0x5A)
 
+#if OLD_CODE
 struct WorldTransform {
     Vec3        Position;
     Rotation    Rotate;
@@ -75,6 +74,7 @@ struct ObjectMaterial {
     Vec3            FlatColor;
     bool32          RenderInNextFrame;
 };
+
 
 struct WorldObject {
     WorldTransform          Transform;
@@ -100,26 +100,20 @@ struct SceneShaderPrograms {
     i64                      ProgramsAmount;
 };
 
+
 struct Camera {
     WorldTransform      Transform;
     MovementComponent   Movement;
 };
 
-struct ScreenOptions {
-    i32     Width;
-    i32     Height;
-    real32  AspectRatio;
-    i32     CenterW;
-    i32     CenterH;
-};
+#endif
 
-struct Win32Context {
+struct Win32Platform {
     HINSTANCE       AppInstance;
     HWND            Window;
     HDC             WindowDeviceContext;
     HGLRC           GLDeviceContext;
-    bool32          Running;
-    ScreenOptions   ScreenOpt;
+    Platform        EnginePlatformDetails;
 };
 
 // TODO (ismail): check bug with camera when screen scale is biger than 100%
@@ -129,14 +123,17 @@ enum {
     WINDOW_HEIGHT = 900
 };
 
-static Win32Context             Win32App;
+static Win32Platform            Win32App;
+#if OLD_CODE
 static SceneObjects             WorldObjects;
 static SceneObjectsRendering    WorldObjectsRendererContext;
 static SceneShaderPrograms      WorldShaderPrograms;
+
 static AmbientLight             WorldAmbientLight;
 static DirectionLight           WorldDirectionLight;
+
 static Camera                   PlayerCamera;
-static GameInput                Inputs;
+#endif
 static real32                   DeltaTime;
 
 TEARA_PLATFORM_ALLOCATE_MEMORY(WinMemoryAllocate)
@@ -244,7 +241,7 @@ static Statuses WinLoadOpenGLExtensions(const char *DllName)
     i32                     SuggestedPixelFormatIndex;
     PIXELFORMATDESCRIPTOR   SuggestedPixelFormat, DesiredPixelFormat;
     HWND                    FakeWindow;
-
+    
     FakeWindow = CreateWindowA(WIN32_FAKE_CLASS_NAME, 
                                GAME_NAME, 
                                WS_OVERLAPPEDWINDOW, 
@@ -332,7 +329,7 @@ static Statuses WinInitOpenGLContext()
     }
 
     // TODO (ismail): print opengl version to logs
-    // const GLubyte *Version = glGetString(GL_VERSION);
+    const GLubyte *Version = glGetString(GL_VERSION);
 
     // NOTE (ismail): we do not need call a ReleaseDC because our window class was created with CS_OWNDC
 
@@ -350,7 +347,7 @@ static LRESULT WinMainCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM 
     switch (Message) {
         case WM_CLOSE: {
             // TODO(ismail): handle this with a message to the user, may be some pop up about save information or something?
-            Win32App.Running = false;
+            Win32App.EnginePlatformDetails.Running = false;
             
             OutputDebugStringA("WM_CLOSE\n"); // TODO(ismail): change it on to some log in file or console, maybe only if we build in debug mode?
         } break;
@@ -361,7 +358,7 @@ static LRESULT WinMainCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM 
         
         case WM_DESTROY: {
             // TODO(ismail): hande this as an error, recreate window?
-            Win32App.Running = false;
+            Win32App.EnginePlatformDetails.Running = false;
 
             OutputDebugStringA("WM_DESTROY\n"); // TODO(ismail): change it on to some log in file or console, maybe only if we build in debug mode?
         } break;
@@ -411,7 +408,7 @@ void WinProcessMessages()
     while (PeekMessageA(&Message, Win32App.Window, 0, 0, PM_REMOVE)) {
         switch (Message.message) {
             case WM_QUIT: {
-                Win32App.Running = false;
+                Win32App.EnginePlatformDetails.Running = false;
             } break;
 
             // NOTE(ismail): check what it mean KEYDOWN and KEYUP and what flags can be usefull 
@@ -430,66 +427,66 @@ void WinProcessMessages()
                     // NOTE(ismail) may be it will be better if i will be use actual virtual codes instead of ascii code
                     switch (VirtualKeyCode) {
                         case WIN_W_KEY_CODE: {
-                            WinProcessKey(&Inputs.WButton, NewState);
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.WButton, NewState);
                         } break;
 
                         case WIN_S_KEY_CODE: {
-                            WinProcessKey(&Inputs.SButton, NewState);
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.SButton, NewState);
                         } break;
                     
                         case WIN_A_KEY_CODE: {
-                            WinProcessKey(&Inputs.AButton, NewState);
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.AButton, NewState);
                         } break;
 
                         case WIN_D_KEY_CODE: {
-                            WinProcessKey(&Inputs.DButton, NewState);
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.DButton, NewState);
                         } break;
 
                         case WIN_Q_KEY_CODE: {
-                            WinProcessKey(&Inputs.QButton, NewState);
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.QButton, NewState);
                         } break;
                         
                         case WIN_E_KEY_CODE: {
-                            WinProcessKey(&Inputs.EButton, NewState);
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.EButton, NewState);
                         } break;
 
                         case WIN_I_KEY_CODE: {
-                            WinProcessKey(&Inputs.IButton, NewState);
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.IButton, NewState);
                         } break;
 
                         case WIN_K_KEY_CODE: {
-                            WinProcessKey(&Inputs.KButton, NewState);
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.KButton, NewState);
                         } break;
 
                         case WIN_L_KEY_CODE: {
-                            WinProcessKey(&Inputs.LButton, NewState);
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.LButton, NewState);
                         } break;
 
                         case WIN_J_KEY_CODE: {
-                            WinProcessKey(&Inputs.JButton, NewState);
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.JButton, NewState);
                         } break;
 
                         case WIN_ARROW_UP_KEY_CODE: {
-                            WinProcessKey(&Inputs.ArrowUp, NewState);
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.ArrowUp, NewState);
                         } break;
 
                         case WIN_ARROW_DOWN_KEY_CODE: {
-                            WinProcessKey(&Inputs.ArrowDown, NewState);
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.ArrowDown, NewState);
                         } break;
 
                         case WIN_ARROW_RIGHT_KEY_CODE: {
-                            WinProcessKey(&Inputs.ArrowRight, NewState);
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.ArrowRight, NewState);
                         } break;
 
                         case WIN_ARROW_LEFT_KEY_CODE: {
-                            WinProcessKey(&Inputs.ArrowLeft, NewState);
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.ArrowLeft, NewState);
                         } break;
                     
                         default: break;
                     }
                 }
                 else if (VirtualKeyCode == VK_F4 && AltWasDown) {
-                    Win32App.Running = false;
+                    Win32App.EnginePlatformDetails.Running = false;
                 }
             } break;
 
@@ -500,12 +497,12 @@ void WinProcessMessages()
 		    case WM_MOUSEMOVE: {
                 real32 x = (real32)GET_X_LPARAM(Message.lParam);
                 real32 y = (real32)GET_Y_LPARAM(Message.lParam);
-                Inputs.MouseInput.Moution.x = ((x * Inputs.MouseInput.NormalizedWidth)  - 1.0f) * Inputs.MouseInput.Sensitive;
-                Inputs.MouseInput.Moution.y = ((y * Inputs.MouseInput.NormalizedHeight) - 1.0f) * Inputs.MouseInput.Sensitive;
+                Win32App.EnginePlatformDetails.Input.MouseInput.Moution.x = ((x * Win32App.EnginePlatformDetails.Input.MouseInput.NormalizedWidth)  - 1.0f) * Win32App.EnginePlatformDetails.Input.MouseInput.Sensitive;
+                Win32App.EnginePlatformDetails.Input.MouseInput.Moution.y = ((y * Win32App.EnginePlatformDetails.Input.MouseInput.NormalizedHeight) - 1.0f) * Win32App.EnginePlatformDetails.Input.MouseInput.Sensitive;
 
                 CursorCenterPos = { 
-                    Win32App.ScreenOpt.CenterW, 
-                    Win32App.ScreenOpt.CenterH
+                    Win32App.EnginePlatformDetails.ScreenOpt.CenterW, 
+                    Win32App.EnginePlatformDetails.ScreenOpt.CenterH
                 };
                 ClientToScreen(Win32App.Window, &CursorCenterPos);
                 SetCursorPos(CursorCenterPos.x, CursorCenterPos.y);
@@ -576,17 +573,17 @@ static Statuses WinCreateWindow()
     // TODO (ismail): if fullscreen style = WS_EX_TOPMOST
     WindowExStyles = 0;
 
-    Win32App.ScreenOpt.Height   = WINDOW_HEIGHT;
-    Win32App.ScreenOpt.Width    = WINDOW_WIDTH;
+    Win32App.EnginePlatformDetails.ScreenOpt.Height   = WINDOW_HEIGHT;
+    Win32App.EnginePlatformDetails.ScreenOpt.Width    = WINDOW_WIDTH;
 
-    Win32App.ScreenOpt.CenterH   = WINDOW_HEIGHT / 2;
-    Win32App.ScreenOpt.CenterW   = WINDOW_WIDTH  / 2;
+    Win32App.EnginePlatformDetails.ScreenOpt.CenterH   = WINDOW_HEIGHT / 2;
+    Win32App.EnginePlatformDetails.ScreenOpt.CenterW   = WINDOW_WIDTH  / 2;
 
     // TODO (ismail): set actual x, y and width and height
     Win32App.Window = CreateWindowExA(WindowExStyles, WIN32_WINDOW_CLASS_NAME, 
                                       GAME_NAME, WindowStyle, 
                                       CW_USEDEFAULT , CW_USEDEFAULT, 
-                                      Win32App.ScreenOpt.Width, Win32App.ScreenOpt.Height, 
+                                      Win32App.EnginePlatformDetails.ScreenOpt.Width, Win32App.EnginePlatformDetails.ScreenOpt.Height, 
                                       0, 0, 
                                       Win32App.AppInstance, 0);
     
@@ -595,7 +592,7 @@ static Statuses WinCreateWindow()
         return Statuses::WindowCreateFailed;
     }
 
-    Win32App.ScreenOpt.AspectRatio = (real32)WINDOW_WIDTH / (real32)WINDOW_HEIGHT;
+    Win32App.EnginePlatformDetails.ScreenOpt.AspectRatio = (real32)WINDOW_WIDTH / (real32)WINDOW_HEIGHT;
 
     Win32App.WindowDeviceContext = GetDC(Win32App.Window);
     if (!Win32App.WindowDeviceContext) {
@@ -604,13 +601,17 @@ static Statuses WinCreateWindow()
     }
 
     GetClientRect(Win32App.Window, &ClientRect);
+
+    Win32App.EnginePlatformDetails.ScreenOpt.ActualWidth = ClientRect.right;
+    Win32App.EnginePlatformDetails.ScreenOpt.ActualHeight = ClientRect.bottom;
+
     ClipCursor(&ClientRect);
 
     ShowCursor(FALSE);
 
     CursorCenterPos = { 
-        Win32App.ScreenOpt.CenterW, 
-        Win32App.ScreenOpt.CenterH
+        Win32App.EnginePlatformDetails.ScreenOpt.CenterW, 
+        Win32App.EnginePlatformDetails.ScreenOpt.CenterH
     };
     ClientToScreen(Win32App.Window, &CursorCenterPos);
     SetCursorPos(CursorCenterPos.x, CursorCenterPos.y);
@@ -618,12 +619,12 @@ static Statuses WinCreateWindow()
     return Statuses::Success;
 }
 
-static void WinPlatformInit(EnginePlatform *PlatformContext)
+static void WinPlatformInit()
 {
-    PlatformContext->AllocMem       = &WinMemoryAllocate;
-    PlatformContext->ReleaseMem     = &WinMemoryRelease;
-    PlatformContext->ReadFile       = &WinReadFile;
-    PlatformContext->FreeFileData   = &WinFreeFileData;
+    Win32App.EnginePlatformDetails.AllocMem       = &WinMemoryAllocate;
+    Win32App.EnginePlatformDetails.ReleaseMem     = &WinMemoryRelease;
+    Win32App.EnginePlatformDetails.ReadFile       = &WinReadFile;
+    Win32App.EnginePlatformDetails.FreeFileData   = &WinFreeFileData;
 }
 
 static Statuses WinInit()
@@ -648,7 +649,7 @@ static Statuses WinInit()
 
     return Statuses::Success;
 }
-
+#if OLD_CODE
 void CameraTransform(GameInput * Inputs)
 {
     real32 TranslationMultiplyer        = 1.0f;
@@ -680,6 +681,7 @@ void CameraTransform(GameInput * Inputs)
 
     PlayerCamera.Transform.Position += CameraTargetTranslation + CameraRightTranslation;
 }
+
 
 void PlayerTransform(GameInput* Inputs)
 {
@@ -739,6 +741,7 @@ void PlayerTransform(GameInput* Inputs)
     }
 }
 
+
 void TransformFrame()
 {
     CameraTransform(&Inputs);
@@ -746,6 +749,7 @@ void TransformFrame()
 }
 
 // Mat4x4 OrthoProjection = MakeOrtographProjection(-2.0f * AspectRatio, 2.0f * AspectRatio, -2.0f, 2.0f, 0.1f, 100.0f);
+
 void RendererFrame()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1331,12 +1335,12 @@ Statuses WorldPrepare(EnginePlatform *Platform)
     PlayerSphere.BoundingSphere.Radius = 1.0f; // TODO (ismail): initial Sphere compute need to be implemented
     */
 }
+#endif
 
 i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance, 
                       LPSTR CommandLine , int ShowCode)
 {
     AssetsLoaderVars    AssetsLoadVars;
-    EnginePlatform      WinPlatform;
     AudioSystem         Audio;
     Statuses            InitializationStatuses;
     MSG                 Message;
@@ -1345,10 +1349,10 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
     QueryPerformanceFrequency(&PerfomanceCountFrequencyResult);
     i64 PerfCountFrequency = PerfomanceCountFrequencyResult.QuadPart;
 
-    WinPlatformInit(&WinPlatform);
+    WinPlatformInit();
 
-    Win32App.Running        = true;
-    Win32App.AppInstance    = Instance;
+    Win32App.EnginePlatformDetails.Running  = true;
+    Win32App.AppInstance                    = Instance;
 
     if ( (InitializationStatuses = WinInit()) != Statuses::Success) {
         // TODO (ismail): diagnostics things?
@@ -1368,28 +1372,37 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
         return InitializationStatuses;
     }
 
+#if OLD_CODE
     RendererInit();
+#endif
 
     AssetsLoadVars.AssetsLoaderCacheSize = 100000;
-    AssetsLoaderInit(&WinPlatform, &AssetsLoadVars);
+    AssetsLoaderInit(&Win32App.EnginePlatformDetails, &AssetsLoadVars);
 
+#if OLD_CODE
     if ( (InitializationStatuses = WorldPrepare(&WinPlatform)) != Statuses::Success) {
         // TODO (ismail): diagnostics things?
         return InitializationStatuses;
     }
+#endif
 
     LARGE_INTEGER LastCounter;
     QueryPerformanceCounter(&LastCounter);
     u64 LastCycleCount = __rdtsc();
 
-    AudioSource TestSrc = AudioSourceInit();
-    SFX TestSfx = LoadSFX(&Audio, "data/sfx/town_theme.flac", AudioFormat::FLAC);
-    
-    PlaySFX(TestSrc, TestSfx);
+    GameContext Context = {};
 
-    while (Win32App.Running) {
+    PrepareFrame(&Win32App.EnginePlatformDetails, &Context);
+
+    while (Win32App.EnginePlatformDetails.Running) {
         WinProcessMessages();
+
+        Frame(&Win32App.EnginePlatformDetails, &Context);
+
+        SwapBuffers(Win32App.WindowDeviceContext);
+#if OLD_CODE
         Frame();
+#endif
 
         // NOTE(ismail): some very usefull thing for perfomance debuging
         u64 EndCycleCount = __rdtsc();

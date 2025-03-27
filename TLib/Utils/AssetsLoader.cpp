@@ -109,7 +109,7 @@ static inline void RenewCache(MeshCache *ThreadCache)
     memset((void*)ThreadCache->NormalsCache, 0, ThreadCache->CacheSize);
 }
 
-void AssetsLoaderInit(EnginePlatform *PlatformContext, AssetsLoaderVars *LoaderVars)
+void AssetsLoaderInit(Platform *PlatformContext, AssetsLoaderVars *LoaderVars)
 {
     stbi_set_flip_vertically_on_load_thread(1);
 
