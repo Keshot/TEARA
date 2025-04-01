@@ -136,27 +136,27 @@ static Camera                   PlayerCamera;
 #endif
 static real32                   DeltaTime;
 
-TEARA_PLATFORM_ALLOCATE_MEMORY(WinMemoryAllocate)
+static TEARA_PLATFORM_ALLOCATE_MEMORY(WinMemoryAllocate)
 {
     Assert(Size > 0);
     return VirtualAlloc(0, Size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
-TEARA_PLATFORM_RELEASE_MEMORY(WinMemoryRelease)
+static TEARA_PLATFORM_RELEASE_MEMORY(WinMemoryRelease)
 {
     if (Ptr) {
         VirtualFree(Ptr, 0, MEM_RELEASE);
     }
 }
 
-TEARA_PLATFORM_FREE_FILE_DATA(WinFreeFileData)
+static TEARA_PLATFORM_FREE_FILE_DATA(WinFreeFileData)
 {
     if (FileData->Data) {
         VirtualFree(FileData->Data, 0, MEM_RELEASE);
     }
 }
 
-TEARA_PLATFORM_READ_FILE(WinReadFile)
+static TEARA_PLATFORM_READ_FILE(WinReadFile)
 {
     LARGE_INTEGER   FileSize;
     i32             TruncatedFileSize;
@@ -388,7 +388,7 @@ static LRESULT WinMainCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM 
     return Result;
 }
 
-void WinProcessKey(Key *ProcessKey, KeyState NewKeyState)
+static void WinProcessKey(Key *ProcessKey, KeyState NewKeyState)
 {
     if (ProcessKey->State != NewKeyState) {
         ProcessKey->State = NewKeyState;
@@ -396,7 +396,7 @@ void WinProcessKey(Key *ProcessKey, KeyState NewKeyState)
     }
 }
 
-void WinProcessMessages()
+static void WinProcessMessages()
 {
     u32         VirtualKeyCode;
     MSG         Message;
@@ -497,12 +497,13 @@ void WinProcessMessages()
 		    case WM_MOUSEMOVE: {
                 real32 x = (real32)GET_X_LPARAM(Message.lParam);
                 real32 y = (real32)GET_Y_LPARAM(Message.lParam);
-                Win32App.EnginePlatformDetails.Input.MouseInput.Moution.x = ((x * Win32App.EnginePlatformDetails.Input.MouseInput.NormalizedWidth)  - 1.0f) * Win32App.EnginePlatformDetails.Input.MouseInput.Sensitive;
-                Win32App.EnginePlatformDetails.Input.MouseInput.Moution.y = ((y * Win32App.EnginePlatformDetails.Input.MouseInput.NormalizedHeight) - 1.0f) * Win32App.EnginePlatformDetails.Input.MouseInput.Sensitive;
+
+                Win32App.EnginePlatformDetails.Input.MouseInput.Moution.x = ((x * Win32App.EnginePlatformDetails.Input.MouseInput.NormalizedWidth)  - 1.0f);
+                Win32App.EnginePlatformDetails.Input.MouseInput.Moution.y = ((y * Win32App.EnginePlatformDetails.Input.MouseInput.NormalizedHeight) - 1.0f);
 
                 CursorCenterPos = { 
-                    Win32App.EnginePlatformDetails.ScreenOpt.CenterW, 
-                    Win32App.EnginePlatformDetails.ScreenOpt.CenterH
+                    Win32App.EnginePlatformDetails.ScreenOpt.ActualCenterWidth, 
+                    Win32App.EnginePlatformDetails.ScreenOpt.ActualCenterHeight
                 };
                 ClientToScreen(Win32App.Window, &CursorCenterPos);
                 SetCursorPos(CursorCenterPos.x, CursorCenterPos.y);
@@ -572,18 +573,12 @@ static Statuses WinCreateWindow()
 
     // TODO (ismail): if fullscreen style = WS_EX_TOPMOST
     WindowExStyles = 0;
-
-    Win32App.EnginePlatformDetails.ScreenOpt.Height   = WINDOW_HEIGHT;
-    Win32App.EnginePlatformDetails.ScreenOpt.Width    = WINDOW_WIDTH;
-
-    Win32App.EnginePlatformDetails.ScreenOpt.CenterH   = WINDOW_HEIGHT / 2;
-    Win32App.EnginePlatformDetails.ScreenOpt.CenterW   = WINDOW_WIDTH  / 2;
-
     // TODO (ismail): set actual x, y and width and height
     Win32App.Window = CreateWindowExA(WindowExStyles, WIN32_WINDOW_CLASS_NAME, 
                                       GAME_NAME, WindowStyle, 
                                       CW_USEDEFAULT , CW_USEDEFAULT, 
-                                      Win32App.EnginePlatformDetails.ScreenOpt.Width, Win32App.EnginePlatformDetails.ScreenOpt.Height, 
+                                      WINDOW_WIDTH, 
+                                      WINDOW_HEIGHT, 
                                       0, 0, 
                                       Win32App.AppInstance, 0);
     
@@ -592,26 +587,40 @@ static Statuses WinCreateWindow()
         return Statuses::WindowCreateFailed;
     }
 
-    Win32App.EnginePlatformDetails.ScreenOpt.AspectRatio = (real32)WINDOW_WIDTH / (real32)WINDOW_HEIGHT;
-
     Win32App.WindowDeviceContext = GetDC(Win32App.Window);
     if (!Win32App.WindowDeviceContext) {
         // TODO (ismail): file or/and console logging?
         return Statuses::GetDCCallFailed;
     }
 
+    real32 Half = 1.0f / 2.0f;
+
+    Win32App.EnginePlatformDetails.ScreenOpt.Height   = WINDOW_HEIGHT;
+    Win32App.EnginePlatformDetails.ScreenOpt.Width    = WINDOW_WIDTH;
+
+    Win32App.EnginePlatformDetails.ScreenOpt.CenterHeight   = WINDOW_HEIGHT * Half;
+    Win32App.EnginePlatformDetails.ScreenOpt.CenterWidth    = WINDOW_WIDTH * Half;
+
+    Win32App.EnginePlatformDetails.ScreenOpt.AspectRatio = (real32)WINDOW_WIDTH / (real32)WINDOW_HEIGHT;
+
     GetClientRect(Win32App.Window, &ClientRect);
 
-    Win32App.EnginePlatformDetails.ScreenOpt.ActualWidth = ClientRect.right;
-    Win32App.EnginePlatformDetails.ScreenOpt.ActualHeight = ClientRect.bottom;
+    Win32App.EnginePlatformDetails.ScreenOpt.ActualWidth        = ClientRect.right;
+    Win32App.EnginePlatformDetails.ScreenOpt.ActualHeight       = ClientRect.bottom;
+
+    Win32App.EnginePlatformDetails.ScreenOpt.ActualCenterWidth  = (i32)floorf(ClientRect.right * Half);
+    Win32App.EnginePlatformDetails.ScreenOpt.ActualCenterHeight = (i32)floorf(ClientRect.bottom * Half);
+
+    Win32App.EnginePlatformDetails.Input.MouseInput.NormalizedWidth = 2 / (real32)(Win32App.EnginePlatformDetails.ScreenOpt.ActualCenterWidth * 2);
+    Win32App.EnginePlatformDetails.Input.MouseInput.NormalizedHeight = 2 / (real32)(Win32App.EnginePlatformDetails.ScreenOpt.ActualCenterHeight * 2);
 
     ClipCursor(&ClientRect);
 
     ShowCursor(FALSE);
-
+    
     CursorCenterPos = { 
-        Win32App.EnginePlatformDetails.ScreenOpt.CenterW, 
-        Win32App.EnginePlatformDetails.ScreenOpt.CenterH
+        Win32App.EnginePlatformDetails.ScreenOpt.ActualCenterWidth, 
+        Win32App.EnginePlatformDetails.ScreenOpt.ActualCenterHeight
     };
     ClientToScreen(Win32App.Window, &CursorCenterPos);
     SetCursorPos(CursorCenterPos.x, CursorCenterPos.y);
@@ -1419,7 +1428,7 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
         char Buffer[256];
         snprintf(Buffer, sizeof(Buffer), "| %.02fms/f | %.02f f/s | %.02f mc/f |\n", DeltaTime, FPS, MCPF);
 
-        OutputDebugStringA(Buffer);
+        // OutputDebugStringA(Buffer);
 
         LastCycleCount = EndCycleCount;
         LastCounter = EndCounter;

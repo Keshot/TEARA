@@ -46,6 +46,71 @@ void MakeObjectToUprightRotation(Mat4x4 *Mat, Rotation *Rot)
     };
 }
 
+void MakeUprightToObjectRotation(Mat4x4 *Mat, Rotation *Rot)
+{
+    real32 Cosh, Sinh;
+    real32 Cosp, Sinp;
+    real32 Cosb, Sinb;
+
+    real32 Heading = DEGREE_TO_RAD(Rot->Heading);
+    real32 Pitch = DEGREE_TO_RAD(Rot->Pitch);
+    real32 Bank = DEGREE_TO_RAD(Rot->Bank);
+
+    Sinh = sinf(Heading);
+    Cosh = cosf(Heading);
+
+    Sinp = sinf(Pitch);
+    Cosp = cosf(Pitch);
+
+    Sinb = sinf(Bank);
+    Cosb = cosf(Bank);
+
+    *Mat = {
+         Cosh * Cosb + Sinh * Sinp * Sinb,  Cosp * Sinb,  -Sinh * Cosb + Cosh * Sinp * Sinb, 0.0f,
+        -Cosh * Sinb + Sinh * Sinp * Cosb,  Cosp * Cosb,   Sinh * Sinb + Cosh * Sinp * Cosb, 0.0f,
+                              Sinh * Cosp,        -Sinp,                        Cosh * Cosp, 0.0f,
+                                     0.0f,         0.0f,                               0.0f, 1.0f,
+    };
+}
+
+void RotationToDirectionVecotrs(Rotation *Rot, Vec3 *Target, Vec3 *Right, Vec3 *Up)
+{
+    real32 Cosh, Sinh;
+    real32 Cosp, Sinp;
+    real32 Cosb, Sinb;
+
+    real32 Heading = DEGREE_TO_RAD(Rot->Heading);
+    real32 Pitch = DEGREE_TO_RAD(Rot->Pitch);
+    real32 Bank = DEGREE_TO_RAD(Rot->Bank);
+
+    Sinh = sinf(Heading);
+    Cosh = cosf(Heading);
+
+    Sinp = sinf(Pitch);
+    Cosp = cosf(Pitch);
+
+    Sinb = sinf(Bank);
+    Cosb = cosf(Bank);
+
+    *Target = {
+        Sinh * Cosp,
+              -Sinp,
+        Cosh * Cosp,
+    };
+
+    *Right = {
+        Cosh * Cosb + Sinh * Sinp * Sinb,
+                             Cosp * Sinb,
+       -Sinh * Cosb + Cosh * Sinp * Sinb
+    };
+
+    *Up = {
+       -Cosh * Sinb + Sinh * Sinp * Cosb,
+                             Cosp * Cosb,
+        Sinh * Sinb + Cosh * Sinp * Cosb
+    };
+}
+
 void CreateUniformScale(real32 ScaleFactor, UniformScale *Result)
 {
     Result->Scale = {
@@ -110,23 +175,76 @@ static Mat4x4 MakePerspProjection(real32 FovInDegree, real32 AspectRatio, real32
     return Result;
 }
 
-void PrepareFrame(Platform *Platform, GameContext *Cntx)
+void GenerateTerrainMesh(GameContext *Ctx, i32 Size, i32 VertexAmount)
 {
-    // NOTE(Ismail): values specified by glClearColor are clamped to the range [0,1]
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    Vec3 *Vertices      = Ctx->Vertices;
+    u32 *Indices        = Ctx->Indices;
+    i32 RowCubeAmount   = VertexAmount - 1;
+    i32 TotalCubeAmount = SQUARE(RowCubeAmount);
+    real32 VertexLen    = (real32)Size / (real32)VertexAmount;
 
-    glViewport(0, 0, Platform->ScreenOpt.ActualWidth, Platform->ScreenOpt.ActualHeight);
+    for (i32 ZIndex = 0; ZIndex < VertexAmount; ++ZIndex) {
+        for (i32 XIndex = 0; XIndex < VertexAmount; ++XIndex) {
+            Vertices[ZIndex * VertexAmount + XIndex] = {
+                XIndex * VertexLen,
+                0.0f,
+                ZIndex * VertexLen,
+            };
+        }
+    }
 
-    glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
-    glFrontFace(GL_CW);
+    for (i32 CubeIndex = 0, It = 0, BottomLineIt = VertexAmount; CubeIndex < TotalCubeAmount; ++CubeIndex, ++BottomLineIt) {
+        u32 BottomLeft  = CubeIndex + (CubeIndex / RowCubeAmount);
+        u32 BottomRight = BottomLeft + 1;
+        u32 TopLeft     = BottomLeft + VertexAmount;
+        u32 TopRight    = TopLeft + 1;
+
+        Indices[It++] = BottomLeft;
+        Indices[It++] = TopLeft;
+        Indices[It++] = TopRight;
+
+        Indices[It++] = TopRight;
+        Indices[It++] = BottomRight;
+        Indices[It++] = BottomLeft;
+    }
+}
+
+void LoadTerrain(Vec3 *Position, u32 PosLen, u32 *Indices, u32 IndLen, GraphicComponent *TerrainGraphicOut)
+{
+    u32 *BuffersHandler = TerrainGraphicOut->BuffersHandler;
+
+    tglGenVertexArrays(1, &BuffersHandler[VERTEX_ARRAY_LOCATION]);  
+    tglBindVertexArray(BuffersHandler[VERTEX_ARRAY_LOCATION]);
+
+    tglGenBuffers(MAX - 1, BuffersHandler);
+
+    tglBindBuffer(GL_ARRAY_BUFFER, BuffersHandler[POSITION_LOCATION]);
+    tglBufferData(GL_ARRAY_BUFFER, sizeof(*Position) * PosLen, Position, GL_STATIC_DRAW);
+    tglVertexAttribPointer(POSITION_LOCATION, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    tglEnableVertexAttribArray(POSITION_LOCATION);
+
+    tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, BuffersHandler[INDEX_ARRAY_LOCATION]);
+    tglBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(*Indices) * IndLen, Indices, GL_STATIC_DRAW);
+
+    tglBindVertexArray(0);
+    tglBindBuffer(GL_ARRAY_BUFFER, 0);
+    tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
+
+u32 CreateShaderProgram(Platform *Platform, GameContext *Cntx, const char *VertexShader, const char *FragmentShader)
+{
+    File VertShader;
+    File FragShader;
+    u32 VertexShaderHandle;
+    u32 FragmentShaderHandle;
+    u32 FinalShaderProgram;
 
     i32 Success;
     char InfoLog[512] = {};
 
-    File VertShader = Platform->ReadFile("data/shaders/shader.vs");
+    VertShader = Platform->ReadFile(VertexShader);
 
-    u32 VertexShaderHandle = tglCreateShader(GL_VERTEX_SHADER);
+    VertexShaderHandle = tglCreateShader(GL_VERTEX_SHADER);
 
     tglShaderSource(VertexShaderHandle, 1, (const char**)(&VertShader.Data), NULL);
 
@@ -141,9 +259,9 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         Assert(false);
     }
 
-    File FragShader = Platform->ReadFile("data/shaders/shader.fs");
+    FragShader = Platform->ReadFile(FragmentShader);
 
-    u32 FragmentShaderHandle = tglCreateShader(GL_FRAGMENT_SHADER);
+    FragmentShaderHandle = tglCreateShader(GL_FRAGMENT_SHADER);
 
     tglShaderSource(FragmentShaderHandle, 1, (const char**)(&FragShader.Data), NULL);
 
@@ -159,23 +277,36 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         Assert(false);
     }
 
-    u32 FinalShaderProgramm;
-    FinalShaderProgramm = tglCreateProgram();
+    FinalShaderProgram = tglCreateProgram();
 
-    tglAttachShader(FinalShaderProgramm, VertexShaderHandle);
-    tglAttachShader(FinalShaderProgramm, FragmentShaderHandle);
-    tglLinkProgram(FinalShaderProgramm);
+    tglAttachShader(FinalShaderProgram, VertexShaderHandle);
+    tglAttachShader(FinalShaderProgram, FragmentShaderHandle);
+    tglLinkProgram(FinalShaderProgram);
 
-    tglGetProgramiv(FinalShaderProgramm, GL_LINK_STATUS, &Success);
+    tglGetProgramiv(FinalShaderProgram, GL_LINK_STATUS, &Success);
     if(!Success) {
-        tglGetProgramInfoLog(FinalShaderProgramm, 512, NULL, InfoLog);
+        tglGetProgramInfoLog(FinalShaderProgram, 512, NULL, InfoLog);
     }
 
     tglDeleteShader(VertexShaderHandle);
     tglDeleteShader(FragmentShaderHandle);
 
-    Cntx->FinalShaderProgramm = FinalShaderProgramm;
-    Cntx->MatLocation = tglGetUniformLocation(FinalShaderProgramm, "ObjectToWorldTranslation");
+    return FinalShaderProgram;
+}
+
+void PrepareFrame(Platform *Platform, GameContext *Cntx)
+{
+    // NOTE(Ismail): values specified by glClearColor are clamped to the range [0,1]
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+    glViewport(0, 0, Platform->ScreenOpt.ActualWidth, Platform->ScreenOpt.ActualHeight);
+
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CW);
+
+    Cntx->FinalShaderProgram = CreateShaderProgram(Platform, Cntx, "data/shaders/shader.vs", "data/shaders/shader.fs");
+    Cntx->MatLocation = tglGetUniformLocation(Cntx->FinalShaderProgram, "ObjectToWorldTranslation");
 
     ObjFileLoaderFlags Flags = {
         0, 0
@@ -257,11 +388,29 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
 
     Cntx->Rot = 0.0f;
     Cntx->RotDelta = 0.1f;
+
+    GenerateTerrainMesh(Cntx, 10, BATTLE_AREA_GRID_VERT_AMOUNT);
+    LoadTerrain(Cntx->Vertices, SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT), Cntx->Indices, TERRAIN_INDEX_AMOUNT, &Cntx->BattleGrid);
+
+    Cntx->BattleGrid.ShaderProgram = CreateShaderProgram(Platform, Cntx, "data/shaders/terrain_shader.vs", "data/shaders/terrain_shader.fs");
+    Cntx->BattleGridMatLocation = tglGetUniformLocation(Cntx->FinalShaderProgram, "ObjectToWorldTranslation");
 }
 
 void Frame(Platform *Platform, GameContext *Cntx)
 {
     glClear(GL_COLOR_BUFFER_BIT);
+
+    if (Platform->Input.QButton.State == KeyState::Pressed) {
+        if (!Cntx->PolygonModeActive) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            Cntx->PolygonModeActive = 1;
+        }
+        else {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            Cntx->PolygonModeActive = 0;
+        }
+        
+    }
 
     if (Cntx->Trans >= 1.0f || Cntx->Trans <= -1.0f) {
         Cntx->Delta *= -1.0f;
@@ -294,12 +443,24 @@ void Frame(Platform *Platform, GameContext *Cntx)
     real32 ZTranslationMultiplyer = (real32)(Platform->Input.WButton.State + (-1 * Platform->Input.SButton.State)); // 1.0 if W Button -1.0 if S Button and 0 if W and S Button pressed together
     real32 XTranslationMultiplyer = (real32)(Platform->Input.DButton.State + (-1 * Platform->Input.AButton.State));
 
-    Cntx->PlayerCamera.Position.x += XTranslationMultiplyer * 0.1f;
-    Cntx->PlayerCamera.Position.z += ZTranslationMultiplyer * 0.1f;
+    Vec3 Target = {};
+    Vec3 Right = {};
+    Vec3 Up = {};
+
+    RotationToDirectionVecotrs(&Cntx->PlayerCamera.Rotator, &Target, &Right, &Up);
+
+    Cntx->PlayerCamera.Position += (Target * ZTranslationMultiplyer * 0.1f) + (Right * XTranslationMultiplyer * 0.1f);
 
     Mat4x4 CameraTranslation = MakeInverseTranslation(&Cntx->PlayerCamera.Position);
 
-    Mat4x4 FinalMat = PerspProjection * CameraTranslation * ZTranslation.Trans * RotationMat * Scale.Scale;
+    Cntx->PlayerCamera.Rotator.Bank = 0.0f;
+    Cntx->PlayerCamera.Rotator.Pitch += RAD_TO_DEGREE(Platform->Input.MouseInput.Moution.y) * 0.5f;
+    Cntx->PlayerCamera.Rotator.Heading += RAD_TO_DEGREE(Platform->Input.MouseInput.Moution.x) * 0.5f;
+
+    Mat4x4 CameraUprightToObjectRotation = {};
+    MakeUprightToObjectRotation(&CameraUprightToObjectRotation, &Cntx->PlayerCamera.Rotator);
+
+    Mat4x4 FinalMat = PerspProjection * CameraUprightToObjectRotation * CameraTranslation * ZTranslation.Trans * RotationMat * Scale.Scale;
 
     u64 PositionsCount = Cntx->ReadedFile.PositionsCount;
     Vec4 ResultsVectorsWithoutPerspDiv[100] = {};
@@ -327,10 +488,19 @@ void Frame(Platform *Platform, GameContext *Cntx)
         ++Position;
     }
 
-    tglUseProgram(Cntx->FinalShaderProgramm);
+    tglUseProgram(Cntx->FinalShaderProgram);
     tglBindVertexArray(Cntx->VAO);
 
     tglUniformMatrix4fv(Cntx->MatLocation, 1, GL_TRUE, FinalMat.Matrix[0]);
 
     tglDrawElements(GL_TRIANGLES, Cntx->ReadedFile.IndicesCount, GL_UNSIGNED_INT, 0);
+
+    tglUseProgram(Cntx->BattleGrid.ShaderProgram);
+    tglBindVertexArray(Cntx->BattleGrid.BuffersHandler[VERTEX_ARRAY_LOCATION]);
+
+    FinalMat = PerspProjection * CameraUprightToObjectRotation * CameraTranslation;
+
+    tglUniformMatrix4fv(Cntx->BattleGridMatLocation, 1, GL_TRUE, FinalMat.Matrix[0]);
+
+    tglDrawElements(GL_TRIANGLES, TERRAIN_INDEX_AMOUNT, GL_UNSIGNED_INT, 0);
 }

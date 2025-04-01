@@ -62,14 +62,14 @@ struct Input {
 struct ScreenOptions {
     i32     Width;
     i32     Height;
+    i32     CenterWidth;
+    i32     CenterHeight;
     i32     ActualWidth;
     i32     ActualHeight;
+    i32     ActualCenterWidth;
+    i32     ActualCenterHeight;
     real32  AspectRatio;
-    i32     CenterW;
-    i32     CenterH;
 };
-
-struct PlatformInternal;
 
 struct Platform {
     ScreenOptions                   ScreenOpt;
