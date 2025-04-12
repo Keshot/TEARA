@@ -57,6 +57,8 @@
 
 #define GL_TEXTURE_UNIT0                            (0x00)
 
+#define GL_MIRRORED_REPEAT                          (0x8370)
+
 typedef signed long long      GLsizeiptr;
 typedef signed long long      GLintptr;
 typedef char                  GLchar;
@@ -92,6 +94,7 @@ typedef void         (GLAPIENTRY TEARA_glDrawElementsBaseVertex)(GLenum, GLsizei
 typedef void         (GLAPIENTRY TEARA_glGetShaderInfoLog)(GLuint, GLsizei, GLsizei*, GLchar*);
 typedef void         (GLAPIENTRY TEARA_glDeleteShader)(GLuint);
 typedef void         (GLAPIENTRY TEARA_glDrawElements)(GLenum mode, GLsizei count, GLenum type, const void* indices);
+typedef void         (GLAPIENTRY TEARA_glGenerateMipmap)(GLenum target);
 
 TEARA_glCreateContextAttribsARB      tglCreateContextAttribsARB;
 TEARA_glChoosePixelFormatARB         tglChoosePixelFormatARB;
@@ -124,6 +127,7 @@ TEARA_glDrawElementsBaseVertex       tglDrawElementsBaseVertex;
 TEARA_glGetShaderInfoLog             tglGetShaderInfoLog;
 TEARA_glDeleteShader                 tglDeleteShader;
 TEARA_glDrawElements                 tglDrawElements;
+TEARA_glGenerateMipmap               tglGenerateMipmap;
 
 Statuses LoadGLFunctions()
 {
@@ -297,6 +301,12 @@ Statuses LoadGLFunctions()
 
     tglDrawElements = (TEARA_glDrawElements) wglGetProcAddress ("glDrawElements");
     if (!tglDrawElements) {
+        // TODO (ismail): diagnostic?
+        return Statuses::Failed;
+    }
+
+    tglGenerateMipmap = (TEARA_glGenerateMipmap) wglGetProcAddress ("glGenerateMipmap");
+    if (!tglGenerateMipmap) {
         // TODO (ismail): diagnostic?
         return Statuses::Failed;
     }

@@ -29,6 +29,7 @@ enum KeyState {
 struct Key {
     i32         TransactionCount;
     KeyState    State;
+    KeyState    PrevState;
 };
 
 struct Mouse {

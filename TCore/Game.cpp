@@ -5,6 +5,7 @@
 #include "EnginePlatform.h"
 #include "Game.h"
 #include "Renderer/OpenGLLoader.cpp"
+#include "TLib/3rdparty/stb/stb_image.h"
 
 struct Translation {
     Mat4x4 Trans;
@@ -16,6 +17,74 @@ struct UniformScale {
 
 struct NonUniformScale {
     Mat4x4 Scale;
+};
+
+struct Quat {
+    union {
+        struct {
+            real32 w, x, y, z;
+        };
+        struct {
+            real32 w;
+            Vec3 n;
+        };
+        real32 ValueHolder[4];   
+    };
+
+    Quat operator-() const {
+        Quat Result = {
+            -w, 
+            -x, 
+            -y, 
+            -z
+        };
+
+        return Result;
+    }
+
+    real32 Length() const {
+        return sqrtf(SQUARE(w) + SQUARE(x) + SQUARE(y) + SQUARE(z));
+    }
+
+    Quat operator*(const Quat &b) const {
+        Quat Result = {
+            w * b.w - x * b.x - y * b.y - z * b.z,
+            w * b.x + x * b.w + y * b.z - z * b.y,
+            w * b.y + y * b.w + z * b.x - x * b.z,
+            w * b.z + z * b.w + x * b.y - y * b.x
+        };
+        return Result;
+    }
+
+    Vec3 operator*(const Vec3 &b) const {
+        // NOTE: it is faster to make rotation from quaternion and then multiply vector to that matrix
+        // x = b.x(w^2 + x^2 - z^2 - y^2) + b.z(2*y*w + 2*z*x) + b.y(2*y*x - 2*z*w);
+        // y = b.y(y^2 + w^2 - z^2 - x^2) + b.x(2*x*y + 2*w*z) + b.z(2*z*y - 2*x*w);
+        // z = b.z(z^2 + w^2 - x^2 - y^2) + b.y(2*y*z + 2*w*x) + b.x(2*x*z - 2*w*y);
+
+        real32 ww = SQUARE(w);
+        real32 xx = SQUARE(x);
+        real32 yy = SQUARE(y);
+        real32 zz = SQUARE(z);
+
+        real32 wwyy = ww - yy;
+        real32 xxzz = xx - zz;
+
+        real32 yw2 = y * w * 2.0f;
+        real32 zx2 = z * x * 2.0f;
+        real32 yx2 = y * x * 2.0f;
+        real32 zw2 = z * w * 2.0f;
+        real32 zy2 = z * y * 2.0f;
+        real32 xw2 = x * w * 2.0f;
+
+        Vec3 Result = {
+            b.x * (wwyy + xxzz)         + b.z * (yw2 + zx2)     + b.y * (yx2 - zw2),
+            b.y * (yy + ww - zz - xx)   + b.x * (yx2 + zw2)     + b.z * (zy2 - xw2),
+            b.z * (wwyy - xxzz)         + b.y * (zy2 + xw2)     + b.x * (zx2 - yw2)
+        };
+
+        return Result;
+    }
 };
 
 // TODO(Ismail): correct for Gimbal Lock
@@ -175,13 +244,15 @@ static Mat4x4 MakePerspProjection(real32 FovInDegree, real32 AspectRatio, real32
     return Result;
 }
 
-void GenerateTerrainMesh(GameContext *Ctx, i32 Size, i32 VertexAmount)
+void GenerateTerrainMesh(GameContext *Ctx, real32 TextureScale, i32 Size, i32 VertexAmount)
 {
-    Vec3 *Vertices      = Ctx->Vertices;
-    u32 *Indices        = Ctx->Indices;
-    i32 RowCubeAmount   = VertexAmount - 1;
-    i32 TotalCubeAmount = SQUARE(RowCubeAmount);
-    real32 VertexLen    = (real32)Size / (real32)VertexAmount;
+    Vec3 *Vertices              = Ctx->Vertices;
+    Vec2 *Textures              = Ctx->Textures;
+    u32 *Indices                = Ctx->Indices;
+    i32 RowCubeAmount           = VertexAmount - 1;
+    i32 TotalCubeAmount         = SQUARE(RowCubeAmount);
+    real32 VertexLen            = (real32)Size / (real32)VertexAmount;
+    real32 OneOverVertexAmount  = TextureScale / ((real32)VertexAmount - 1.0f);
 
     for (i32 ZIndex = 0; ZIndex < VertexAmount; ++ZIndex) {
         for (i32 XIndex = 0; XIndex < VertexAmount; ++XIndex) {
@@ -189,6 +260,11 @@ void GenerateTerrainMesh(GameContext *Ctx, i32 Size, i32 VertexAmount)
                 XIndex * VertexLen,
                 0.0f,
                 ZIndex * VertexLen,
+            };
+
+            Textures[ZIndex * VertexAmount + XIndex] = {
+                (real32)XIndex * OneOverVertexAmount,
+                (real32)ZIndex * OneOverVertexAmount,
             };
         }
     }
@@ -209,7 +285,7 @@ void GenerateTerrainMesh(GameContext *Ctx, i32 Size, i32 VertexAmount)
     }
 }
 
-void LoadTerrain(Vec3 *Position, u32 PosLen, u32 *Indices, u32 IndLen, GraphicComponent *TerrainGraphicOut)
+void LoadTerrain(Vec3 *Position, u32 PosLen, Vec2 *Textures, u32 TetureLen, u32 *Indices, u32 IndLen, GraphicComponent *TerrainGraphicOut)
 {
     u32 *BuffersHandler = TerrainGraphicOut->BuffersHandler;
 
@@ -223,6 +299,11 @@ void LoadTerrain(Vec3 *Position, u32 PosLen, u32 *Indices, u32 IndLen, GraphicCo
     tglVertexAttribPointer(POSITION_LOCATION, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
     tglEnableVertexAttribArray(POSITION_LOCATION);
 
+    tglBindBuffer(GL_ARRAY_BUFFER, BuffersHandler[TEXTURES_LOCATION]);
+    tglBufferData(GL_ARRAY_BUFFER, sizeof(*Textures) * TetureLen, Textures, GL_STATIC_DRAW);
+    tglVertexAttribPointer(TEXTURES_LOCATION, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    tglEnableVertexAttribArray(TEXTURES_LOCATION);
+
     tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, BuffersHandler[INDEX_ARRAY_LOCATION]);
     tglBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(*Indices) * IndLen, Indices, GL_STATIC_DRAW);
 
@@ -231,7 +312,7 @@ void LoadTerrain(Vec3 *Position, u32 PosLen, u32 *Indices, u32 IndLen, GraphicCo
     tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
-u32 CreateShaderProgram(Platform *Platform, GameContext *Cntx, const char *VertexShader, const char *FragmentShader)
+u32 CreateShaderProgram(Platform *Platform, const char *VertexShader, const char *FragmentShader)
 {
     File VertShader;
     File FragShader;
@@ -286,6 +367,8 @@ u32 CreateShaderProgram(Platform *Platform, GameContext *Cntx, const char *Verte
     tglGetProgramiv(FinalShaderProgram, GL_LINK_STATUS, &Success);
     if(!Success) {
         tglGetProgramInfoLog(FinalShaderProgram, 512, NULL, InfoLog);
+
+        Assert(false);
     }
 
     tglDeleteShader(VertexShaderHandle);
@@ -294,8 +377,57 @@ u32 CreateShaderProgram(Platform *Platform, GameContext *Cntx, const char *Verte
     return FinalShaderProgram;
 }
 
+struct TextureFile {
+    i32 Width;
+    i32 Height;
+    i32 BitsPerPixel;
+    u8* Data;
+};
+
+Statuses LoadTextureFile(const char *Path, TextureFile *ReadedFile, bool32 VerticalFlip)
+{
+    stbi_set_flip_vertically_on_load_thread(VerticalFlip);
+
+    u8* ImageData = stbi_load(Path, &ReadedFile->Width, &ReadedFile->Height, &ReadedFile->BitsPerPixel, STBI_default);
+
+    if (!ImageData) {
+        // TODO (ismail): diagnostic and write to log some info
+        Assert(ImageData);
+        return Statuses::FileLoadFailed;
+    }
+
+    ReadedFile->Data = ImageData;
+
+    return Statuses::Success;
+}
+
+void FreeTextureFile(TextureFile *ReadedFile)
+{
+    stbi_image_free(ReadedFile->Data);
+
+    ReadedFile->Data = 0;
+}
+
 void PrepareFrame(Platform *Platform, GameContext *Cntx)
 {
+    Quat a = {};
+    // 90 0 1 0
+    real32 alpha = DEGREE_TO_RAD(45.0f);
+    real32 cosa = cosf(alpha);
+    real32 sina = sinf(alpha);
+    a.w = cosa;
+    a.x = sina * 1.0f;
+    a.y = sina * 0.0f;
+    a.z = sina * 0.0f;
+
+    Vec3 Pos = {
+        0.0f,
+        0.0f,
+        1.0f
+    };
+
+    Vec3 RotatedPos = a * Pos;
+
     // NOTE(Ismail): values specified by glClearColor are clamped to the range [0,1]
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
@@ -305,7 +437,7 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     glCullFace(GL_BACK);
     glFrontFace(GL_CW);
 
-    Cntx->FinalShaderProgram = CreateShaderProgram(Platform, Cntx, "data/shaders/shader.vs", "data/shaders/shader.fs");
+    Cntx->FinalShaderProgram = CreateShaderProgram(Platform, "data/shaders/shader.vs", "data/shaders/shader.fs");
     Cntx->MatLocation = tglGetUniformLocation(Cntx->FinalShaderProgram, "ObjectToWorldTranslation");
 
     ObjFileLoaderFlags Flags = {
@@ -317,7 +449,7 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     Cntx->ReadedFile.TextureCoord = (Vec2*)VirtualAlloc(0, sizeof(Vec2) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     Cntx->ReadedFile.Indices = (u32*)VirtualAlloc(0, sizeof(u32) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
-    LoadObjFile("data/obj/cube.obj", &Cntx->ReadedFile, Flags);
+    LoadObjFile("data/obj/cuber_textured_normals.obj", &Cntx->ReadedFile, Flags);
 
     real32 TrianglePosition[] = {
         // position 1
@@ -358,11 +490,53 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         
     };
 
+    TextureFile Texture = {};
+    if (LoadTextureFile("data/textures/bricks_textures.jpg", &Texture, 1) != Statuses::Success) {
+        Assert(false);
+    }
+
+    i32 ErrorCode = glGetError();
+    if (ErrorCode != GL_NO_ERROR) {
+        Assert(false);
+    }
+
+    u32 TextureHandle;
+    glGenTextures(1, &TextureHandle);
+    glBindTexture(GL_TEXTURE_2D, TextureHandle);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, Texture.Width, Texture.Height, 0, GL_RGB, GL_UNSIGNED_BYTE, Texture.Data);
+    tglGenerateMipmap(GL_TEXTURE_2D);
+
+    FreeTextureFile(&Texture);
+
+    Cntx->TextureHandle = TextureHandle;
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    ErrorCode = glGetError();
+    if (ErrorCode != GL_NO_ERROR) {
+        Assert(false);
+    }
+
+    tglUseProgram(Cntx->FinalShaderProgram);
+    i32 TextLocation = tglGetUniformLocation(Cntx->FinalShaderProgram, "texture1");
+    tglUniform1i(TextLocation, GL_TEXTURE_UNIT0);
+
+    ErrorCode = glGetError();
+    if (ErrorCode != GL_NO_ERROR) {
+        Assert(false);
+    }
+
     tglGenVertexArrays(1, &Cntx->VAO);  
     tglBindVertexArray(Cntx->VAO);
 
-    u32 VBO[3];
-    tglGenBuffers(3, VBO);
+    u32 VBO[4];
+    tglGenBuffers(4, VBO);
     tglBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
 
     tglBufferData(GL_ARRAY_BUFFER, sizeof(*Cntx->ReadedFile.Positions) * Cntx->ReadedFile.PositionsCount, Cntx->ReadedFile.Positions, GL_STATIC_DRAW);
@@ -375,8 +549,12 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     tglVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
     tglEnableVertexAttribArray(1);
 
-    tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBO[2]);
+    tglBindBuffer(GL_ARRAY_BUFFER, VBO[2]);
+    tglBufferData(GL_ARRAY_BUFFER, sizeof(*Cntx->ReadedFile.TextureCoord) * Cntx->ReadedFile.TexturesCount, Cntx->ReadedFile.TextureCoord, GL_STATIC_DRAW);
+    tglVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    tglEnableVertexAttribArray(2);
 
+    tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, VBO[3]);
     tglBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(*Cntx->ReadedFile.Indices) * Cntx->ReadedFile.IndicesCount, Cntx->ReadedFile.Indices, GL_STATIC_DRAW);
 
     tglBindVertexArray(0);
@@ -389,18 +567,52 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     Cntx->Rot = 0.0f;
     Cntx->RotDelta = 0.1f;
 
-    GenerateTerrainMesh(Cntx, 10, BATTLE_AREA_GRID_VERT_AMOUNT);
-    LoadTerrain(Cntx->Vertices, SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT), Cntx->Indices, TERRAIN_INDEX_AMOUNT, &Cntx->BattleGrid);
+    GenerateTerrainMesh(Cntx, 4.0f, 10, BATTLE_AREA_GRID_VERT_AMOUNT);
+    LoadTerrain(Cntx->Vertices, SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT), Cntx->Textures, SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT), Cntx->Indices, TERRAIN_INDEX_AMOUNT, &Cntx->BattleGrid);
 
-    Cntx->BattleGrid.ShaderProgram = CreateShaderProgram(Platform, Cntx, "data/shaders/terrain_shader.vs", "data/shaders/terrain_shader.fs");
-    Cntx->BattleGridMatLocation = tglGetUniformLocation(Cntx->FinalShaderProgram, "ObjectToWorldTranslation");
+    TextureFile TerrainTexture = {};
+    if (LoadTextureFile("data/textures/grass_texture.jpg", &TerrainTexture, 0) != Statuses::Success) {
+        Assert(false);
+    }
+
+    u32 TerrainTextureHandle;
+    glGenTextures(1, &TerrainTextureHandle);
+    glBindTexture(GL_TEXTURE_2D, TerrainTextureHandle);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, TerrainTexture.Width, TerrainTexture.Height, 0, GL_RGB, GL_UNSIGNED_BYTE, TerrainTexture.Data);
+    tglGenerateMipmap(GL_TEXTURE_2D);
+
+    Cntx->TerrainTextureHandle = TerrainTextureHandle;
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    Cntx->BattleGrid.ShaderProgram = CreateShaderProgram(Platform, "data/shaders/terrain_shader.vs", "data/shaders/terrain_shader.fs");
+    Cntx->BattleGridMatLocation = tglGetUniformLocation(Cntx->BattleGrid.ShaderProgram, "ObjectToWorldTranslation");
+    i32 TextureSamplerLocation = tglGetUniformLocation(Cntx->BattleGrid.ShaderProgram, "texture1");
+
+    tglUseProgram(Cntx->BattleGrid.ShaderProgram);
+    tglUniform1i(TextureSamplerLocation, GL_TEXTURE_UNIT0);
+
+    FreeTextureFile(&TerrainTexture);
+    
+    ErrorCode = glGetError();
+    if (ErrorCode != GL_NO_ERROR) {
+        //Assert(false);
+    }
 }
 
 void Frame(Platform *Platform, GameContext *Cntx)
 {
     glClear(GL_COLOR_BUFFER_BIT);
 
-    if (Platform->Input.QButton.State == KeyState::Pressed) {
+    if (Platform->Input.QButton.State == KeyState::Pressed && !Cntx->QWasTriggered) {
+        Cntx->QWasTriggered = 1;
+
         if (!Cntx->PolygonModeActive) {
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
             Cntx->PolygonModeActive = 1;
@@ -410,6 +622,9 @@ void Frame(Platform *Platform, GameContext *Cntx)
             Cntx->PolygonModeActive = 0;
         }
         
+    }
+    else if (Platform->Input.QButton.State == KeyState::Released) {
+        Cntx->QWasTriggered = 0;
     }
 
     if (Cntx->Trans >= 1.0f || Cntx->Trans <= -1.0f) {
@@ -488,12 +703,19 @@ void Frame(Platform *Platform, GameContext *Cntx)
         ++Position;
     }
 
+    tglActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, Cntx->TextureHandle);
+
     tglUseProgram(Cntx->FinalShaderProgram);
+
     tglBindVertexArray(Cntx->VAO);
 
     tglUniformMatrix4fv(Cntx->MatLocation, 1, GL_TRUE, FinalMat.Matrix[0]);
 
     tglDrawElements(GL_TRIANGLES, Cntx->ReadedFile.IndicesCount, GL_UNSIGNED_INT, 0);
+
+    tglActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, Cntx->TerrainTextureHandle);
 
     tglUseProgram(Cntx->BattleGrid.ShaderProgram);
     tglBindVertexArray(Cntx->BattleGrid.BuffersHandler[VERTEX_ARRAY_LOCATION]);

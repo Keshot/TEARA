@@ -24,13 +24,6 @@ struct ObjFile {
     u32     IndicesCount;
 };
 
-struct TextureFile {
-    i32     Width;
-    i32     Height;
-    i32     BitsPerPixel;
-    void*   Internal;
-};
-
 // ASSETS TYPES END
 
 void AssetsLoaderInit(Platform *PlatformContext, AssetsLoaderVars *LoaderVars);
@@ -42,8 +35,5 @@ struct ObjFileLoaderFlags {
 
 // NOTE (ismail): for now in File variable we must store actual buffers outside of function
 Statuses LoadObjFile(const char *Path, ObjFile *ReadedFile, ObjFileLoaderFlags Flags);
-
-Statuses LoadTextureFile(const char *Path, TextureFile *ReadedFile);
-void FreeTextureFile(TextureFile *ReadedFile);
 
 #endif

@@ -22,6 +22,7 @@ struct Camera {
 
 enum OpenGLBuffersLocation{
     POSITION_LOCATION,
+    TEXTURES_LOCATION,
     INDEX_ARRAY_LOCATION,
     VERTEX_ARRAY_LOCATION,
     MAX
@@ -44,13 +45,18 @@ struct GameContext {
     u32 FinalShaderProgram;
     u32 VAO;
     u32 MatLocation;
+    u32 TextureHandle;
+
+    bool32 QWasTriggered;
 
     Camera PlayerCamera;
 
     Vec3 Vertices[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
+    Vec2 Textures[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
     u32 Indices[TERRAIN_INDEX_AMOUNT];
     GraphicComponent BattleGrid;
     u32 BattleGridMatLocation;
+    u32 TerrainTextureHandle;
 };
 
 #endif

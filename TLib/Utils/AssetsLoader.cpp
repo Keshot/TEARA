@@ -1,6 +1,5 @@
 #include "AssetsLoader.h"
 #include "Debug.h"
-#include "TLib/3rdparty/stb/stb_image.h"
 #include "TLib/3rdparty/fastobj/fast_obj.h"
 
 #include <string.h>
@@ -111,8 +110,6 @@ static inline void RenewCache(MeshCache *ThreadCache)
 
 void AssetsLoaderInit(Platform *PlatformContext, AssetsLoaderVars *LoaderVars)
 {
-    stbi_set_flip_vertically_on_load_thread(1);
-
     MeshLoadCache.Cache         = (MeshCacheData*)PlatformContext->AllocMem(sizeof(MeshCacheData) * LoaderVars->AssetsLoaderCacheSize);
     MeshLoadCache.NormalsCache  = (u32*)PlatformContext->AllocMem(sizeof(u32) * LoaderVars->AssetsLoaderCacheSize);
     MeshLoadCache.CacheSize     = LoaderVars->AssetsLoaderCacheSize;
@@ -205,26 +202,6 @@ Statuses LoadObjFile(const char *Path, ObjFile *File, ObjFileLoaderFlags Flags)
     RenewCache(&MeshLoadCache);
 
     return Statuses::Success;
-}
-
-Statuses LoadTextureFile(const char *Path, TextureFile *ReadedFile)
-{
-    unsigned char* ImageData = stbi_load(Path, &ReadedFile->Width, &ReadedFile->Height, &ReadedFile->BitsPerPixel, 0);
-
-    if (!ImageData) {
-        // TODO (ismail): diagnostic and write to log some info
-        Assert(ImageData);
-        return Statuses::FileLoadFailed;
-    }
-
-    ReadedFile->Internal = ImageData;
-
-    return Statuses::Success;
-}
-
-void FreeTextureFile(TextureFile *ReadedFile)
-{
-    stbi_image_free(ReadedFile->Internal);
 }
 
 // TODO (ismail): function must return value in order to detect wrong file

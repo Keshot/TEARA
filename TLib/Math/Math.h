@@ -16,7 +16,7 @@
 #define ONE_OVER_HALF_ROTATION         (1.0f / HALF_ROTATION)
 #define          DEGREE_IN_RAD         (HALF_ROTATION * ONE_OVER_PI)
 #define          RAD_IN_DEGREE         (PI * ONE_OVER_HALF_ROTATION)
-#define          DEGREE_TO_RAD(Deg)    (Deg * RAD_IN_DEGREE)
+#define          DEGREE_TO_RAD(Deg)    ((Deg) * RAD_IN_DEGREE)
 #define          RAD_TO_DEGREE(Rad)    (Rad * DEGREE_IN_RAD)
 #define               INFINITY		   (1e30f)
 #define         SMALLEST_FLOAT         (1.1754944e-038f)

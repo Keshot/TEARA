@@ -21,6 +21,20 @@
 
 #define OPENGL_PIXEL_FORMAT_FLAGS (PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER)
 
+/*
+#define WGL_CONTEXT_MAJOR_VERSION_ARB               (0x2091)
+#define WGL_CONTEXT_MINOR_VERSION_ARB               (0x2092)
+#define WGL_CONTEXT_PROFILE_MASK_ARB                (0x9126)
+#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB            (0x00000001)
+#define WGL_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB   (0x00000002)
+
+typedef DEF_GL_FUNCTION(HGLRC, GLAPIENTRY, glCreateContextAttribsARB, HDC hDC, HGLRC hShareContext, const int *attribList);
+typedef DEF_GL_FUNCTION(BOOL, GLAPIENTRY, glChoosePixelFormatARB, HDC hdc, const int *piAttribIList, const FLOAT *pfAttribFList, UINT nMaxFormats, int *piFormats, UINT *nNumFormats);
+
+TEARA_glCreateContextAttribsARB  tglCreateContextAttribsARB;
+TEARA_glChoosePixelFormatARB     tglChoosePixelFormatARB;
+*/
+
 // TODO (ismail): remove this cringe
 #define SCENE_OBJECT_SIZE       (0x0A)
 #define PLAYER_INDEX            (0x00)
@@ -299,7 +313,8 @@ static Statuses WinLoadOpenGLExtensions(const char *DllName)
 
 static Statuses WinInitOpenGLContext()
 {
-    int                     SuggestedPixelFormatIndex;
+    i32                     ErrorCode;
+    i32                     SuggestedPixelFormatIndex;
     PIXELFORMATDESCRIPTOR   DesiredPixelFormat, SuggestedPixelFormat;
 
     int GLAttribs[] = {
@@ -326,6 +341,11 @@ static Statuses WinInitOpenGLContext()
     if (!wglMakeCurrent(Win32App.WindowDeviceContext, Win32App.GLDeviceContext)) {
         // TODO (ismail): file or/and console logging and Assert?
         return Statuses::GLContextCreateFailed;
+    }
+
+    ErrorCode = glGetError();
+    if (ErrorCode != GL_NO_ERROR) {
+        Assert(false);
     }
 
     // TODO (ismail): print opengl version to logs
@@ -391,7 +411,8 @@ static LRESULT WinMainCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM 
 static void WinProcessKey(Key *ProcessKey, KeyState NewKeyState)
 {
     if (ProcessKey->State != NewKeyState) {
-        ProcessKey->State = NewKeyState;
+        ProcessKey->PrevState   = ProcessKey->State ;
+        ProcessKey->State       = NewKeyState;
         ++(ProcessKey->TransactionCount);
     }
 }
@@ -1352,8 +1373,7 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
     AssetsLoaderVars    AssetsLoadVars;
     AudioSystem         Audio;
     Statuses            InitializationStatuses;
-    MSG                 Message;
-
+    
     LARGE_INTEGER PerfomanceCountFrequencyResult;
     QueryPerformanceFrequency(&PerfomanceCountFrequencyResult);
     i64 PerfCountFrequency = PerfomanceCountFrequencyResult.QuadPart;
