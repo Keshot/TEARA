@@ -21,7 +21,6 @@
 
 #define OPENGL_PIXEL_FORMAT_FLAGS (PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER)
 
-/*
 #define WGL_CONTEXT_MAJOR_VERSION_ARB               (0x2091)
 #define WGL_CONTEXT_MINOR_VERSION_ARB               (0x2092)
 #define WGL_CONTEXT_PROFILE_MASK_ARB                (0x9126)
@@ -33,7 +32,6 @@ typedef DEF_GL_FUNCTION(BOOL, GLAPIENTRY, glChoosePixelFormatARB, HDC hdc, const
 
 TEARA_glCreateContextAttribsARB  tglCreateContextAttribsARB;
 TEARA_glChoosePixelFormatARB     tglChoosePixelFormatARB;
-*/
 
 // TODO (ismail): remove this cringe
 #define SCENE_OBJECT_SIZE       (0x0A)

@@ -121,7 +121,7 @@ struct Vec3 {
         return Result;
     }
 
-    inline Vec3 operator*(real32 Scalar) {
+    inline Vec3 operator*(real32 Scalar) const {
         Vec3 Result = { x * Scalar, y * Scalar, z * Scalar };
 
         return Result;

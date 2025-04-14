@@ -4,7 +4,7 @@
 #include "TLib/Utils/AssetsLoader.h"
 #include "EnginePlatform.h"
 #include "Game.h"
-#include "Renderer/OpenGLLoader.cpp"
+#include "TGL.h"
 #include "TLib/3rdparty/stb/stb_image.h"
 
 struct Translation {
@@ -31,14 +31,24 @@ struct Quat {
         real32 ValueHolder[4];   
     };
 
-    Quat operator-() const {
-        Quat Result = {
-            -w, 
-            -x, 
-            -y, 
-            -z
-        };
+    Quat(real32 w, real32 x, real32 y, real32 z)
+        : w(w)
+        , x(x)
+        , y(y)
+        , z(z)
+    {
+    }
 
+    Quat(real32 angle, const Vec3& n) {
+        real32 alpha = angle / 2.0f;
+
+        w = cosf(alpha); 
+        this->n = n;
+        this->n *= sinf(alpha);
+    }
+
+    Quat operator-() const {
+        Quat Result(-w, -x, -y, -z);
         return Result;
     }
 
@@ -47,12 +57,12 @@ struct Quat {
     }
 
     Quat operator*(const Quat &b) const {
-        Quat Result = {
+        Quat Result(
             w * b.w - x * b.x - y * b.y - z * b.z,
             w * b.x + x * b.w + y * b.z - z * b.y,
             w * b.y + y * b.w + z * b.x - x * b.z,
             w * b.z + z * b.w + x * b.y - y * b.x
-        };
+        );
         return Result;
     }
 
@@ -85,7 +95,63 @@ struct Quat {
 
         return Result;
     }
+
+    inline real32 Dot(const Quat &b) const {
+        real32 Result = w * b.w + x * b.x + y * b.y + z * b.z;
+        return Result;
+    }
+
+    static Quat Slerp(const Quat &Src, const Quat &Dst, real32 Delta) {
+        if (Delta > 0.9999f) {
+            return Dst;
+        }
+        else if (Delta < 0.0001f) {
+            return Src;
+        }
+
+        real32 k0, k1;
+        Quat SrcTemp = Src;
+        real32 CosOmega = SrcTemp.Dot(Dst);
+
+        if (CosOmega < 0.0f) {
+            SrcTemp.w   = -Src.w;
+            SrcTemp.x   = -Src.x;
+            SrcTemp.y   = -Src.y;
+            SrcTemp.z   = -Src.z;
+            CosOmega    = -CosOmega;
+        }
+
+        if (CosOmega > 0.9999f) {
+            k0 = 1.0f - Delta;
+            k1 = Delta;
+        }
+        else {
+            real32 SinOmega = sqrtf(1.0f - SQUARE(CosOmega));
+
+            real32 Omega = atan2f(SinOmega, CosOmega);
+            real32 OneOverSinOmega = 1.0f / SinOmega;
+
+            k0 = sinf((1.0f - Delta) * Omega) * OneOverSinOmega;
+            k1 = sinf(Delta * Omega) * OneOverSinOmega;
+        }
+
+        Quat Result(
+            SrcTemp.w * k0 + Dst.w * k1,
+            SrcTemp.x * k0 + Dst.x * k1,
+            SrcTemp.y * k0 + Dst.y * k1,
+            SrcTemp.z * k0 + Dst.z * k1
+        );
+
+        return Result;
+    }
 };
+
+// From a to b with factor of t
+Vec3 Lerp(const Vec3 &a, const Vec3 &b, real32 t)
+{
+    Vec3 To = b - a;
+    return To * t;
+}
 
 // TODO(Ismail): correct for Gimbal Lock
 void MakeObjectToUprightRotation(Mat4x4 *Mat, Rotation *Rot)
@@ -410,23 +476,26 @@ void FreeTextureFile(TextureFile *ReadedFile)
 
 void PrepareFrame(Platform *Platform, GameContext *Cntx)
 {
-    Quat a = {};
-    // 90 0 1 0
-    real32 alpha = DEGREE_TO_RAD(45.0f);
-    real32 cosa = cosf(alpha);
-    real32 sina = sinf(alpha);
-    a.w = cosa;
-    a.x = sina * 1.0f;
-    a.y = sina * 0.0f;
-    a.z = sina * 0.0f;
-
-    Vec3 Pos = {
+    /*
+    Vec3 n = {
         0.0f,
         0.0f,
         1.0f
     };
 
-    Vec3 RotatedPos = a * Pos;
+    Vec3 Pos = {
+        1.0f,
+        0.0f,
+        0.0f
+    };
+
+    Quat a(DEGREE_TO_RAD(0.0f), n);
+    Quat b(DEGREE_TO_RAD(179.9f), n);
+
+    Quat DeltaQuat = Quat::Slerp(a, b, 1.0f);
+
+    Vec3 WooDooMagic = (DeltaQuat * a) * Pos;
+    */
 
     // NOTE(Ismail): values specified by glClearColor are clamped to the range [0,1]
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
