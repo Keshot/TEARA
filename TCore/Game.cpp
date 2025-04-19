@@ -154,7 +154,7 @@ Vec3 Lerp(const Vec3 &a, const Vec3 &b, real32 t)
 }
 
 // TODO(Ismail): correct for Gimbal Lock
-void MakeObjectToUprightRotation(Mat4x4 *Mat, Rotation *Rot)
+void MakeObjectToUprightRotation(Rotation *Rot, Mat4x4 *Mat)
 {
     real32 Cosh, Sinh;
     real32 Cosp, Sinp;
@@ -266,13 +266,13 @@ void CreateNonUniformScale(Vec3 *ScaleFactor, NonUniformScale *Result)
     };
 }
 
-void MakeTranslationFromVec(Vec3 *Trans, Translation *Result)
+void MakeTranslationFromVec(Vec3 *TranslationVec, Mat4x4 *TranslationMat)
 {
-    Result->Trans = {
-        1.0f,   0.0f,   0.0f, Trans->x,
-        0.0f,   1.0f,   0.0f, Trans->y,
-        0.0f,   0.0f,   1.0f, Trans->z,
-        0.0f,   0.0f,   0.0f,     1.0f,
+    *TranslationMat = {
+        1.0f,   0.0f,   0.0f, TranslationVec->x,
+        0.0f,   1.0f,   0.0f, TranslationVec->y,
+        0.0f,   0.0f,   1.0f, TranslationVec->z,
+        0.0f,   0.0f,   0.0f,              1.0f,
     };
 }
 
@@ -358,7 +358,7 @@ void LoadTerrain(Vec3 *Position, u32 PosLen, Vec2 *Textures, u32 TetureLen, u32 
     tglGenVertexArrays(1, &BuffersHandler[VERTEX_ARRAY_LOCATION]);  
     tglBindVertexArray(BuffersHandler[VERTEX_ARRAY_LOCATION]);
 
-    tglGenBuffers(MAX - 1, BuffersHandler);
+    tglGenBuffers(LOCATION_MAX - 1, BuffersHandler);
 
     tglBindBuffer(GL_ARRAY_BUFFER, BuffersHandler[POSITION_LOCATION]);
     tglBufferData(GL_ARRAY_BUFFER, sizeof(*Position) * PosLen, Position, GL_STATIC_DRAW);
@@ -378,7 +378,7 @@ void LoadTerrain(Vec3 *Position, u32 PosLen, Vec2 *Textures, u32 TetureLen, u32 
     tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
-u32 CreateShaderProgram(Platform *Platform, const char *VertexShader, const char *FragmentShader)
+u32 CreateShaderProgram(Platform *Platform, const char *VertexShaderName, const char *FragmentShaderName)
 {
     File VertShader;
     File FragShader;
@@ -389,7 +389,7 @@ u32 CreateShaderProgram(Platform *Platform, const char *VertexShader, const char
     i32 Success;
     char InfoLog[512] = {};
 
-    VertShader = Platform->ReadFile(VertexShader);
+    VertShader = Platform->ReadFile(VertexShaderName);
 
     VertexShaderHandle = tglCreateShader(GL_VERTEX_SHADER);
 
@@ -406,7 +406,7 @@ u32 CreateShaderProgram(Platform *Platform, const char *VertexShader, const char
         Assert(false);
     }
 
-    FragShader = Platform->ReadFile(FragmentShader);
+    FragShader = Platform->ReadFile(FragmentShaderName);
 
     FragmentShaderHandle = tglCreateShader(GL_FRAGMENT_SHADER);
 
@@ -474,6 +474,118 @@ void FreeTextureFile(TextureFile *ReadedFile)
     ReadedFile->Data = 0;
 }
 
+ShaderProgramsCache ProgramsCache;
+
+void InitProgramsCache()
+{
+    for (i32 Index = 0; Index < ShaderProgramsTypeMax; ++Index) {
+        ProgramsCache.ShadersPrograms[Index] = -1;
+    }
+}
+
+void AllocateDebugObjFile(ObjFile *File)
+{
+    File->Meshes        = (Mesh*)   VirtualAlloc(0, sizeof(Mesh) *     10,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    File->Positions     = (Vec3*)   VirtualAlloc(0, sizeof(Vec3) * 140000,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    File->Normals       = (Vec3*)   VirtualAlloc(0, sizeof(Vec3) * 140000,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    File->TextureCoord  = (Vec2*)   VirtualAlloc(0, sizeof(Vec2) * 140000,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    File->Indices       = (u32*)    VirtualAlloc(0, sizeof(u32)  * 140000,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+}
+
+void LoadMesh(MeshComponent *ToLoad, ObjFileLoaderFlags Flags)
+{
+    u32*    Buffers     = ToLoad->BuffersHandler;
+    ObjFile LoadFile    = {};
+
+    AllocateDebugObjFile(&LoadFile);
+
+    LoadObjFile(ToLoad->ObjectPath, &LoadFile, Flags);
+
+    MeshComponentObjects* ComponentObjects = (MeshComponentObjects*)VirtualAlloc(0, sizeof(MeshComponentObjects) * LoadFile.MeshesCount, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+
+    tglGenVertexArrays(1, &Buffers[VERTEX_ARRAY_LOCATION]); 
+    tglBindVertexArray(Buffers[VERTEX_ARRAY_LOCATION]);
+
+    tglGenBuffers(LOCATION_MAX - 1, Buffers);
+
+    tglBindBuffer(GL_ARRAY_BUFFER, Buffers[POSITION_LOCATION]);
+
+    tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.Positions) * LoadFile.PositionsCount, LoadFile.Positions, GL_STATIC_DRAW);
+    tglVertexAttribPointer(POSITION_LOCATION, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    tglEnableVertexAttribArray(POSITION_LOCATION);
+
+    tglBindBuffer(GL_ARRAY_BUFFER, Buffers[TEXTURES_LOCATION]);
+
+    tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.TextureCoord) * LoadFile.TexturesCount, LoadFile.TextureCoord, GL_STATIC_DRAW);
+    tglVertexAttribPointer(TEXTURES_LOCATION, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    tglEnableVertexAttribArray(TEXTURES_LOCATION);
+
+    tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Buffers[INDEX_ARRAY_LOCATION]);
+    tglBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(*LoadFile.Indices) * LoadFile.IndicesCount, LoadFile.Indices, GL_STATIC_DRAW);
+
+    tglBindVertexArray(0);
+    tglBindBuffer(GL_ARRAY_BUFFER, 0);
+    tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    for (i32 MeshesIndex = 0; MeshesIndex < LoadFile.MeshesCount; ++MeshesIndex) {
+        MeshComponentObjects*   CurrentComponentObject  = &ComponentObjects[MeshesIndex];
+        Mesh*                   CurrentMesh             = &LoadFile.Meshes[MeshesIndex];
+        TextureFile             Texture                 = {};
+
+        CurrentComponentObject->IndexOffset     = CurrentMesh->IndexOffset;
+        CurrentComponentObject->VertexOffset    = CurrentMesh->VertexOffset;
+        CurrentComponentObject->NumIndices      = CurrentMesh->IndicesAmount;
+    
+        if (CurrentMesh->HaveTexture) {
+            if (LoadTextureFile(CurrentMesh->TextureFilePath, &Texture, 1) != Statuses::Success) {
+                Assert(false);
+            }
+    
+            glGenTextures(1, &CurrentComponentObject->TextureHandle);
+            glBindTexture(GL_TEXTURE_2D, CurrentComponentObject->TextureHandle);
+        
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, Texture.Width, Texture.Height, 0, GL_RGB, GL_UNSIGNED_BYTE, Texture.Data);
+            tglGenerateMipmap(GL_TEXTURE_2D);
+        
+            FreeTextureFile(&Texture);
+    
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+    }
+
+    ToLoad->MeshesAmount    = LoadFile.MeshesCount;
+    ToLoad->MeshesInfo      = ComponentObjects;
+}
+
+void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad)
+{
+    ObjFileLoaderFlags LoadFlags = { 0, 0 };
+
+    LoadMesh(ToLoad, LoadFlags);
+
+    i32 *MeshComponentShader = &ProgramsCache.ShadersPrograms[MeshShader];
+
+    if (*MeshComponentShader == -1) {
+        *MeshComponentShader = (i32)(CreateShaderProgram(Platform, "data/shaders/mesh_component_shader.vs", "data/shaders/mesh_component_shader.fs"));
+    }
+
+    u32 MeshProgram = (u32)*MeshComponentShader;
+
+    ToLoad->ShaderProgram                   = MeshProgram;
+    ToLoad->WorldTransformMatrixLocation    = tglGetUniformLocation(MeshProgram, "ObjecToWorldTransformation");
+    ToLoad->DiffuseTextureLocation          = tglGetUniformLocation(MeshProgram, "DiffuseTexture");
+
+    tglUseProgram(ToLoad->ShaderProgram);
+    tglUniform1i(ToLoad->DiffuseTextureLocation, GL_TEXTURE_UNIT0);
+
+    tglUseProgram(0);
+}
+
 void PrepareFrame(Platform *Platform, GameContext *Cntx)
 {
     /*
@@ -496,9 +608,23 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
 
     Vec3 WooDooMagic = (DeltaQuat * a) * Pos;
     */
+   InitProgramsCache();
+
+   Cntx->TestSceneObject.ObjMesh.ObjectPath = "data/obj/Golem.obj";
+
+   Cntx->TestSceneObject.Transform.Rotation.Bank    = 0.0f;
+   Cntx->TestSceneObject.Transform.Rotation.Pitch   = 0.0f;
+   Cntx->TestSceneObject.Transform.Rotation.Heading = 0.0f;
+
+   Cntx->TestSceneObject.Transform.Position.x = 0.0f;
+   Cntx->TestSceneObject.Transform.Position.y = 0.0f;
+   Cntx->TestSceneObject.Transform.Position.z = 10.0f;
+
+   InitMeshComponent(Platform, &Cntx->TestSceneObject.ObjMesh);
 
     // NOTE(Ismail): values specified by glClearColor are clamped to the range [0,1]
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glEnable(GL_DEPTH_TEST);
 
     glViewport(0, 0, Platform->ScreenOpt.ActualWidth, Platform->ScreenOpt.ActualHeight);
 
@@ -513,6 +639,7 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         0, 0
     };
 
+    Cntx->ReadedFile.Meshes = (Mesh*)VirtualAlloc(0, sizeof(Mesh) * 10, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     Cntx->ReadedFile.Positions = (Vec3*)VirtualAlloc(0, sizeof(Vec3) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     Cntx->ReadedFile.Normals = (Vec3*)VirtualAlloc(0, sizeof(Vec3) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     Cntx->ReadedFile.TextureCoord = (Vec2*)VirtualAlloc(0, sizeof(Vec2) * 30000, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -671,13 +798,13 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     
     ErrorCode = glGetError();
     if (ErrorCode != GL_NO_ERROR) {
-        //Assert(false);
+        Assert(false);
     }
 }
 
 void Frame(Platform *Platform, GameContext *Cntx)
 {
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     if (Platform->Input.QButton.State == KeyState::Pressed && !Cntx->QWasTriggered) {
         Cntx->QWasTriggered = 1;
@@ -708,7 +835,7 @@ void Frame(Platform *Platform, GameContext *Cntx)
     Vec3 TransVec = {};
 
     TransVec.z = 2.0f;
-    Translation ZTranslation;
+    Mat4x4 ZTranslation;
 
     MakeTranslationFromVec(&TransVec, &ZTranslation);
 
@@ -717,7 +844,7 @@ void Frame(Platform *Platform, GameContext *Cntx)
     Mat4x4 RotationMat = {};
     Rotation Rotator = {};
     Rotator.Heading = Cntx->Rot;
-    MakeObjectToUprightRotation(&RotationMat, &Rotator);
+    MakeObjectToUprightRotation(&Rotator, &RotationMat);
 
     UniformScale Scale = {};
     CreateUniformScale(0.7, &Scale);
@@ -744,7 +871,7 @@ void Frame(Platform *Platform, GameContext *Cntx)
     Mat4x4 CameraUprightToObjectRotation = {};
     MakeUprightToObjectRotation(&CameraUprightToObjectRotation, &Cntx->PlayerCamera.Rotator);
 
-    Mat4x4 FinalMat = PerspProjection * CameraUprightToObjectRotation * CameraTranslation * ZTranslation.Trans * RotationMat * Scale.Scale;
+    Mat4x4 FinalMat = PerspProjection * CameraUprightToObjectRotation * CameraTranslation * ZTranslation * RotationMat * Scale.Scale;
 
     u64 PositionsCount = Cntx->ReadedFile.PositionsCount;
     Vec4 ResultsVectorsWithoutPerspDiv[100] = {};
@@ -794,4 +921,37 @@ void Frame(Platform *Platform, GameContext *Cntx)
     tglUniformMatrix4fv(Cntx->BattleGridMatLocation, 1, GL_TRUE, FinalMat.Matrix[0]);
 
     tglDrawElements(GL_TRIANGLES, TERRAIN_INDEX_AMOUNT, GL_UNSIGNED_INT, 0);
+
+    MeshComponent*  Comp        = &Cntx->TestSceneObject.ObjMesh;
+    WorldTransform* Transform   = &Cntx->TestSceneObject.Transform;
+
+    Mat4x4 ObjectToWorldTranslation;
+    MakeTranslationFromVec(&Transform->Position, &ObjectToWorldTranslation);
+
+    Mat4x4 ObjectToWorlRotation;
+    MakeObjectToUprightRotation(&Transform->Rotation, &ObjectToWorlRotation);
+
+    tglBindVertexArray(Comp->BuffersHandler[VERTEX_ARRAY_LOCATION]);
+    tglUseProgram(Comp->ShaderProgram);
+    tglActiveTexture(GL_TEXTURE0);
+
+    Mat4x4 FinalTransform = PerspProjection * CameraUprightToObjectRotation * CameraTranslation * ObjectToWorldTranslation * ObjectToWorlRotation;
+
+    tglUniformMatrix4fv(Comp->WorldTransformMatrixLocation, 1, GL_TRUE, FinalTransform.Matrix[0]);
+
+    for (i32 Index = 0; Index < Comp->MeshesAmount; ++Index) {
+        MeshComponentObjects *MeshInfo = &Comp->MeshesInfo[Index];
+        
+        glBindTexture(GL_TEXTURE_2D, MeshInfo->TextureHandle);
+        i32 ErrorCode = glGetError();
+        if (ErrorCode != GL_NO_ERROR) {
+            Assert(false);
+        }
+
+        tglDrawElementsBaseVertex(GL_TRIANGLES, MeshInfo->NumIndices, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * MeshInfo->IndexOffset), MeshInfo->VertexOffset);
+        ErrorCode = glGetError();
+        if (ErrorCode != GL_NO_ERROR) {
+            Assert(false);
+        }
+    }
 }

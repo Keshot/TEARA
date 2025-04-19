@@ -4,9 +4,8 @@
 
 #include <string.h>
 
-#ifndef TEARA_MAXIMUM_NEIGHBOURS
-    #define TEARA_MAXIMUM_NEIGHBOURS (20)
-#endif
+#define TEARA_MAXIMUM_NEIGHBOURS (20)
+#define VERTEX_PER_FACE (3)
 
 struct MeshCacheData {
     u32     TextureIndex[TEARA_MAXIMUM_NEIGHBOURS];
@@ -125,6 +124,7 @@ Statuses LoadObjFile(const char *Path, ObjFile *File, ObjFileLoaderFlags Flags)
     // fast_obj set in every buffer (position, textcoord, normals) a dummy entry so we skip first elemen of every array
     u32     ElementsCount   = 0;
     u32     IndicesCount    = 0;
+    u32     MeshIndex       = 0;
 
     Vec3 *Pos       = File->Positions;
     Vec3 *Normals   = File->Normals;
@@ -143,43 +143,73 @@ Statuses LoadObjFile(const char *Path, ObjFile *File, ObjFileLoaderFlags Flags)
     real32 *LoadNormals         = LoadedMesh->normals;
     real32 *LoadTexCoord        = LoadedMesh->texcoords;
 
-    fastObjIndex *LoadIndices   = LoadedMesh->indices;
+    fastObjIndex    *LoadIndices    = LoadedMesh->indices;
 
-    for (; IndicesCount < LoadedMesh->index_count; ++IndicesCount) {
-        u32 PosIndex        = LoadIndices[IndicesCount].p;
-        u32 TextIndex       = LoadIndices[IndicesCount].t;
-        u32 NormalsIndex    = LoadIndices[IndicesCount].n;
-        u32 FoundIndex;
+    u32 MeshesCount = LoadedMesh->object_count;
 
-        bool32 Found = FindInCache(&MeshLoadCache, PosIndex, TextIndex, NormalsIndex, &FoundIndex);
+    for (; MeshIndex < MeshesCount; ++MeshIndex) {
+        fastObjGroup    *CurrentMesh    = &LoadedMesh->objects[MeshIndex];
+        Mesh            *ObjectMesh     = &File->Meshes[MeshIndex];
+        
+        if (LoadedMesh->material_count > 0) {
+            u32                 MaterialNum         = LoadedMesh->face_materials[CurrentMesh->face_offset];
+            fastObjMaterial*    CurrentMeshMaterial = &LoadedMesh->materials[MaterialNum];
 
-        if (Found) {
-            Indices[IndicesCount] = FoundIndex;
-        }
-        else {
-            Indices[IndicesCount]   = ElementsCount;
-            Pos[ElementsCount]      = *((Vec3*)LoadPos + PosIndex);
+            if (LoadedMesh->texture_count > 0 && CurrentMeshMaterial->map_Kd > 0) {
+                fastObjTexture  *CurrentMeshTexture = &LoadedMesh->textures[CurrentMeshMaterial->map_Kd];
 
-            if (NormalsIndex > 0) { // NOTE (ismail): quick fix but later i need make up something
-                if (Flags.GenerateSmoothNormals) {
-                    MeshLoadCache.NormalsCache[ElementsCount] = PosIndex;
+                ObjectMesh->HaveTexture = 1;
 
-                    Vec3 *Normal = ((Vec3*)LoadNormals + NormalsIndex);
-                    AddNormalInCache(&MeshLoadCache, PosIndex, Normal);
-                }
-                else {
-                    Normals[ElementsCount]  = *((Vec3*)LoadNormals + NormalsIndex);
+                if(CurrentMeshTexture) {
+                    // TODO(ismail): remove this cringe with strlen
+                    memcpy_s(ObjectMesh->TextureFilePath, sizeof(ObjectMesh->TextureFilePath), CurrentMeshTexture->path, strlen(CurrentMeshTexture->path));                
                 }
             }
-
-            if (TextIndex > 0) { // NOTE (ismail): quick fix but later i need make up something
-                TexCoord[ElementsCount] = *((Vec2*)LoadTexCoord + TextIndex);   
-            }
-
-            AddInCache(&MeshLoadCache, PosIndex, TextIndex, NormalsIndex, ElementsCount);
-
-            ++ElementsCount;
         }
+
+        u32 CurrentMeshIndexCount = CurrentMesh->face_count * VERTEX_PER_FACE;
+
+        ObjectMesh->IndexOffset = IndicesCount;
+
+        for (u32 LocalIndex = 0; LocalIndex < CurrentMeshIndexCount; ++LocalIndex, ++IndicesCount) {
+            u32 PosIndex        = LoadIndices[IndicesCount].p;
+            u32 TextIndex       = LoadIndices[IndicesCount].t;
+            u32 NormalsIndex    = LoadIndices[IndicesCount].n;
+            u32 FoundIndex;
+    
+            bool32 Found = FindInCache(&MeshLoadCache, PosIndex, TextIndex, NormalsIndex, &FoundIndex);
+    
+            if (Found) {
+                Indices[IndicesCount] = FoundIndex;
+            }
+            else {
+                Indices[IndicesCount]   = ElementsCount;
+                Pos[ElementsCount]      = *((Vec3*)LoadPos + PosIndex);
+    
+                if (NormalsIndex > 0) { // NOTE (ismail): quick fix but later i need make up something
+                    if (Flags.GenerateSmoothNormals) {
+                        MeshLoadCache.NormalsCache[ElementsCount] = PosIndex;
+    
+                        Vec3 *Normal = ((Vec3*)LoadNormals + NormalsIndex);
+                        AddNormalInCache(&MeshLoadCache, PosIndex, Normal);
+                    }
+                    else {
+                        Normals[ElementsCount]  = *((Vec3*)LoadNormals + NormalsIndex);
+                    }
+                }
+    
+                if (TextIndex > 0) { // NOTE (ismail): quick fix but later i need make up something
+                    TexCoord[ElementsCount] = *((Vec2*)LoadTexCoord + TextIndex);   
+                }
+    
+                AddInCache(&MeshLoadCache, PosIndex, TextIndex, NormalsIndex, ElementsCount);
+    
+                ++ElementsCount;
+            }
+        }
+
+        ObjectMesh->IndicesAmount   = CurrentMeshIndexCount;
+        ObjectMesh->VertexOffset    = 0;
     }
 
     if (Flags.GenerateSmoothNormals) {
@@ -194,6 +224,7 @@ Statuses LoadObjFile(const char *Path, ObjFile *File, ObjFileLoaderFlags Flags)
 
     fast_obj_destroy(LoadedMesh);
 
+    File->MeshesCount       = MeshesCount;
     File->IndicesCount      = IndicesCount;
     File->PositionsCount    = ElementsCount;
     File->NormalsCount      = ElementsCount;

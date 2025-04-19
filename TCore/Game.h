@@ -20,17 +20,54 @@ struct Camera {
 #define ONE_SQUARE_INDEX_AMOUNT 6
 #define TERRAIN_INDEX_AMOUNT SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT - 1) * ONE_SQUARE_INDEX_AMOUNT
 
-enum OpenGLBuffersLocation{
+enum OpenGLBuffersLocation {
     POSITION_LOCATION,
     TEXTURES_LOCATION,
     INDEX_ARRAY_LOCATION,
     VERTEX_ARRAY_LOCATION,
-    MAX
+    LOCATION_MAX
 };
 
 struct GraphicComponent {
-    u32 BuffersHandler[MAX];
+    u32 BuffersHandler[LOCATION_MAX];
     u32 ShaderProgram;
+};
+
+struct WorldTransform {
+    Vec3        Position;
+    Rotation    Rotation;
+};
+
+enum ShaderProgramsType {
+    MeshShader,
+
+    ShaderProgramsTypeMax
+};
+
+struct ShaderProgramsCache {
+    i32 ShadersPrograms[ShaderProgramsTypeMax];
+};
+
+struct MeshComponentObjects {
+    u32 TextureHandle;
+    u32 NumIndices;
+    u32 IndexOffset;
+    u32 VertexOffset;
+};
+
+struct MeshComponent {
+    const char*             ObjectPath;
+    MeshComponentObjects*   MeshesInfo;
+    u32                     MeshesAmount;
+    u32                     BuffersHandler[LOCATION_MAX];
+    u32                     ShaderProgram;
+    u32                     WorldTransformMatrixLocation;
+    u32                     DiffuseTextureLocation;
+};
+
+struct SceneObject {
+    WorldTransform  Transform;
+    MeshComponent   ObjMesh;
 };
 
 struct GameContext {
@@ -57,6 +94,8 @@ struct GameContext {
     GraphicComponent BattleGrid;
     u32 BattleGridMatLocation;
     u32 TerrainTextureHandle;
+
+    SceneObject TestSceneObject;
 };
 
 #endif

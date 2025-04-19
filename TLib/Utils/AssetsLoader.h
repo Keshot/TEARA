@@ -5,23 +5,35 @@
 #include "TLib/Utils/Types.h"
 #include "TLib/Math/Vector.h"
 
+#define TEXTURE_FILE_NAME_MAX   64
+
 struct AssetsLoaderVars {
     // NOTE (ismail): cache size per thread
     u32 AssetsLoaderCacheSize;
+};
+
+struct Mesh {
+    char    TextureFilePath[TEXTURE_FILE_NAME_MAX];
+    bool32  HaveTexture;
+    u32     IndexOffset;
+    u32     VertexOffset;
+    u32     IndicesAmount;
 };
 
 // ASSETS TYPES
 // NOTE (ismail): may be use separate x, y, z for positions and normals, and x, y for textures coordinat
 // we need to chek will it increase performance
 struct ObjFile {
-    Vec3*   Positions;
-    Vec3*   Normals;
-    Vec2*   TextureCoord;
-    u32*    Indices;
-    u32     PositionsCount;
-    u32     NormalsCount;
-    u32     TexturesCount;
-    u32     IndicesCount;
+    Mesh*           Meshes;
+    Vec3*           Positions;
+    Vec3*           Normals;
+    Vec2*           TextureCoord;
+    u32*            Indices;
+    u32             MeshesCount;
+    u32             PositionsCount;
+    u32             NormalsCount;
+    u32             TexturesCount;
+    u32             IndicesCount;
 };
 
 // ASSETS TYPES END
