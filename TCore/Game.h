@@ -11,26 +11,18 @@ struct Rotation {
     real32 Bank;
 };
 
-struct Camera {
-    Vec3        Position;
-    Rotation    Rotator;
-};
-
 #define BATTLE_AREA_GRID_VERT_AMOUNT 3
 #define ONE_SQUARE_INDEX_AMOUNT 6
 #define TERRAIN_INDEX_AMOUNT SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT - 1) * ONE_SQUARE_INDEX_AMOUNT
+#define SCENE_OBJECTS_MAX 2
 
 enum OpenGLBuffersLocation {
-    POSITION_LOCATION,
-    TEXTURES_LOCATION,
-    INDEX_ARRAY_LOCATION,
-    VERTEX_ARRAY_LOCATION,
-    LOCATION_MAX
-};
+    GLPositionLocation,
+    GLTextureLocation,
 
-struct GraphicComponent {
-    u32 BuffersHandler[LOCATION_MAX];
-    u32 ShaderProgram;
+    GLIndexArrayLocation,
+    GLVertexArrayLocation,
+    GLLocationMax,
 };
 
 struct WorldTransform {
@@ -38,14 +30,38 @@ struct WorldTransform {
     Rotation    Rotation;
 };
 
-enum ShaderProgramsType {
-    MeshShader,
-
-    ShaderProgramsTypeMax
+struct Camera {
+    WorldTransform Transform;
 };
 
-struct ShaderProgramsCache {
-    i32 ShadersPrograms[ShaderProgramsTypeMax];
+enum ShaderProgramsType {
+    MeshShader,
+    TerrainShader,
+    ShaderProgramsTypeMax,
+};
+
+struct ShaderTextureInfo {
+    u32 Location;
+    i32 Unit;
+    i32 UnitNum;
+};
+
+struct ShaderProgram {
+    u32     Program;
+
+    union {
+        struct {
+            u32                 ObjectToWorldTransformationLocation;
+            ShaderTextureInfo   DiffuseTexture;
+        } Common;
+
+        struct {
+        } MeshShader;
+
+        struct {
+        } TerrainShader;
+
+    } ProgramVarsStorage;
 };
 
 struct MeshComponentObjects {
@@ -59,10 +75,7 @@ struct MeshComponent {
     const char*             ObjectPath;
     MeshComponentObjects*   MeshesInfo;
     u32                     MeshesAmount;
-    u32                     BuffersHandler[LOCATION_MAX];
-    u32                     ShaderProgram;
-    u32                     WorldTransformMatrixLocation;
-    u32                     DiffuseTextureLocation;
+    u32                     BuffersHandler[GLLocationMax];
 };
 
 struct SceneObject {
@@ -70,32 +83,32 @@ struct SceneObject {
     MeshComponent   ObjMesh;
 };
 
+struct TerrainLoadFile {
+    Vec3    Vertices[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
+    Vec2    Textures[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
+    u32     Indices[TERRAIN_INDEX_AMOUNT];
+    u32     VerticesAmount;
+    u32     TexturesAmount;
+    u32     IndicesAmount;
+};
+
+struct Terrain {
+    u32     BuffersHandler[GLLocationMax];
+    u32     TextureHandle;
+    u32     IndicesAmount;
+    Vec3    TerrainPosition;
+};
+
 struct GameContext {
-    bool32 PolygonModeActive;
+    bool32          PolygonModeActive;
+    bool32          QWasTriggered;
 
-    real32 Trans;
-    real32 Delta;
-    real32 Rot;
-    real32 RotDelta;
+    real32          TranslationDelta;
+    real32          RotationDelta;
 
-    ObjFile ReadedFile;
-    u32 FinalShaderProgram;
-    u32 VAO;
-    u32 MatLocation;
-    u32 TextureHandle;
-
-    bool32 QWasTriggered;
-
-    Camera PlayerCamera;
-
-    Vec3 Vertices[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
-    Vec2 Textures[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
-    u32 Indices[TERRAIN_INDEX_AMOUNT];
-    GraphicComponent BattleGrid;
-    u32 BattleGridMatLocation;
-    u32 TerrainTextureHandle;
-
-    SceneObject TestSceneObject;
+    Camera          PlayerCamera;
+    SceneObject     TestSceneObjects[SCENE_OBJECTS_MAX];
+    Terrain         Terrain;
 };
 
 #endif
