@@ -19,6 +19,7 @@ struct Rotation {
 enum OpenGLBuffersLocation {
     GLPositionLocation,
     GLTextureLocation,
+    GLNormalsLocation,
 
     GLIndexArrayLocation,
     GLVertexArrayLocation,
@@ -41,7 +42,7 @@ enum ShaderProgramsType {
 };
 
 struct ShaderTextureInfo {
-    u32 Location;
+    i32 Location;
     i32 Unit;
     i32 UnitNum;
 };
@@ -49,9 +50,15 @@ struct ShaderTextureInfo {
 struct ShaderProgram {
     u32     Program;
 
-    union {
+    union ProgramVariablesStorage {
         struct {
-            u32                 ObjectToWorldTransformationLocation;
+            i32                 ObjectToWorldTransformationLocation;
+            i32                 MaterialAmbientColorLocation;
+            i32                 MaterialDiffuseColorLocation;
+            i32                 DirectionalLightColorLocation;
+            i32                 DirectionalLightDirectionLocation;
+            i32                 DirectionalLightIntensityLocation;
+            i32                 DirectionalLightAmbientIntensityLocation;
             ShaderTextureInfo   DiffuseTexture;
         } Common;
 
@@ -64,11 +71,25 @@ struct ShaderProgram {
     } ProgramVarsStorage;
 };
 
+struct DirectionalLight {
+    Vec3    Color;
+    Vec3    Direction;
+    real32  Intensity;
+    real32  AmbientIntensity;
+};
+
+struct MeshMaterial {
+    bool32  HaveTexture;
+    u32     TextureHandle;
+    Vec3    AmbientColor;
+    Vec3    DiffuseColor;
+};
+
 struct MeshComponentObjects {
-    u32 TextureHandle;
-    u32 NumIndices;
-    u32 IndexOffset;
-    u32 VertexOffset;
+    MeshMaterial    Material;
+    u32             NumIndices;
+    u32             IndexOffset;
+    u32             VertexOffset;
 };
 
 struct MeshComponent {
@@ -86,29 +107,33 @@ struct SceneObject {
 struct TerrainLoadFile {
     Vec3    Vertices[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
     Vec2    Textures[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
+    Vec3    Normals[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
     u32     Indices[TERRAIN_INDEX_AMOUNT];
     u32     VerticesAmount;
     u32     TexturesAmount;
+    u32     NormalsAmount;
     u32     IndicesAmount;
 };
 
 struct Terrain {
-    u32     BuffersHandler[GLLocationMax];
-    u32     TextureHandle;
-    u32     IndicesAmount;
-    Vec3    TerrainPosition;
+    u32             BuffersHandler[GLLocationMax];
+    u32             TextureHandle;
+    u32             IndicesAmount;
+    WorldTransform  Transform;
 };
 
 struct GameContext {
-    bool32          PolygonModeActive;
-    bool32          QWasTriggered;
+    bool32              PolygonModeActive;
+    bool32              QWasTriggered;
 
-    real32          TranslationDelta;
-    real32          RotationDelta;
+    real32              TranslationDelta;
+    real32              RotationDelta;
 
-    Camera          PlayerCamera;
-    SceneObject     TestSceneObjects[SCENE_OBJECTS_MAX];
-    Terrain         Terrain;
+    Camera              PlayerCamera;
+    SceneObject         TestSceneObjects[SCENE_OBJECTS_MAX];
+    Terrain             Terrain;
+
+    DirectionalLight    LightSource;
 };
 
 #endif

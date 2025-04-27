@@ -12,12 +12,18 @@ struct AssetsLoaderVars {
     u32 AssetsLoaderCacheSize;
 };
 
-struct Mesh {
-    char    TextureFilePath[TEXTURE_FILE_NAME_MAX];
+struct Material {
     bool32  HaveTexture;
-    u32     IndexOffset;
-    u32     VertexOffset;
-    u32     IndicesAmount;
+    char    TextureFilePath[TEXTURE_FILE_NAME_MAX];
+    Vec3    AmbientColor;
+    Vec3    DiffuseColor;
+};
+
+struct Mesh {
+    Material    Material;
+    u32         IndexOffset;
+    u32         VertexOffset;
+    u32         IndicesAmount;
 };
 
 // ASSETS TYPES

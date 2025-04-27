@@ -239,6 +239,32 @@ void MakeUprightToObjectRotation(Mat4x4 *Mat, Rotation *Rot)
     };
 }
 
+void MakeUprightToObjectRotationMat3x3(Mat3x3 *Mat, Rotation *Rot)
+{
+    real32 Cosh, Sinh;
+    real32 Cosp, Sinp;
+    real32 Cosb, Sinb;
+
+    real32 Heading = DEGREE_TO_RAD(Rot->Heading);
+    real32 Pitch = DEGREE_TO_RAD(Rot->Pitch);
+    real32 Bank = DEGREE_TO_RAD(Rot->Bank);
+
+    Sinh = sinf(Heading);
+    Cosh = cosf(Heading);
+
+    Sinp = sinf(Pitch);
+    Cosp = cosf(Pitch);
+
+    Sinb = sinf(Bank);
+    Cosb = cosf(Bank);
+
+    *Mat = {
+         Cosh * Cosb + Sinh * Sinp * Sinb,  Cosp * Sinb,  -Sinh * Cosb + Cosh * Sinp * Sinb,
+        -Cosh * Sinb + Sinh * Sinp * Cosb,  Cosp * Cosb,   Sinh * Sinb + Cosh * Sinp * Cosb,
+                              Sinh * Cosp,        -Sinp,                        Cosh * Cosp,
+    };
+}
+
 void RotationToDirectionVecotrs(Rotation *Rot, Vec3 *Target, Vec3 *Right, Vec3 *Up)
 {
     real32 Cosh, Sinh;
@@ -345,6 +371,7 @@ void GenerateTerrainMesh(TerrainLoadFile *ToLoad, real32 TextureScale, real32 Si
 {
     Vec3 *Vertices              = ToLoad->Vertices;
     Vec2 *Textures              = ToLoad->Textures;
+    Vec3 *Normals               = ToLoad->Normals;
     u32 *Indices                = ToLoad->Indices;
     i32 RowCubeAmount           = VertexAmount - 1;
     i32 TotalCubeAmount         = SQUARE(RowCubeAmount);
@@ -353,15 +380,22 @@ void GenerateTerrainMesh(TerrainLoadFile *ToLoad, real32 TextureScale, real32 Si
 
     for (i32 ZIndex = 0; ZIndex < VertexAmount; ++ZIndex) {
         for (i32 XIndex = 0; XIndex < VertexAmount; ++XIndex) {
-            Vertices[ZIndex * VertexAmount + XIndex] = {
+            i32 ItemIndex = ZIndex * VertexAmount + XIndex;
+            Vertices[ItemIndex] = {
                 XIndex * VertexLen,
                 0.0f,
                 ZIndex * VertexLen,
             };
 
-            Textures[ZIndex * VertexAmount + XIndex] = {
+            Textures[ItemIndex] = {
                 (real32)XIndex * OneOverVertexAmount,
                 (real32)ZIndex * OneOverVertexAmount,
+            };
+
+            Normals[ZIndex * VertexAmount + XIndex] = {
+                0.0f,
+                1.0f,
+                0.0f
             };
         }
     }
@@ -400,6 +434,11 @@ void LoadTerrainFile(Terrain *Terrain, TerrainLoadFile *TerrainFile)
     tglBufferData(GL_ARRAY_BUFFER, sizeof(*TerrainFile->Textures) * TerrainFile->TexturesAmount, TerrainFile->Textures, GL_STATIC_DRAW);
     tglVertexAttribPointer(OpenGLBuffersLocation::GLTextureLocation, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
     tglEnableVertexAttribArray(OpenGLBuffersLocation::GLTextureLocation);
+
+    tglBindBuffer(GL_ARRAY_BUFFER, BuffersHandler[OpenGLBuffersLocation::GLNormalsLocation]);
+    tglBufferData(GL_ARRAY_BUFFER, sizeof(*TerrainFile->Normals) * TerrainFile->NormalsAmount, TerrainFile->Normals, GL_STATIC_DRAW);
+    tglVertexAttribPointer(OpenGLBuffersLocation::GLNormalsLocation, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    tglEnableVertexAttribArray(OpenGLBuffersLocation::GLNormalsLocation);
 
     tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, BuffersHandler[OpenGLBuffersLocation::GLIndexArrayLocation]);
     tglBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(*TerrainFile->Indices) * TerrainFile->IndicesAmount, TerrainFile->Indices, GL_STATIC_DRAW);
@@ -529,10 +568,16 @@ void InitShaderProgramsCache(Platform *Platform)
 
         u32 ShaderProgram = CreateShaderProgram(Platform, Names->VertexShaderName, Names->FragmentShaderName);
 
-        Shader->ProgramVarsStorage.Common.ObjectToWorldTransformationLocation   = tglGetUniformLocation(ShaderProgram, "ObjectToWorldTransformation");
-        Shader->ProgramVarsStorage.Common.DiffuseTexture.Location               = tglGetUniformLocation(ShaderProgram, "DiffuseTexture");
-        Shader->ProgramVarsStorage.Common.DiffuseTexture.Unit                   = GL_TEXTURE0;
-        Shader->ProgramVarsStorage.Common.DiffuseTexture.UnitNum                = GL_TEXTURE_UNIT0;
+        Shader->ProgramVarsStorage.Common.ObjectToWorldTransformationLocation       = tglGetUniformLocation(ShaderProgram, "ObjectToWorldTransformation");
+        Shader->ProgramVarsStorage.Common.MaterialAmbientColorLocation              = tglGetUniformLocation(ShaderProgram, "MeshMaterial.AmbientColor");
+        Shader->ProgramVarsStorage.Common.MaterialDiffuseColorLocation              = tglGetUniformLocation(ShaderProgram, "MeshMaterial.DiffuseColor");
+        Shader->ProgramVarsStorage.Common.DirectionalLightColorLocation             = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Color");
+        Shader->ProgramVarsStorage.Common.DirectionalLightDirectionLocation         = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Direction");
+        Shader->ProgramVarsStorage.Common.DirectionalLightIntensityLocation         = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Intensity");
+        Shader->ProgramVarsStorage.Common.DirectionalLightAmbientIntensityLocation  = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.AmbientIntensity");
+        Shader->ProgramVarsStorage.Common.DiffuseTexture.Location                   = tglGetUniformLocation(ShaderProgram, "DiffuseTexture");
+        Shader->ProgramVarsStorage.Common.DiffuseTexture.Unit                       = GL_TEXTURE0;
+        Shader->ProgramVarsStorage.Common.DiffuseTexture.UnitNum                    = GL_TEXTURE_UNIT0;
 
         tglUseProgram(ShaderProgram);
 
@@ -550,7 +595,8 @@ void LoadTerrain(Platform *Platform, Terrain *ToLoad, const char *TerrainTerxtur
 
     TerrainFile.VerticesAmount  = sizeof(TerrainFile.Vertices) / sizeof(*TerrainFile.Vertices);
     TerrainFile.TexturesAmount  = sizeof(TerrainFile.Textures) / sizeof(*TerrainFile.Textures);
-    TerrainFile.IndicesAmount   = sizeof(TerrainFile.Indices) / sizeof(*TerrainFile.Indices);
+    TerrainFile.NormalsAmount   = sizeof(TerrainFile.Normals)  / sizeof(*TerrainFile.Normals);
+    TerrainFile.IndicesAmount   = sizeof(TerrainFile.Indices)  / sizeof(*TerrainFile.Indices);
 
     GenerateTerrainMesh(&TerrainFile, 4.0f, 200.0f, BATTLE_AREA_GRID_VERT_AMOUNT);
     LoadTerrainFile(ToLoad, &TerrainFile);
@@ -592,7 +638,7 @@ void AllocateDebugObjFile(ObjFile *File)
 
 void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad)
 {
-    ObjFileLoaderFlags  LoadFlags   = { 0, 0 };
+    ObjFileLoaderFlags  LoadFlags   = { 1, 0 };
     u32*                Buffers     = ToLoad->BuffersHandler;
     ObjFile             LoadFile    = {};
 
@@ -608,16 +654,19 @@ void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad)
     tglGenBuffers(OpenGLBuffersLocation::GLLocationMax - 1, Buffers);
 
     tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLPositionLocation]);
-
     tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.Positions) * LoadFile.PositionsCount, LoadFile.Positions, GL_STATIC_DRAW);
     tglVertexAttribPointer(OpenGLBuffersLocation::GLPositionLocation, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
     tglEnableVertexAttribArray(OpenGLBuffersLocation::GLPositionLocation);
 
     tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLTextureLocation]);
-
     tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.TextureCoord) * LoadFile.TexturesCount, LoadFile.TextureCoord, GL_STATIC_DRAW);
     tglVertexAttribPointer(OpenGLBuffersLocation::GLTextureLocation, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
     tglEnableVertexAttribArray(OpenGLBuffersLocation::GLTextureLocation);
+
+    tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLNormalsLocation]);
+    tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.Normals) * LoadFile.NormalsCount, LoadFile.Normals, GL_STATIC_DRAW);
+    tglVertexAttribPointer(OpenGLBuffersLocation::GLNormalsLocation, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    tglEnableVertexAttribArray(OpenGLBuffersLocation::GLNormalsLocation);
 
     tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLIndexArrayLocation]);
     tglBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(*LoadFile.Indices) * LoadFile.IndicesCount, LoadFile.Indices, GL_STATIC_DRAW);
@@ -627,21 +676,25 @@ void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad)
     tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     for (i32 MeshesIndex = 0; MeshesIndex < LoadFile.MeshesCount; ++MeshesIndex) {
-        MeshComponentObjects*   CurrentComponentObject  = &ComponentObjects[MeshesIndex];
-        Mesh*                   CurrentMesh             = &LoadFile.Meshes[MeshesIndex];
-        TextureFile             Texture                 = {};
+        MeshComponentObjects*   CurrentComponentObject      = &ComponentObjects[MeshesIndex];
+        MeshMaterial*           CurrentComponentMaterial    = &CurrentComponentObject->Material;
+        Mesh*                   CurrentMesh                 = &LoadFile.Meshes[MeshesIndex];
+        Material*               CurrentMeshMaterial         = &CurrentMesh->Material;
+        TextureFile             Texture                     = {};
 
         CurrentComponentObject->IndexOffset     = CurrentMesh->IndexOffset;
         CurrentComponentObject->VertexOffset    = CurrentMesh->VertexOffset;
         CurrentComponentObject->NumIndices      = CurrentMesh->IndicesAmount;
     
-        if (CurrentMesh->HaveTexture) {
-            if (LoadTextureFile(CurrentMesh->TextureFilePath, &Texture, 1) != Statuses::Success) {
+        if (CurrentMeshMaterial->HaveTexture) {
+            if (LoadTextureFile(CurrentMeshMaterial->TextureFilePath, &Texture, 1) != Statuses::Success) {
                 Assert(false);
             }
+
+            CurrentComponentMaterial->HaveTexture = 1;
     
-            glGenTextures(1, &CurrentComponentObject->TextureHandle);
-            glBindTexture(GL_TEXTURE_2D, CurrentComponentObject->TextureHandle);
+            glGenTextures(1, &CurrentComponentMaterial->TextureHandle);
+            glBindTexture(GL_TEXTURE_2D, CurrentComponentMaterial->TextureHandle);
         
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -655,6 +708,9 @@ void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad)
     
             glBindTexture(GL_TEXTURE_2D, 0);
         }
+
+        CurrentComponentMaterial->AmbientColor = CurrentMeshMaterial->AmbientColor;
+        CurrentComponentMaterial->DiffuseColor = CurrentMeshMaterial->DiffuseColor;
     }
 
     ToLoad->MeshesAmount    = LoadFile.MeshesCount;
@@ -747,6 +803,12 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     
     glViewport(0, 0, Platform->ScreenOpt.ActualWidth, Platform->ScreenOpt.ActualHeight);
 
+    DirectionalLight* SceneMainLight    = &Cntx->LightSource;
+    SceneMainLight->Color               = { 1.0f, 1.0f, 1.0f };
+    SceneMainLight->Direction           = { 0.707106f, -0.707106f, 0.0f };
+    SceneMainLight->Intensity           = 0.95f;
+    SceneMainLight->AmbientIntensity    = 0.1f;
+
     InitShaderProgramsCache(Platform);
 
     real32 Position = 10.0f;
@@ -819,12 +881,21 @@ void Frame(Platform *Platform, GameContext *Cntx)
     Mat4x4 CameraTransformation = PerspProjection * CameraUprightToObjectRotation * CameraTranslation;
 
 
+    DirectionalLight *SceneDirLight = &Cntx->LightSource;
+
+
     Terrain *Terrain = &Cntx->Terrain;
     Mat4x4 TerrainWorldTranslation = {};
 
-    MakeTranslationFromVec(&Cntx->Terrain.TerrainPosition, &TerrainWorldTranslation);
+    MakeTranslationFromVec(&Terrain->Transform.Position, &TerrainWorldTranslation);
 
-    Mat4x4 FinalMat = CameraTransformation * TerrainWorldTranslation;
+    Mat4x4 TerrainWorldRotation = {};
+    MakeObjectToUprightRotation(&Terrain->Transform.Rotation, &TerrainWorldRotation);
+
+    Mat3x3 TerrainWorldToObjectRotation = {};
+    MakeUprightToObjectRotationMat3x3(&TerrainWorldToObjectRotation, &Terrain->Transform.Rotation);
+
+    Mat4x4 FinalMat = CameraTransformation * TerrainWorldTranslation * TerrainWorldRotation;
 
     ShaderProgram *TerrainShader = &ShadersProgramsCache[ShaderProgramsType::TerrainShader];
 
@@ -833,39 +904,73 @@ void Frame(Platform *Platform, GameContext *Cntx)
     tglActiveTexture(TerrainShader->ProgramVarsStorage.Common.DiffuseTexture.Unit);
     glBindTexture(GL_TEXTURE_2D, Terrain->TextureHandle);
 
-    tglBindVertexArray(Terrain->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);    
+    tglBindVertexArray(Terrain->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
 
-    tglUniformMatrix4fv(TerrainShader->ProgramVarsStorage.Common.ObjectToWorldTransformationLocation, 1, GL_TRUE, FinalMat[0]);
+    ShaderProgram::ProgramVariablesStorage *VarStorage = &TerrainShader->ProgramVarsStorage;
+
+    Vec3 LightDirectionInTerrainObjectSpace = TerrainWorldToObjectRotation * SceneDirLight->Direction;
+    
+    tglUniform3fv(VarStorage->Common.DirectionalLightColorLocation, 1, &SceneDirLight->Color[0]);
+    tglUniform3fv(VarStorage->Common.DirectionalLightDirectionLocation, 1, &LightDirectionInTerrainObjectSpace[0]);
+    tglUniform1f(VarStorage->Common.DirectionalLightIntensityLocation, SceneDirLight->Intensity);
+    tglUniform1f(VarStorage->Common.DirectionalLightAmbientIntensityLocation, SceneDirLight->AmbientIntensity);
+
+    Vec3 TerrainDiffuseColor = { 1.0f, 1.0f, 1.0f };
+    Vec3 TerrainAmbientColor = { 1.0f, 1.0f, 1.0f };
+
+    tglUniform3fv(VarStorage->Common.MaterialDiffuseColorLocation, 1, &TerrainDiffuseColor[0]);
+    tglUniform3fv(VarStorage->Common.MaterialAmbientColorLocation, 1, &TerrainAmbientColor[0]);
+
+    tglUniformMatrix4fv(VarStorage->Common.ObjectToWorldTransformationLocation, 1, GL_TRUE, FinalMat[0]);
 
     tglDrawElements(GL_TRIANGLES, Terrain->IndicesAmount, GL_UNSIGNED_INT, 0);
 
 
     ShaderProgram *MeshShader = &ShadersProgramsCache[ShaderProgramsType::MeshShader];
+    tglUseProgram(MeshShader->Program);
+
+    VarStorage = &MeshShader->ProgramVarsStorage;
+
+    tglUniform3fv(VarStorage->Common.DirectionalLightColorLocation, 1, &SceneDirLight->Color[0]);
+    tglUniform1f(VarStorage->Common.DirectionalLightIntensityLocation, SceneDirLight->Intensity);
+    tglUniform1f(VarStorage->Common.DirectionalLightAmbientIntensityLocation, SceneDirLight->AmbientIntensity);
 
     for (i32 Index = 0; Index < SCENE_OBJECTS_MAX; ++Index) {
-        SceneObject *CurrentSceneObject     = &Cntx->TestSceneObjects[Index];
+        SceneObject*    CurrentSceneObject  = &Cntx->TestSceneObjects[Index];
         MeshComponent*  Comp                = &CurrentSceneObject->ObjMesh;
         WorldTransform* Transform           = &CurrentSceneObject->Transform;
+
+        Transform->Rotation.Heading += Cntx->RotationDelta;
     
-        Mat4x4 ObjectToWorldTranslation;
+        Mat4x4 ObjectToWorldTranslation = {};
         MakeTranslationFromVec(&Transform->Position, &ObjectToWorldTranslation);
     
-        Mat4x4 ObjectToWorlRotation;
+        Mat4x4 ObjectToWorlRotation = {};
         MakeObjectToUprightRotation(&Transform->Rotation, &ObjectToWorlRotation);
+
+        Mat3x3 WorldToObjectSpaceRotation = {};
+        MakeUprightToObjectRotationMat3x3(&WorldToObjectSpaceRotation, &Transform->Rotation);
+
+        Vec3 LightDirectionInMeshObjectSpace = WorldToObjectSpaceRotation * SceneDirLight->Direction;
+        tglUniform3fv(VarStorage->Common.DirectionalLightDirectionLocation, 1, &LightDirectionInMeshObjectSpace[0]);
     
         tglBindVertexArray(Comp->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
-
-        tglUseProgram(MeshShader->Program);
-        tglActiveTexture(MeshShader->ProgramVarsStorage.Common.DiffuseTexture.Unit);
     
         Mat4x4 FinalTransform = CameraTransformation * ObjectToWorldTranslation * ObjectToWorlRotation;
     
         tglUniformMatrix4fv(MeshShader->ProgramVarsStorage.Common.ObjectToWorldTransformationLocation, 1, GL_TRUE, FinalTransform[0]);
     
         for (i32 Index = 0; Index < Comp->MeshesAmount; ++Index) {
-            MeshComponentObjects *MeshInfo = &Comp->MeshesInfo[Index];
-            
-            glBindTexture(GL_TEXTURE_2D, MeshInfo->TextureHandle);
+            MeshComponentObjects*   MeshInfo        = &Comp->MeshesInfo[Index];
+            MeshMaterial*           MeshMaterial    = &MeshInfo->Material;
+
+            tglUniform3fv(VarStorage->Common.MaterialDiffuseColorLocation, 1, &MeshMaterial->DiffuseColor[0]);
+            tglUniform3fv(VarStorage->Common.MaterialAmbientColorLocation, 1, &MeshMaterial->AmbientColor[0]);
+
+            if (MeshMaterial->HaveTexture) {
+                glBindTexture(GL_TEXTURE_2D, MeshMaterial->TextureHandle);
+                tglActiveTexture(MeshShader->ProgramVarsStorage.Common.DiffuseTexture.Unit);
+            }
     
             tglDrawElementsBaseVertex(GL_TRIANGLES, MeshInfo->NumIndices, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * MeshInfo->IndexOffset), MeshInfo->VertexOffset);
         }

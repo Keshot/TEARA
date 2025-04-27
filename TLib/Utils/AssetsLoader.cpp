@@ -148,23 +148,28 @@ Statuses LoadObjFile(const char *Path, ObjFile *File, ObjFileLoaderFlags Flags)
     u32 MeshesCount = LoadedMesh->object_count;
 
     for (; MeshIndex < MeshesCount; ++MeshIndex) {
-        fastObjGroup    *CurrentMesh    = &LoadedMesh->objects[MeshIndex];
-        Mesh            *ObjectMesh     = &File->Meshes[MeshIndex];
-        
-        if (LoadedMesh->material_count > 0) {
+        fastObjGroup*   CurrentMesh             = &LoadedMesh->objects[MeshIndex];
+        Mesh*           ObjectMesh              = &File->Meshes[MeshIndex];
+        Material*       CurrentMeshMaterial     = &ObjectMesh->Material;
+
+        if (LoadedMesh->material_count > 0) {    
             u32                 MaterialNum         = LoadedMesh->face_materials[CurrentMesh->face_offset];
-            fastObjMaterial*    CurrentMeshMaterial = &LoadedMesh->materials[MaterialNum];
+            fastObjMaterial*    LoadMeshMaterial    = &LoadedMesh->materials[MaterialNum];
 
-            if (LoadedMesh->texture_count > 0 && CurrentMeshMaterial->map_Kd > 0) {
-                fastObjTexture  *CurrentMeshTexture = &LoadedMesh->textures[CurrentMeshMaterial->map_Kd];
+            if (LoadedMesh->texture_count > 0 && LoadMeshMaterial->map_Kd > 0) {
+                ObjectMesh->Material.HaveTexture = 1;
 
-                ObjectMesh->HaveTexture = 1;
-
-                if(CurrentMeshTexture) {
-                    // TODO(ismail): remove this cringe with strlen
-                    memcpy_s(ObjectMesh->TextureFilePath, sizeof(ObjectMesh->TextureFilePath), CurrentMeshTexture->path, strlen(CurrentMeshTexture->path));                
-                }
+                fastObjTexture  *LoadMeshTexture = &LoadedMesh->textures[LoadMeshMaterial->map_Kd];
+                memcpy_s(ObjectMesh->Material.TextureFilePath, sizeof(ObjectMesh->Material.TextureFilePath), LoadMeshTexture->path, strlen(LoadMeshTexture->path));
             }
+
+            // copy it RGB value
+            CurrentMeshMaterial->AmbientColor = { LoadMeshMaterial->Ka[0], LoadMeshMaterial->Ka[1], LoadMeshMaterial->Ka[2] };
+            CurrentMeshMaterial->DiffuseColor = { LoadMeshMaterial->Kd[0], LoadMeshMaterial->Kd[1], LoadMeshMaterial->Kd[2] };
+        }
+        else {
+            CurrentMeshMaterial->AmbientColor = { 1.0f, 1.0f, 1.0f };
+            CurrentMeshMaterial->DiffuseColor = { 1.0f, 1.0f, 1.0f };
         }
 
         u32 CurrentMeshIndexCount = CurrentMesh->face_count * VERTEX_PER_FACE;
