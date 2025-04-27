@@ -806,8 +806,8 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     DirectionalLight* SceneMainLight    = &Cntx->LightSource;
     SceneMainLight->Color               = { 1.0f, 1.0f, 1.0f };
     SceneMainLight->Direction           = { 0.707106f, -0.707106f, 0.0f };
-    SceneMainLight->Intensity           = 0.95f;
-    SceneMainLight->AmbientIntensity    = 0.1f;
+    SceneMainLight->Intensity           = 0.90f;
+    SceneMainLight->AmbientIntensity    = 0.10f;
 
     InitShaderProgramsCache(Platform);
 
@@ -968,8 +968,12 @@ void Frame(Platform *Platform, GameContext *Cntx)
             tglUniform3fv(VarStorage->Common.MaterialAmbientColorLocation, 1, &MeshMaterial->AmbientColor[0]);
 
             if (MeshMaterial->HaveTexture) {
-                glBindTexture(GL_TEXTURE_2D, MeshMaterial->TextureHandle);
+                // TODO(Ismail): why i always call this instead i can just once call tglActiveTexture for needed texture units
                 tglActiveTexture(MeshShader->ProgramVarsStorage.Common.DiffuseTexture.Unit);
+                glBindTexture(GL_TEXTURE_2D, MeshMaterial->TextureHandle);
+            }
+            else {
+                glBindTexture(GL_TEXTURE_2D, 0);
             }
     
             tglDrawElementsBaseVertex(GL_TRIANGLES, MeshInfo->NumIndices, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * MeshInfo->IndexOffset), MeshInfo->VertexOffset);
