@@ -5,7 +5,7 @@
 #include "TLib/Utils/Types.h"
 #include "TLib/Math/Vector.h"
 
-#define TEXTURE_FILE_NAME_MAX   64
+#define FILE_NAME_MAX   64
 
 struct AssetsLoaderVars {
     // NOTE (ismail): cache size per thread
@@ -14,9 +14,12 @@ struct AssetsLoaderVars {
 
 struct Material {
     bool32  HaveTexture;
-    char    TextureFilePath[TEXTURE_FILE_NAME_MAX];
+    bool32  HaveSpecularExponent;
+    char    TextureFilePath[FILE_NAME_MAX];
+    char    SpecularExpFilePath[FILE_NAME_MAX];
     Vec3    AmbientColor;
     Vec3    DiffuseColor;
+    Vec3    SpecularColor;
 };
 
 struct Mesh {

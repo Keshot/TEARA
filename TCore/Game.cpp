@@ -516,7 +516,7 @@ u32 CreateShaderProgram(Platform *Platform, const char *VertexShaderName, const 
 struct TextureFile {
     i32 Width;
     i32 Height;
-    i32 BitsPerPixel;
+    i32 Channels;
     u8* Data;
 };
 
@@ -524,7 +524,7 @@ Statuses LoadTextureFile(const char *Path, TextureFile *ReadedFile, bool32 Verti
 {
     stbi_set_flip_vertically_on_load_thread(VerticalFlip);
 
-    u8* ImageData = stbi_load(Path, &ReadedFile->Width, &ReadedFile->Height, &ReadedFile->BitsPerPixel, STBI_default);
+    u8* ImageData = stbi_load(Path, &ReadedFile->Width, &ReadedFile->Height, &ReadedFile->Channels, STBI_default);
 
     if (!ImageData) {
         // TODO (ismail): diagnostic and write to log some info
@@ -560,6 +560,12 @@ ShadersName ShaderProgramNames[ShaderProgramsType::ShaderProgramsTypeMax] = {
     },
 };
 
+#define DIFFUSE_TEXTURE_UNIT            GL_TEXTURE0
+#define DIFFUSE_TEXTURE_UNIT_NUM        GL_TEXTURE_UNIT0
+
+#define SPECULAR_EXPONENT_MAP_UNIT      GL_TEXTURE1
+#define SPECULAR_EXPONENT_MAP_UNIT_NUM  GL_TEXTURE_UNIT1
+
 void InitShaderProgramsCache(Platform *Platform)
 {
     for (i32 Index = 0; Index < ShaderProgramsType::ShaderProgramsTypeMax; ++Index) {
@@ -571,17 +577,24 @@ void InitShaderProgramsCache(Platform *Platform)
         Shader->ProgramVarsStorage.Common.ObjectToWorldTransformationLocation       = tglGetUniformLocation(ShaderProgram, "ObjectToWorldTransformation");
         Shader->ProgramVarsStorage.Common.MaterialAmbientColorLocation              = tglGetUniformLocation(ShaderProgram, "MeshMaterial.AmbientColor");
         Shader->ProgramVarsStorage.Common.MaterialDiffuseColorLocation              = tglGetUniformLocation(ShaderProgram, "MeshMaterial.DiffuseColor");
+        Shader->ProgramVarsStorage.Common.MaterialSpecularColorLocation             = tglGetUniformLocation(ShaderProgram, "MeshMaterial.SpecularColor");
         Shader->ProgramVarsStorage.Common.DirectionalLightColorLocation             = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Color");
         Shader->ProgramVarsStorage.Common.DirectionalLightDirectionLocation         = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Direction");
         Shader->ProgramVarsStorage.Common.DirectionalLightIntensityLocation         = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Intensity");
         Shader->ProgramVarsStorage.Common.DirectionalLightAmbientIntensityLocation  = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.AmbientIntensity");
+        Shader->ProgramVarsStorage.Common.DirectionalLightSpecularIntensityLocation = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.SpecularIntensity");
+        Shader->ProgramVarsStorage.Common.ViewerPositionLocation                    = tglGetUniformLocation(ShaderProgram, "ViewerPosition");
         Shader->ProgramVarsStorage.Common.DiffuseTexture.Location                   = tglGetUniformLocation(ShaderProgram, "DiffuseTexture");
-        Shader->ProgramVarsStorage.Common.DiffuseTexture.Unit                       = GL_TEXTURE0;
-        Shader->ProgramVarsStorage.Common.DiffuseTexture.UnitNum                    = GL_TEXTURE_UNIT0;
+        Shader->ProgramVarsStorage.Common.DiffuseTexture.Unit                       = DIFFUSE_TEXTURE_UNIT;
+        Shader->ProgramVarsStorage.Common.DiffuseTexture.UnitNum                    = DIFFUSE_TEXTURE_UNIT_NUM;
+        Shader->ProgramVarsStorage.Common.SpecularExpMap.Location                   = tglGetUniformLocation(ShaderProgram, "SpecularExponentMap");
+        Shader->ProgramVarsStorage.Common.SpecularExpMap.Unit                       = SPECULAR_EXPONENT_MAP_UNIT;
+        Shader->ProgramVarsStorage.Common.SpecularExpMap.UnitNum                    = SPECULAR_EXPONENT_MAP_UNIT_NUM;
 
         tglUseProgram(ShaderProgram);
 
         tglUniform1i(Shader->ProgramVarsStorage.Common.DiffuseTexture.Location, Shader->ProgramVarsStorage.Common.DiffuseTexture.UnitNum);
+        tglUniform1i(Shader->ProgramVarsStorage.Common.SpecularExpMap.Location, Shader->ProgramVarsStorage.Common.SpecularExpMap.UnitNum);
 
         tglUseProgram(0);
 
@@ -636,9 +649,9 @@ void AllocateDebugObjFile(ObjFile *File)
     File->Indices       = (u32*)    VirtualAlloc(0, sizeof(u32)  * 140000,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
-void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad)
+void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad, i32 flag)
 {
-    ObjFileLoaderFlags  LoadFlags   = { 1, 0 };
+    ObjFileLoaderFlags  LoadFlags   = { flag, 0 };
     u32*                Buffers     = ToLoad->BuffersHandler;
     ObjFile             LoadFile    = {};
 
@@ -680,13 +693,14 @@ void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad)
         MeshMaterial*           CurrentComponentMaterial    = &CurrentComponentObject->Material;
         Mesh*                   CurrentMesh                 = &LoadFile.Meshes[MeshesIndex];
         Material*               CurrentMeshMaterial         = &CurrentMesh->Material;
-        TextureFile             Texture                     = {};
 
         CurrentComponentObject->IndexOffset     = CurrentMesh->IndexOffset;
         CurrentComponentObject->VertexOffset    = CurrentMesh->VertexOffset;
         CurrentComponentObject->NumIndices      = CurrentMesh->IndicesAmount;
     
         if (CurrentMeshMaterial->HaveTexture) {
+            TextureFile Texture = {};
+
             if (LoadTextureFile(CurrentMeshMaterial->TextureFilePath, &Texture, 1) != Statuses::Success) {
                 Assert(false);
             }
@@ -709,19 +723,42 @@ void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad)
             glBindTexture(GL_TEXTURE_2D, 0);
         }
 
-        CurrentComponentMaterial->AmbientColor = CurrentMeshMaterial->AmbientColor;
-        CurrentComponentMaterial->DiffuseColor = CurrentMeshMaterial->DiffuseColor;
+        if (CurrentMeshMaterial->HaveSpecularExponent) {
+            TextureFile SpecularTexture = {};
+
+            if (LoadTextureFile(CurrentMeshMaterial->SpecularExpFilePath, &SpecularTexture, 1) != Statuses::Success) {
+                Assert(false);
+            }
+
+            CurrentComponentMaterial->HaveSpecularExponent = 1;
+    
+            glGenTextures(1, &CurrentComponentMaterial->SpecularExponentMapTextureHandle);
+            glBindTexture(GL_TEXTURE_2D, CurrentComponentMaterial->SpecularExponentMapTextureHandle);
+        
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, SpecularTexture.Width, SpecularTexture.Height, 0, GL_RED, GL_UNSIGNED_BYTE, SpecularTexture.Data);
+        
+            FreeTextureFile(&SpecularTexture);
+    
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+
+        CurrentComponentMaterial->AmbientColor  = CurrentMeshMaterial->AmbientColor;
+        CurrentComponentMaterial->DiffuseColor  = CurrentMeshMaterial->DiffuseColor;
+        CurrentComponentMaterial->SpecularColor = CurrentMeshMaterial->SpecularColor;
     }
 
     ToLoad->MeshesAmount    = LoadFile.MeshesCount;
     ToLoad->MeshesInfo      = ComponentObjects;
 }
 
-#define SCENE_OBJECTS_NAME_MAX 2
-
-const char *SceneObjectsName[SCENE_OBJECTS_NAME_MAX] = {
+const char *SceneObjectsName[] = {
     "data/obj/Golem.obj",
-    "data/obj/cube_brick_texture.obj"
+    "data/obj/antique_ceramic_vase_01_4k.obj"
 };
 
 void PrepareFrame(Platform *Platform, GameContext *Cntx)
@@ -805,14 +842,15 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
 
     DirectionalLight* SceneMainLight    = &Cntx->LightSource;
     SceneMainLight->Color               = { 1.0f, 1.0f, 1.0f };
-    SceneMainLight->Direction           = { 0.707106f, -0.707106f, 0.0f };
+    SceneMainLight->Direction           = { 1.0f, 0.0f, 0.0f };
     SceneMainLight->Intensity           = 0.90f;
     SceneMainLight->AmbientIntensity    = 0.10f;
+    SceneMainLight->SpecularIntensity   = 1.0f;
 
     InitShaderProgramsCache(Platform);
 
     real32 Position = 10.0f;
-    for (i32 Index = 0; Index < SCENE_OBJECTS_NAME_MAX; ++Index) {
+    for (i32 Index = 0; Index < sizeof(SceneObjectsName) / sizeof(*SceneObjectsName); ++Index) {
         SceneObject *Object = &Cntx->TestSceneObjects[Index];
         Object->ObjMesh.ObjectPath = SceneObjectsName[Index];
 
@@ -824,7 +862,7 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         Object->Transform.Position.y = 0.0f;
         Object->Transform.Position.z = Position;
 
-        InitMeshComponent(Platform, &Object->ObjMesh);
+        InitMeshComponent(Platform, &Object->ObjMesh, Index == 1 ? 0 : 1);
 
         Position += 10.0f;
     }
@@ -934,6 +972,7 @@ void Frame(Platform *Platform, GameContext *Cntx)
     tglUniform3fv(VarStorage->Common.DirectionalLightColorLocation, 1, &SceneDirLight->Color[0]);
     tglUniform1f(VarStorage->Common.DirectionalLightIntensityLocation, SceneDirLight->Intensity);
     tglUniform1f(VarStorage->Common.DirectionalLightAmbientIntensityLocation, SceneDirLight->AmbientIntensity);
+    tglUniform1f(VarStorage->Common.DirectionalLightSpecularIntensityLocation, SceneDirLight->SpecularIntensity);
 
     for (i32 Index = 0; Index < SCENE_OBJECTS_MAX; ++Index) {
         SceneObject*    CurrentSceneObject  = &Cntx->TestSceneObjects[Index];
@@ -948,11 +987,15 @@ void Frame(Platform *Platform, GameContext *Cntx)
         Mat4x4 ObjectToWorlRotation = {};
         MakeObjectToUprightRotation(&Transform->Rotation, &ObjectToWorlRotation);
 
-        Mat3x3 WorldToObjectSpaceRotation = {};
-        MakeUprightToObjectRotationMat3x3(&WorldToObjectSpaceRotation, &Transform->Rotation);
+        Mat3x3 UprightToObjectSpaceRotation = {};
+        MakeUprightToObjectRotationMat3x3(&UprightToObjectSpaceRotation, &Transform->Rotation);
 
-        Vec3 LightDirectionInMeshObjectSpace = WorldToObjectSpaceRotation * SceneDirLight->Direction;
+        Vec3 LightDirectionInMeshObjectSpace = UprightToObjectSpaceRotation * SceneDirLight->Direction;
         tglUniform3fv(VarStorage->Common.DirectionalLightDirectionLocation, 1, &LightDirectionInMeshObjectSpace[0]);
+
+        Vec3 CameraPositionInObjectUprightSpace = Cntx->PlayerCamera.Transform.Position - Transform->Position;
+        Vec3 CameraPositionInObjectLocalSpace   = UprightToObjectSpaceRotation * CameraPositionInObjectUprightSpace;
+        tglUniform3fv(VarStorage->Common.ViewerPositionLocation, 1, &CameraPositionInObjectLocalSpace[0]);
     
         tglBindVertexArray(Comp->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
     
@@ -964,15 +1007,25 @@ void Frame(Platform *Platform, GameContext *Cntx)
             MeshComponentObjects*   MeshInfo        = &Comp->MeshesInfo[Index];
             MeshMaterial*           MeshMaterial    = &MeshInfo->Material;
 
-            tglUniform3fv(VarStorage->Common.MaterialDiffuseColorLocation, 1, &MeshMaterial->DiffuseColor[0]);
-            tglUniform3fv(VarStorage->Common.MaterialAmbientColorLocation, 1, &MeshMaterial->AmbientColor[0]);
+            tglUniform3fv(VarStorage->Common.MaterialDiffuseColorLocation, 1,   &MeshMaterial->DiffuseColor[0]);
+            tglUniform3fv(VarStorage->Common.MaterialAmbientColorLocation, 1,   &MeshMaterial->AmbientColor[0]);
+            tglUniform3fv(VarStorage->Common.MaterialSpecularColorLocation, 1,  &MeshMaterial->SpecularColor[0]);
 
             if (MeshMaterial->HaveTexture) {
-                // TODO(Ismail): why i always call this instead i can just once call tglActiveTexture for needed texture units
-                tglActiveTexture(MeshShader->ProgramVarsStorage.Common.DiffuseTexture.Unit);
+                tglActiveTexture(VarStorage->Common.DiffuseTexture.Unit);
                 glBindTexture(GL_TEXTURE_2D, MeshMaterial->TextureHandle);
             }
             else {
+                tglActiveTexture(VarStorage->Common.DiffuseTexture.Unit);
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+
+            if (MeshMaterial->HaveSpecularExponent) {
+                tglActiveTexture(VarStorage->Common.SpecularExpMap.Unit);
+                glBindTexture(GL_TEXTURE_2D, MeshMaterial->SpecularExponentMapTextureHandle);
+            }
+            else {
+                tglActiveTexture(VarStorage->Common.SpecularExpMap.Unit);
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
     

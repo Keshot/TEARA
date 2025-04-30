@@ -55,11 +55,15 @@ struct ShaderProgram {
             i32                 ObjectToWorldTransformationLocation;
             i32                 MaterialAmbientColorLocation;
             i32                 MaterialDiffuseColorLocation;
+            i32                 MaterialSpecularColorLocation;
             i32                 DirectionalLightColorLocation;
             i32                 DirectionalLightDirectionLocation;
             i32                 DirectionalLightIntensityLocation;
             i32                 DirectionalLightAmbientIntensityLocation;
+            i32                 DirectionalLightSpecularIntensityLocation;
+            i32                 ViewerPositionLocation;
             ShaderTextureInfo   DiffuseTexture;
+            ShaderTextureInfo   SpecularExpMap;
         } Common;
 
         struct {
@@ -76,13 +80,17 @@ struct DirectionalLight {
     Vec3    Direction;
     real32  Intensity;
     real32  AmbientIntensity;
+    real32  SpecularIntensity;
 };
 
 struct MeshMaterial {
     bool32  HaveTexture;
     u32     TextureHandle;
+    bool32  HaveSpecularExponent;
+    u32     SpecularExponentMapTextureHandle;
     Vec3    AmbientColor;
     Vec3    DiffuseColor;
+    Vec3    SpecularColor;
 };
 
 struct MeshComponentObjects {

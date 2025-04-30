@@ -156,20 +156,36 @@ Statuses LoadObjFile(const char *Path, ObjFile *File, ObjFileLoaderFlags Flags)
             u32                 MaterialNum         = LoadedMesh->face_materials[CurrentMesh->face_offset];
             fastObjMaterial*    LoadMeshMaterial    = &LoadedMesh->materials[MaterialNum];
 
-            if (LoadedMesh->texture_count > 0 && LoadMeshMaterial->map_Kd > 0) {
-                ObjectMesh->Material.HaveTexture = 1;
+            if (LoadedMesh->texture_count > 0) {
+                if (LoadMeshMaterial->map_Kd > 0) {
+                    CurrentMeshMaterial->HaveTexture = 1;
 
-                fastObjTexture  *LoadMeshTexture = &LoadedMesh->textures[LoadMeshMaterial->map_Kd];
-                memcpy_s(ObjectMesh->Material.TextureFilePath, sizeof(ObjectMesh->Material.TextureFilePath), LoadMeshTexture->path, strlen(LoadMeshTexture->path));
+                    fastObjTexture  *LoadMeshTexture = &LoadedMesh->textures[LoadMeshMaterial->map_Kd];
+                    memcpy_s(CurrentMeshMaterial->TextureFilePath, 
+                            sizeof(ObjectMesh->Material.TextureFilePath), 
+                            LoadMeshTexture->path, 
+                            strlen(LoadMeshTexture->path));
+                }
+                if (LoadMeshMaterial->map_Ns > 0) {
+                    CurrentMeshMaterial->HaveSpecularExponent = 1;
+
+                    fastObjTexture  *LoadMeshSpecularExpMap = &LoadedMesh->textures[LoadMeshMaterial->map_Ns];
+                    memcpy_s(CurrentMeshMaterial->SpecularExpFilePath, 
+                        sizeof(CurrentMeshMaterial->SpecularExpFilePath), 
+                        LoadMeshSpecularExpMap->path, 
+                        strlen(LoadMeshSpecularExpMap->path));
+                }
             }
 
             // copy it RGB value
-            CurrentMeshMaterial->AmbientColor = { LoadMeshMaterial->Ka[0], LoadMeshMaterial->Ka[1], LoadMeshMaterial->Ka[2] };
-            CurrentMeshMaterial->DiffuseColor = { LoadMeshMaterial->Kd[0], LoadMeshMaterial->Kd[1], LoadMeshMaterial->Kd[2] };
+            CurrentMeshMaterial->AmbientColor   = { LoadMeshMaterial->Ka[0], LoadMeshMaterial->Ka[1], LoadMeshMaterial->Ka[2] };
+            CurrentMeshMaterial->DiffuseColor   = { LoadMeshMaterial->Kd[0], LoadMeshMaterial->Kd[1], LoadMeshMaterial->Kd[2] };
+            CurrentMeshMaterial->SpecularColor  = { LoadMeshMaterial->Ks[0], LoadMeshMaterial->Ks[1], LoadMeshMaterial->Ks[2] };
         }
         else {
-            CurrentMeshMaterial->AmbientColor = { 1.0f, 1.0f, 1.0f };
-            CurrentMeshMaterial->DiffuseColor = { 1.0f, 1.0f, 1.0f };
+            CurrentMeshMaterial->AmbientColor   = { 1.0f, 1.0f, 1.0f };
+            CurrentMeshMaterial->DiffuseColor   = { 1.0f, 1.0f, 1.0f };
+            CurrentMeshMaterial->SpecularColor  = { 1.0f, 1.0f, 1.0f };
         }
 
         u32 CurrentMeshIndexCount = CurrentMesh->face_count * VERTEX_PER_FACE;
