@@ -489,7 +489,7 @@ u32 CreateShaderProgram(Platform *Platform, const char *VertexShaderName, const 
     tglGetShaderiv(FragmentShaderHandle, GL_COMPILE_STATUS, &Success);
 
     if (!Success) {
-        tglGetShaderInfoLog(VertexShaderHandle, 512, NULL, InfoLog);
+        tglGetShaderInfoLog(FragmentShaderHandle, 512, NULL, InfoLog);
 
         Assert(false);
     }
@@ -553,11 +553,11 @@ ShadersName ShaderProgramNames[ShaderProgramsType::ShaderProgramsTypeMax] = {
     { 
         "data/shaders/mesh_component_shader.vs", 
         "data/shaders/mesh_component_shader.fs" 
-    },
+    }/*,
     { 
         "data/shaders/terrain_shader.vs", 
         "data/shaders/terrain_shader.fs" 
-    },
+    },*/
 };
 
 #define DIFFUSE_TEXTURE_UNIT            GL_TEXTURE0
@@ -568,33 +568,70 @@ ShadersName ShaderProgramNames[ShaderProgramsType::ShaderProgramsTypeMax] = {
 
 void InitShaderProgramsCache(Platform *Platform)
 {
+    enum { StringBufferSize = 120 };
+
+    char HelperStringBuffer[StringBufferSize];
+
     for (i32 Index = 0; Index < ShaderProgramsType::ShaderProgramsTypeMax; ++Index) {
-        ShaderProgram*  Shader  = &ShadersProgramsCache[Index];
-        ShadersName*    Names   = &ShaderProgramNames[Index];
+        ShaderProgram*                  Shader                  = &ShadersProgramsCache[Index];
+        ShadersName*                    Names                   = &ShaderProgramNames[Index];
+        ShaderProgramVariablesStorage*  ShaderVariablesStorage  = &Shader->ProgramVarsStorage;
 
         u32 ShaderProgram = CreateShaderProgram(Platform, Names->VertexShaderName, Names->FragmentShaderName);
 
-        Shader->ProgramVarsStorage.Common.ObjectToWorldTransformationLocation       = tglGetUniformLocation(ShaderProgram, "ObjectToWorldTransformation");
-        Shader->ProgramVarsStorage.Common.MaterialAmbientColorLocation              = tglGetUniformLocation(ShaderProgram, "MeshMaterial.AmbientColor");
-        Shader->ProgramVarsStorage.Common.MaterialDiffuseColorLocation              = tglGetUniformLocation(ShaderProgram, "MeshMaterial.DiffuseColor");
-        Shader->ProgramVarsStorage.Common.MaterialSpecularColorLocation             = tglGetUniformLocation(ShaderProgram, "MeshMaterial.SpecularColor");
-        Shader->ProgramVarsStorage.Common.DirectionalLightColorLocation             = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Color");
-        Shader->ProgramVarsStorage.Common.DirectionalLightDirectionLocation         = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Direction");
-        Shader->ProgramVarsStorage.Common.DirectionalLightIntensityLocation         = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Intensity");
-        Shader->ProgramVarsStorage.Common.DirectionalLightAmbientIntensityLocation  = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.AmbientIntensity");
-        Shader->ProgramVarsStorage.Common.DirectionalLightSpecularIntensityLocation = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.SpecularIntensity");
-        Shader->ProgramVarsStorage.Common.ViewerPositionLocation                    = tglGetUniformLocation(ShaderProgram, "ViewerPosition");
-        Shader->ProgramVarsStorage.Common.DiffuseTexture.Location                   = tglGetUniformLocation(ShaderProgram, "DiffuseTexture");
-        Shader->ProgramVarsStorage.Common.DiffuseTexture.Unit                       = DIFFUSE_TEXTURE_UNIT;
-        Shader->ProgramVarsStorage.Common.DiffuseTexture.UnitNum                    = DIFFUSE_TEXTURE_UNIT_NUM;
-        Shader->ProgramVarsStorage.Common.SpecularExpMap.Location                   = tglGetUniformLocation(ShaderProgram, "SpecularExponentMap");
-        Shader->ProgramVarsStorage.Common.SpecularExpMap.Unit                       = SPECULAR_EXPONENT_MAP_UNIT;
-        Shader->ProgramVarsStorage.Common.SpecularExpMap.UnitNum                    = SPECULAR_EXPONENT_MAP_UNIT_NUM;
+        ShaderVariablesStorage->Transform.ObjectToWorldTransformationLocation   = tglGetUniformLocation(ShaderProgram, "ObjectToWorldTransformation");
+
+        ShaderVariablesStorage->MaterialInfo.MaterialAmbientColorLocation   = tglGetUniformLocation(ShaderProgram, "MeshMaterial.AmbientColor");
+        ShaderVariablesStorage->MaterialInfo.MaterialDiffuseColorLocation   = tglGetUniformLocation(ShaderProgram, "MeshMaterial.DiffuseColor");
+        ShaderVariablesStorage->MaterialInfo.MaterialSpecularColorLocation  = tglGetUniformLocation(ShaderProgram, "MeshMaterial.SpecularColor");
+        ShaderVariablesStorage->MaterialInfo.DiffuseTexture.Location        = tglGetUniformLocation(ShaderProgram, "DiffuseTexture");
+        ShaderVariablesStorage->MaterialInfo.DiffuseTexture.Unit            = DIFFUSE_TEXTURE_UNIT;
+        ShaderVariablesStorage->MaterialInfo.DiffuseTexture.UnitNum         = DIFFUSE_TEXTURE_UNIT_NUM;
+        ShaderVariablesStorage->MaterialInfo.SpecularExpMap.Location        = tglGetUniformLocation(ShaderProgram, "SpecularExponentMap");
+        ShaderVariablesStorage->MaterialInfo.SpecularExpMap.Unit            = SPECULAR_EXPONENT_MAP_UNIT;
+        ShaderVariablesStorage->MaterialInfo.SpecularExpMap.UnitNum         = SPECULAR_EXPONENT_MAP_UNIT_NUM;
+
+        ShaderVariablesStorage->Light.DirectionalLightSpecLocations.ColorLocation               = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Specification.Color");
+        ShaderVariablesStorage->Light.DirectionalLightSpecLocations.IntensityLocation           = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Specification.Intensity");
+        ShaderVariablesStorage->Light.DirectionalLightSpecLocations.AmbientIntensityLocation    = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Specification.AmbientIntensity");
+        ShaderVariablesStorage->Light.DirectionalLightSpecLocations.SpecularIntensityLocation   = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Specification.SpecularIntensity");
+        ShaderVariablesStorage->Light.DirectionalLightDirectionLocation                         = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Direction");
+
+        ShaderVariablesStorage->Light.ViewerPositionLocation    = tglGetUniformLocation(ShaderProgram, "ViewerPosition");
+        ShaderVariablesStorage->Light.PointLightsAmountLocation = tglGetUniformLocation(ShaderProgram, "PointLightsAmount");
+
+        for (i32 Index = 0; Index < MAX_POINTS_LIGHTS; ++Index) {
+            ShaderProgramVariablesStorage::LightWork::PointLightLocations* CurrentPointLight = &ShaderVariablesStorage->Light.PointLightsLocations[Index];
+            
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].Specification.Color", Index);
+            CurrentPointLight->SpecLocation.ColorLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].Specification.Intensity", Index);
+            CurrentPointLight->SpecLocation.IntensityLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].Specification.AmbientIntensity", Index);
+            CurrentPointLight->SpecLocation.AmbientIntensityLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].Specification.SpecularIntensity", Index);
+            CurrentPointLight->SpecLocation.SpecularIntensityLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].Position", Index);
+            CurrentPointLight->PositionLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].DisctanceMax", Index);
+            CurrentPointLight->DisctanceMaxLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].DisctanceMin", Index);
+            CurrentPointLight->DisctanceMinLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].AttenuationFactor", Index);
+            CurrentPointLight->AttenuationFactorLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+        }
 
         tglUseProgram(ShaderProgram);
 
-        tglUniform1i(Shader->ProgramVarsStorage.Common.DiffuseTexture.Location, Shader->ProgramVarsStorage.Common.DiffuseTexture.UnitNum);
-        tglUniform1i(Shader->ProgramVarsStorage.Common.SpecularExpMap.Location, Shader->ProgramVarsStorage.Common.SpecularExpMap.UnitNum);
+        tglUniform1i(ShaderVariablesStorage->MaterialInfo.DiffuseTexture.Location, ShaderVariablesStorage->MaterialInfo.DiffuseTexture.UnitNum);
+        tglUniform1i(ShaderVariablesStorage->MaterialInfo.SpecularExpMap.Location, ShaderVariablesStorage->MaterialInfo.SpecularExpMap.UnitNum);
 
         tglUseProgram(0);
 
@@ -649,9 +686,8 @@ void AllocateDebugObjFile(ObjFile *File)
     File->Indices       = (u32*)    VirtualAlloc(0, sizeof(u32)  * 140000,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
-void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad, i32 flag)
+void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad, ObjFileLoaderFlags  LoadFlags)
 {
-    ObjFileLoaderFlags  LoadFlags   = { flag, 0 };
     u32*                Buffers     = ToLoad->BuffersHandler;
     ObjFile             LoadFile    = {};
 
@@ -712,7 +748,7 @@ void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad, i32 flag)
         
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, Texture.Width, Texture.Height, 0, GL_RGB, GL_UNSIGNED_BYTE, Texture.Data);
@@ -756,9 +792,26 @@ void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad, i32 flag)
     ToLoad->MeshesInfo      = ComponentObjects;
 }
 
-const char *SceneObjectsName[] = {
-    "data/obj/Golem.obj",
-    "data/obj/antique_ceramic_vase_01_4k.obj"
+struct MeshLoaderNode {
+    const char*         ObjName;
+    ObjFileLoaderFlags  Flags;
+};
+
+const MeshLoaderNode SceneObjectsName[] = {
+    {
+        "data/obj/Golem.obj",
+        {
+            /* GenerateSmoothNormals */  1,
+            /* SelfGenerateNormals   */  0
+        }
+    },
+    {
+        "data/obj/antique_ceramic_vase_01_4k.obj",
+        {
+            /* GenerateSmoothNormals */  0,
+            /* SelfGenerateNormals   */  0
+        }
+    }
 };
 
 void PrepareFrame(Platform *Platform, GameContext *Cntx)
@@ -840,19 +893,40 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     
     glViewport(0, 0, Platform->ScreenOpt.ActualWidth, Platform->ScreenOpt.ActualHeight);
 
-    DirectionalLight* SceneMainLight    = &Cntx->LightSource;
-    SceneMainLight->Color               = { 1.0f, 1.0f, 1.0f };
-    SceneMainLight->Direction           = { 1.0f, 0.0f, 0.0f };
-    SceneMainLight->Intensity           = 0.90f;
-    SceneMainLight->AmbientIntensity    = 0.10f;
-    SceneMainLight->SpecularIntensity   = 1.0f;
+    DirectionalLight* SceneMainLight                    = &Cntx->LightSource;
+    SceneMainLight->Specification.Color                 = { 1.0f, 1.0f, 1.0f };
+    SceneMainLight->Specification.Intensity             = 1.0f;
+    SceneMainLight->Specification.AmbientIntensity      = 0.10f;
+    SceneMainLight->Specification.SpecularIntensity     = 1.0f;
+    SceneMainLight->Direction                           = { 1.0f, 0.0f, 0.0f };
+
+    Vec3        PointLightPosition  = { 20.0, 12.0f, 10.0f };
+    Vec3        PointLightColor     = { 1.0f, 0.3f, 0.3f };
+    PointLight* ScenePointLights    = Cntx->PointLights;
+    for (i32 Index = 0; Index < MAX_POINTS_LIGHTS; ++Index) {
+        PointLight* CurrentScenePointLight = &ScenePointLights[Index];
+
+        CurrentScenePointLight->Specification.Color             = PointLightColor;
+        CurrentScenePointLight->Specification.Intensity         = 1.0f;
+        CurrentScenePointLight->Specification.AmbientIntensity  = 0.35f;
+        CurrentScenePointLight->Specification.SpecularIntensity = 1.0f;
+        CurrentScenePointLight->DisctanceMax                    = 35.0f;
+        CurrentScenePointLight->DisctanceMin                    = 5.0f;
+        CurrentScenePointLight->AttenuationFactor               = 2.0f;
+        CurrentScenePointLight->Position                        = PointLightPosition;
+
+        PointLightPosition.x    += 40.f;
+        PointLightColor         = { 0.3f, 0.3f, 1.0f };
+    }
 
     InitShaderProgramsCache(Platform);
 
     real32 Position = 10.0f;
     for (i32 Index = 0; Index < sizeof(SceneObjectsName) / sizeof(*SceneObjectsName); ++Index) {
-        SceneObject *Object = &Cntx->TestSceneObjects[Index];
-        Object->ObjMesh.ObjectPath = SceneObjectsName[Index];
+        SceneObject*            Object          = &Cntx->TestSceneObjects[Index];
+        const MeshLoaderNode*   CurrentMeshNode = &SceneObjectsName[Index];
+
+        Object->ObjMesh.ObjectPath = CurrentMeshNode->ObjName;
 
         Object->Transform.Rotation.Bank    = 0.0f;
         Object->Transform.Rotation.Pitch   = 0.0f;
@@ -862,14 +936,14 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         Object->Transform.Position.y = 0.0f;
         Object->Transform.Position.z = Position;
 
-        InitMeshComponent(Platform, &Object->ObjMesh, Index == 1 ? 0 : 1);
+        InitMeshComponent(Platform, &Object->ObjMesh, CurrentMeshNode->Flags);
 
         Position += 10.0f;
     }
 
     LoadTerrain(Platform, &Cntx->Terrain, "data/textures/grass_texture.jpg");
 
-    Cntx->TranslationDelta = 0.005;
+    Cntx->TranslationDelta = 0.1f;
     Cntx->RotationDelta = 0.1f;
 }
 
@@ -921,8 +995,28 @@ void Frame(Platform *Platform, GameContext *Cntx)
 
     DirectionalLight *SceneDirLight = &Cntx->LightSource;
 
+    ShaderProgram *Shader = &ShadersProgramsCache[ShaderProgramsType::MeshShader];
+    tglUseProgram(Shader->Program);
 
+    ShaderProgramVariablesStorage *VarStorage = &Shader->ProgramVarsStorage;
+
+    // TERRAIN RENDERING
     Terrain *Terrain = &Cntx->Terrain;
+
+    Vec3 TerrainAmbientColor    = { 0.6f, 0.6f, 0.6f };
+    Vec3 TerrainDiffuseColor    = { 0.8f, 0.8f, 0.8f };
+    Vec3 TerrainSpecularColor   = { 0.1f, 0.1f, 0.1f };
+
+    tglUniform3fv(VarStorage->MaterialInfo.MaterialAmbientColorLocation, 1, &TerrainAmbientColor[0]);
+    tglUniform3fv(VarStorage->MaterialInfo.MaterialDiffuseColorLocation, 1, &TerrainDiffuseColor[0]);
+    tglUniform3fv(VarStorage->MaterialInfo.MaterialSpecularColorLocation, 1, &TerrainSpecularColor[0]);
+    
+    tglActiveTexture(Shader->ProgramVarsStorage.MaterialInfo.DiffuseTexture.Unit);
+    glBindTexture(GL_TEXTURE_2D, Terrain->TextureHandle);
+
+    tglActiveTexture(Shader->ProgramVarsStorage.MaterialInfo.SpecularExpMap.Unit);
+    glBindTexture(GL_TEXTURE_2D, Terrain->TextureHandle);
+
     Mat4x4 TerrainWorldTranslation = {};
 
     MakeTranslationFromVec(&Terrain->Transform.Position, &TerrainWorldTranslation);
@@ -935,44 +1029,67 @@ void Frame(Platform *Platform, GameContext *Cntx)
 
     Mat4x4 FinalMat = CameraTransformation * TerrainWorldTranslation * TerrainWorldRotation;
 
-    ShaderProgram *TerrainShader = &ShadersProgramsCache[ShaderProgramsType::TerrainShader];
-
-    tglUseProgram(TerrainShader->Program);
-
-    tglActiveTexture(TerrainShader->ProgramVarsStorage.Common.DiffuseTexture.Unit);
-    glBindTexture(GL_TEXTURE_2D, Terrain->TextureHandle);
-
     tglBindVertexArray(Terrain->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
 
-    ShaderProgram::ProgramVariablesStorage *VarStorage = &TerrainShader->ProgramVarsStorage;
-
+    Vec3 ViewerPositionInTerrainUpright     = Cntx->PlayerCamera.Transform.Position - Terrain->Transform.Position;
+    Vec3 ViewerPositionInTerrainObjectSpace = TerrainWorldToObjectRotation * ViewerPositionInTerrainUpright;
     Vec3 LightDirectionInTerrainObjectSpace = TerrainWorldToObjectRotation * SceneDirLight->Direction;
-    
-    tglUniform3fv(VarStorage->Common.DirectionalLightColorLocation, 1, &SceneDirLight->Color[0]);
-    tglUniform3fv(VarStorage->Common.DirectionalLightDirectionLocation, 1, &LightDirectionInTerrainObjectSpace[0]);
-    tglUniform1f(VarStorage->Common.DirectionalLightIntensityLocation, SceneDirLight->Intensity);
-    tglUniform1f(VarStorage->Common.DirectionalLightAmbientIntensityLocation, SceneDirLight->AmbientIntensity);
 
-    Vec3 TerrainDiffuseColor = { 1.0f, 1.0f, 1.0f };
-    Vec3 TerrainAmbientColor = { 1.0f, 1.0f, 1.0f };
+    tglUniform3fv(VarStorage->Light.DirectionalLightDirectionLocation, 1, &LightDirectionInTerrainObjectSpace[0]);
+    tglUniform3fv(VarStorage->Light.DirectionalLightSpecLocations.ColorLocation, 1, &SceneDirLight->Specification.Color[0]);
+    tglUniform1f(VarStorage->Light.DirectionalLightSpecLocations.IntensityLocation, SceneDirLight->Specification.Intensity);
+    tglUniform1f(VarStorage->Light.DirectionalLightSpecLocations.AmbientIntensityLocation, SceneDirLight->Specification.AmbientIntensity);
+    tglUniform1f(VarStorage->Light.DirectionalLightSpecLocations.SpecularIntensityLocation, SceneDirLight->Specification.SpecularIntensity);
 
-    tglUniform3fv(VarStorage->Common.MaterialDiffuseColorLocation, 1, &TerrainDiffuseColor[0]);
-    tglUniform3fv(VarStorage->Common.MaterialAmbientColorLocation, 1, &TerrainAmbientColor[0]);
+    tglUniform3fv(VarStorage->Light.ViewerPositionLocation, 1, &ViewerPositionInTerrainObjectSpace[0]);
 
-    tglUniformMatrix4fv(VarStorage->Common.ObjectToWorldTransformationLocation, 1, GL_TRUE, FinalMat[0]);
+    tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldTransformationLocation, 1, GL_TRUE, FinalMat[0]);
+
+    PointLight* ScenePointLights    = Cntx->PointLights;
+    i32         Index = 0;
+    for (; Index < MAX_POINTS_LIGHTS; ++Index) {
+        PointLight* CurrentPointLight = &ScenePointLights[Index];
+        ShaderProgramVariablesStorage::LightWork::PointLightLocations* PointLightsVarLocations = &VarStorage->Light.PointLightsLocations[Index];
+
+        Vec3 LightInTerrainUprightPosition  = CurrentPointLight->Position - Terrain->Transform.Position;
+        Vec3 LightInTerrainObjectPosition   = TerrainWorldToObjectRotation * LightInTerrainUprightPosition;
+
+        tglUniform3fv(PointLightsVarLocations->PositionLocation, 1, &LightInTerrainObjectPosition[0]);
+        tglUniform1f(PointLightsVarLocations->DisctanceMaxLocation, CurrentPointLight->DisctanceMax);
+        tglUniform1f(PointLightsVarLocations->DisctanceMinLocation, CurrentPointLight->DisctanceMin);
+        tglUniform1f(PointLightsVarLocations->AttenuationFactorLocation, CurrentPointLight->AttenuationFactor);
+
+        tglUniform3fv(PointLightsVarLocations->SpecLocation.ColorLocation, 1, &CurrentPointLight->Specification.Color[0]);
+        tglUniform1f(PointLightsVarLocations->SpecLocation.IntensityLocation, CurrentPointLight->Specification.Intensity);
+        tglUniform1f(PointLightsVarLocations->SpecLocation.AmbientIntensityLocation, CurrentPointLight->Specification.AmbientIntensity);
+        tglUniform1f(PointLightsVarLocations->SpecLocation.SpecularIntensityLocation, CurrentPointLight->Specification.SpecularIntensity);
+    }
+
+    tglUniform1i(VarStorage->Light.PointLightsAmountLocation, Index);
 
     tglDrawElements(GL_TRIANGLES, Terrain->IndicesAmount, GL_UNSIGNED_INT, 0);
+    // TERRAIN RENDERING END
 
+    if (ScenePointLights[0].DisctanceMin >= 33.0f) {
+        Cntx->TranslationDelta *= -1.0f;
+    }
+    else if (ScenePointLights[0].DisctanceMin <= 0.0f) {
+        Cntx->TranslationDelta *= -1.0f;
+    }
 
-    ShaderProgram *MeshShader = &ShadersProgramsCache[ShaderProgramsType::MeshShader];
-    tglUseProgram(MeshShader->Program);
+    for (Index = 0; Index < MAX_POINTS_LIGHTS; ++Index) {
+        PointLight* CurrentPointLight = &ScenePointLights[Index];
+        
+        CurrentPointLight->DisctanceMin += Cntx->TranslationDelta;
+    }
 
-    VarStorage = &MeshShader->ProgramVarsStorage;
+    // MESHES RENDERING
+    tglUniform3fv(VarStorage->Light.DirectionalLightSpecLocations.ColorLocation, 1, &SceneDirLight->Specification.Color[0]);
+    tglUniform1f(VarStorage->Light.DirectionalLightSpecLocations.IntensityLocation, SceneDirLight->Specification.Intensity);
+    tglUniform1f(VarStorage->Light.DirectionalLightSpecLocations.AmbientIntensityLocation, SceneDirLight->Specification.AmbientIntensity);
+    tglUniform1f(VarStorage->Light.DirectionalLightSpecLocations.SpecularIntensityLocation, SceneDirLight->Specification.SpecularIntensity);
 
-    tglUniform3fv(VarStorage->Common.DirectionalLightColorLocation, 1, &SceneDirLight->Color[0]);
-    tglUniform1f(VarStorage->Common.DirectionalLightIntensityLocation, SceneDirLight->Intensity);
-    tglUniform1f(VarStorage->Common.DirectionalLightAmbientIntensityLocation, SceneDirLight->AmbientIntensity);
-    tglUniform1f(VarStorage->Common.DirectionalLightSpecularIntensityLocation, SceneDirLight->SpecularIntensity);
+    tglUniform1i(VarStorage->Light.PointLightsAmountLocation, 0);
 
     for (i32 Index = 0; Index < SCENE_OBJECTS_MAX; ++Index) {
         SceneObject*    CurrentSceneObject  = &Cntx->TestSceneObjects[Index];
@@ -991,45 +1108,47 @@ void Frame(Platform *Platform, GameContext *Cntx)
         MakeUprightToObjectRotationMat3x3(&UprightToObjectSpaceRotation, &Transform->Rotation);
 
         Vec3 LightDirectionInMeshObjectSpace = UprightToObjectSpaceRotation * SceneDirLight->Direction;
-        tglUniform3fv(VarStorage->Common.DirectionalLightDirectionLocation, 1, &LightDirectionInMeshObjectSpace[0]);
+        tglUniform3fv(VarStorage->Light.DirectionalLightDirectionLocation, 1, &LightDirectionInMeshObjectSpace[0]);
 
         Vec3 CameraPositionInObjectUprightSpace = Cntx->PlayerCamera.Transform.Position - Transform->Position;
         Vec3 CameraPositionInObjectLocalSpace   = UprightToObjectSpaceRotation * CameraPositionInObjectUprightSpace;
-        tglUniform3fv(VarStorage->Common.ViewerPositionLocation, 1, &CameraPositionInObjectLocalSpace[0]);
+        tglUniform3fv(VarStorage->Light.ViewerPositionLocation, 1, &CameraPositionInObjectLocalSpace[0]);
     
         tglBindVertexArray(Comp->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
     
         Mat4x4 FinalTransform = CameraTransformation * ObjectToWorldTranslation * ObjectToWorlRotation;
     
-        tglUniformMatrix4fv(MeshShader->ProgramVarsStorage.Common.ObjectToWorldTransformationLocation, 1, GL_TRUE, FinalTransform[0]);
+        tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldTransformationLocation, 1, GL_TRUE, FinalTransform[0]);
     
         for (i32 Index = 0; Index < Comp->MeshesAmount; ++Index) {
             MeshComponentObjects*   MeshInfo        = &Comp->MeshesInfo[Index];
             MeshMaterial*           MeshMaterial    = &MeshInfo->Material;
 
-            tglUniform3fv(VarStorage->Common.MaterialDiffuseColorLocation, 1,   &MeshMaterial->DiffuseColor[0]);
-            tglUniform3fv(VarStorage->Common.MaterialAmbientColorLocation, 1,   &MeshMaterial->AmbientColor[0]);
-            tglUniform3fv(VarStorage->Common.MaterialSpecularColorLocation, 1,  &MeshMaterial->SpecularColor[0]);
+            tglUniform3fv(VarStorage->MaterialInfo.MaterialDiffuseColorLocation, 1,   &MeshMaterial->DiffuseColor[0]);
+            tglUniform3fv(VarStorage->MaterialInfo.MaterialAmbientColorLocation, 1,   &MeshMaterial->AmbientColor[0]);
+            tglUniform3fv(VarStorage->MaterialInfo.MaterialSpecularColorLocation, 1,  &MeshMaterial->SpecularColor[0]);
 
             if (MeshMaterial->HaveTexture) {
-                tglActiveTexture(VarStorage->Common.DiffuseTexture.Unit);
+                tglActiveTexture(VarStorage->MaterialInfo.DiffuseTexture.Unit);
                 glBindTexture(GL_TEXTURE_2D, MeshMaterial->TextureHandle);
             }
             else {
-                tglActiveTexture(VarStorage->Common.DiffuseTexture.Unit);
+                tglActiveTexture(VarStorage->MaterialInfo.DiffuseTexture.Unit);
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
 
             if (MeshMaterial->HaveSpecularExponent) {
-                tglActiveTexture(VarStorage->Common.SpecularExpMap.Unit);
+                tglActiveTexture(VarStorage->MaterialInfo.SpecularExpMap.Unit);
                 glBindTexture(GL_TEXTURE_2D, MeshMaterial->SpecularExponentMapTextureHandle);
             }
             else {
-                tglActiveTexture(VarStorage->Common.SpecularExpMap.Unit);
+                tglActiveTexture(VarStorage->MaterialInfo.SpecularExpMap.Unit);
                 glBindTexture(GL_TEXTURE_2D, 0);
             }
     
             tglDrawElementsBaseVertex(GL_TRIANGLES, MeshInfo->NumIndices, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * MeshInfo->IndexOffset), MeshInfo->VertexOffset);
         }
     }
+
+    // MESHES RENDERING END
 }

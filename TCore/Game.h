@@ -37,50 +37,84 @@ struct Camera {
 
 enum ShaderProgramsType {
     MeshShader,
-    TerrainShader,
     ShaderProgramsTypeMax,
 };
 
-struct ShaderTextureInfo {
-    i32 Location;
-    i32 Unit;
-    i32 UnitNum;
+#define MAX_POINTS_LIGHTS 2
+
+struct ShaderProgramVariablesStorage {
+
+    struct ObjectTransform {
+        i32                 ObjectToWorldTransformationLocation;
+    } Transform;
+
+    struct ObjectMaterial {
+
+        struct ShaderTextureInfo {
+            i32 Location;
+            i32 Unit;
+            i32 UnitNum;
+        };
+
+        i32 MaterialAmbientColorLocation;
+        i32 MaterialDiffuseColorLocation;
+        i32 MaterialSpecularColorLocation;
+
+        ShaderTextureInfo   DiffuseTexture;
+        ShaderTextureInfo   SpecularExpMap;
+    } MaterialInfo;
+
+    struct LightWork {
+
+        struct LightSpecLocations {
+            i32 ColorLocation;
+            i32 IntensityLocation;
+            i32 AmbientIntensityLocation;
+            i32 SpecularIntensityLocation;
+        };
+
+        struct PointLightLocations {
+            LightSpecLocations  SpecLocation;
+            i32                 PositionLocation;
+            i32                 DisctanceMaxLocation;
+            i32                 DisctanceMinLocation;
+            i32                 AttenuationFactorLocation;
+        };
+
+        PointLightLocations PointLightsLocations[MAX_POINTS_LIGHTS];
+
+        LightSpecLocations  DirectionalLightSpecLocations;
+        i32                 DirectionalLightDirectionLocation;
+
+        i32                 ViewerPositionLocation;
+        i32                 PointLightsAmountLocation;
+    } Light;
+
 };
 
 struct ShaderProgram {
-    u32     Program;
-
-    union ProgramVariablesStorage {
-        struct {
-            i32                 ObjectToWorldTransformationLocation;
-            i32                 MaterialAmbientColorLocation;
-            i32                 MaterialDiffuseColorLocation;
-            i32                 MaterialSpecularColorLocation;
-            i32                 DirectionalLightColorLocation;
-            i32                 DirectionalLightDirectionLocation;
-            i32                 DirectionalLightIntensityLocation;
-            i32                 DirectionalLightAmbientIntensityLocation;
-            i32                 DirectionalLightSpecularIntensityLocation;
-            i32                 ViewerPositionLocation;
-            ShaderTextureInfo   DiffuseTexture;
-            ShaderTextureInfo   SpecularExpMap;
-        } Common;
-
-        struct {
-        } MeshShader;
-
-        struct {
-        } TerrainShader;
-
-    } ProgramVarsStorage;
+    u32                             Program;
+    ShaderProgramVariablesStorage   ProgramVarsStorage;
 };
 
-struct DirectionalLight {
+struct LightSpec {
     Vec3    Color;
-    Vec3    Direction;
     real32  Intensity;
     real32  AmbientIntensity;
     real32  SpecularIntensity;
+};
+
+struct DirectionalLight {
+    LightSpec   Specification;
+    Vec3        Direction;
+};
+
+struct PointLight {
+    LightSpec   Specification;
+    Vec3        Position;
+    real32      DisctanceMax;
+    real32      DisctanceMin;
+    real32      AttenuationFactor;
 };
 
 struct MeshMaterial {
@@ -142,6 +176,7 @@ struct GameContext {
     Terrain             Terrain;
 
     DirectionalLight    LightSource;
+    PointLight          PointLights[MAX_POINTS_LIGHTS];
 };
 
 #endif
