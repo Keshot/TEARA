@@ -1446,7 +1446,7 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
         char Buffer[256];
         snprintf(Buffer, sizeof(Buffer), "| %.02fms/f | %.02f f/s | %.02f mc/f |\n", DeltaTime, FPS, MCPF);
 
-        // OutputDebugStringA(Buffer);
+        OutputDebugStringA(Buffer);
 
         LastCycleCount = EndCycleCount;
         LastCounter = EndCounter;

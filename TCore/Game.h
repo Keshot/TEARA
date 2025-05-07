@@ -40,7 +40,8 @@ enum ShaderProgramsType {
     ShaderProgramsTypeMax,
 };
 
-#define MAX_POINTS_LIGHTS 2
+#define MAX_POINTS_LIGHTS   2
+#define MAX_SPOT_LIGHTS     1
 
 struct ShaderProgramVariablesStorage {
 
@@ -73,21 +74,36 @@ struct ShaderProgramVariablesStorage {
             i32 SpecularIntensityLocation;
         };
 
+        struct LightAttenuationLocations {
+            i32 PositionLocation;
+            i32 DisctanceMaxLocation;
+            i32 DisctanceMinLocation;
+            i32 AttenuationFactorLocation;
+        };
+
         struct PointLightLocations {
-            LightSpecLocations  SpecLocation;
-            i32                 PositionLocation;
-            i32                 DisctanceMaxLocation;
-            i32                 DisctanceMinLocation;
-            i32                 AttenuationFactorLocation;
+            LightSpecLocations          SpecLocation;
+            LightAttenuationLocations   AttenuationLocation;
+        };
+
+        struct SpotLightLocations {
+            LightSpecLocations          SpecLocation;
+            LightAttenuationLocations   AttenuationLocation;
+            i32                         DirectionLocation;
+            i32                         CosCutoffAngleLocation;
+            i32                         CutoffAttenuationFactorLocation;
         };
 
         PointLightLocations PointLightsLocations[MAX_POINTS_LIGHTS];
+
+        SpotLightLocations  SpotLightsLocations[MAX_SPOT_LIGHTS];
 
         LightSpecLocations  DirectionalLightSpecLocations;
         i32                 DirectionalLightDirectionLocation;
 
         i32                 ViewerPositionLocation;
         i32                 PointLightsAmountLocation;
+        i32                 SpotLightsAmountLocation;
     } Light;
 
 };
@@ -104,17 +120,29 @@ struct LightSpec {
     real32  SpecularIntensity;
 };
 
+struct LightAttenuation {
+    Vec3        Position;
+    real32      DisctanceMax;
+    real32      DisctanceMin;
+    real32      AttenuationFactor;
+};
+
 struct DirectionalLight {
     LightSpec   Specification;
     Vec3        Direction;
 };
 
 struct PointLight {
-    LightSpec   Specification;
-    Vec3        Position;
-    real32      DisctanceMax;
-    real32      DisctanceMin;
-    real32      AttenuationFactor;
+    LightSpec           Specification;
+    LightAttenuation    Attenuation;
+};
+
+struct SpotLight {
+    LightSpec           Specification;
+    LightAttenuation    Attenuation;
+    Vec3                Direction;
+    real32              CosCutoffAngle;
+    real32              CutoffAttenuationFactor;
 };
 
 struct MeshMaterial {
@@ -177,6 +205,7 @@ struct GameContext {
 
     DirectionalLight    LightSource;
     PointLight          PointLights[MAX_POINTS_LIGHTS];
+    SpotLight           SpotLights[MAX_SPOT_LIGHTS];
 };
 
 #endif

@@ -599,6 +599,7 @@ void InitShaderProgramsCache(Platform *Platform)
 
         ShaderVariablesStorage->Light.ViewerPositionLocation    = tglGetUniformLocation(ShaderProgram, "ViewerPosition");
         ShaderVariablesStorage->Light.PointLightsAmountLocation = tglGetUniformLocation(ShaderProgram, "PointLightsAmount");
+        ShaderVariablesStorage->Light.SpotLightsAmountLocation  = tglGetUniformLocation(ShaderProgram, "SpotLightsAmount");
 
         for (i32 Index = 0; Index < MAX_POINTS_LIGHTS; ++Index) {
             ShaderProgramVariablesStorage::LightWork::PointLightLocations* CurrentPointLight = &ShaderVariablesStorage->Light.PointLightsLocations[Index];
@@ -615,17 +616,54 @@ void InitShaderProgramsCache(Platform *Platform)
             snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].Specification.SpecularIntensity", Index);
             CurrentPointLight->SpecLocation.SpecularIntensityLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
 
-            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].Position", Index);
-            CurrentPointLight->PositionLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].AttenuationSpec.Position", Index);
+            CurrentPointLight->AttenuationLocation.PositionLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
 
-            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].DisctanceMax", Index);
-            CurrentPointLight->DisctanceMaxLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].AttenuationSpec.DisctanceMax", Index);
+            CurrentPointLight->AttenuationLocation.DisctanceMaxLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
 
-            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].DisctanceMin", Index);
-            CurrentPointLight->DisctanceMinLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].AttenuationSpec.DisctanceMin", Index);
+            CurrentPointLight->AttenuationLocation.DisctanceMinLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
 
-            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].AttenuationFactor", Index);
-            CurrentPointLight->AttenuationFactorLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "PointLights[%d].AttenuationSpec.AttenuationFactor", Index);
+            CurrentPointLight->AttenuationLocation.AttenuationFactorLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+        }
+
+        for (i32 Index = 0; Index < MAX_SPOT_LIGHTS; ++Index) {
+            ShaderProgramVariablesStorage::LightWork::SpotLightLocations* CurrentSpotLight = &ShaderVariablesStorage->Light.SpotLightsLocations[Index];
+            
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "SpotLights[%d].Specification.Color", Index);
+            CurrentSpotLight->SpecLocation.ColorLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "SpotLights[%d].Specification.Intensity", Index);
+            CurrentSpotLight->SpecLocation.IntensityLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "SpotLights[%d].Specification.AmbientIntensity", Index);
+            CurrentSpotLight->SpecLocation.AmbientIntensityLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "SpotLights[%d].Specification.SpecularIntensity", Index);
+            CurrentSpotLight->SpecLocation.SpecularIntensityLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "SpotLights[%d].AttenuationSpec.Position", Index);
+            CurrentSpotLight->AttenuationLocation.PositionLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "SpotLights[%d].AttenuationSpec.DisctanceMax", Index);
+            CurrentSpotLight->AttenuationLocation.DisctanceMaxLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "SpotLights[%d].AttenuationSpec.DisctanceMin", Index);
+            CurrentSpotLight->AttenuationLocation.DisctanceMinLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "SpotLights[%d].AttenuationSpec.AttenuationFactor", Index);
+            CurrentSpotLight->AttenuationLocation.AttenuationFactorLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "SpotLights[%d].Direction", Index);
+            CurrentSpotLight->DirectionLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "SpotLights[%d].CosCutoffAngle", Index);
+            CurrentSpotLight->CosCutoffAngleLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+
+            snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "SpotLights[%d].CutoffAttenuationFactor", Index);
+            CurrentSpotLight->CutoffAttenuationFactorLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
         }
 
         tglUseProgram(ShaderProgram);
@@ -814,6 +852,61 @@ const MeshLoaderNode SceneObjectsName[] = {
     }
 };
 
+void SetupPointLights(PointLight* Lights, u32 LightAmount, ShaderProgramsType ShaderType, Mat3x3* UprightToObjectSpace, Vec3* ObjectPosition)
+{
+    ShaderProgramVariablesStorage *VarStorage = &ShadersProgramsCache[ShaderType].ProgramVarsStorage;
+
+    for (u32 Index = 0; Index < LightAmount; ++Index) {
+        PointLight* CurrentPointLight = &Lights[Index];
+        ShaderProgramVariablesStorage::LightWork::PointLightLocations* PointLightsVarLocations = &VarStorage->Light.PointLightsLocations[Index];
+
+        Vec3 LightInTerrainUprightPosition  = CurrentPointLight->Attenuation.Position - *ObjectPosition;
+        Vec3 LightInTerrainObjectPosition   = *UprightToObjectSpace * LightInTerrainUprightPosition;
+
+        tglUniform3fv(PointLightsVarLocations->AttenuationLocation.PositionLocation, 1, &LightInTerrainObjectPosition[0]);
+        tglUniform1f(PointLightsVarLocations->AttenuationLocation.DisctanceMaxLocation, CurrentPointLight->Attenuation.DisctanceMax);
+        tglUniform1f(PointLightsVarLocations->AttenuationLocation.DisctanceMinLocation, CurrentPointLight->Attenuation.DisctanceMin);
+        tglUniform1f(PointLightsVarLocations->AttenuationLocation.AttenuationFactorLocation, CurrentPointLight->Attenuation.AttenuationFactor);
+
+        tglUniform3fv(PointLightsVarLocations->SpecLocation.ColorLocation, 1, &CurrentPointLight->Specification.Color[0]);
+        tglUniform1f(PointLightsVarLocations->SpecLocation.IntensityLocation, CurrentPointLight->Specification.Intensity);
+        tglUniform1f(PointLightsVarLocations->SpecLocation.AmbientIntensityLocation, CurrentPointLight->Specification.AmbientIntensity);
+        tglUniform1f(PointLightsVarLocations->SpecLocation.SpecularIntensityLocation, CurrentPointLight->Specification.SpecularIntensity);
+    }
+
+    tglUniform1i(VarStorage->Light.PointLightsAmountLocation, LightAmount);
+}
+
+void SetupSpotLights(SpotLight* Lights, u32 LightAmount, ShaderProgramsType ShaderType, Mat3x3* UprightToObjectSpace, Vec3* ObjectPosition)
+{
+    ShaderProgramVariablesStorage *VarStorage = &ShadersProgramsCache[ShaderType].ProgramVarsStorage;
+
+    for (u32 Index = 0; Index < LightAmount; ++Index) {
+        SpotLight* CurrentSpotLight = &Lights[Index];
+        ShaderProgramVariablesStorage::LightWork::SpotLightLocations* SpotLightsVarLocations = &VarStorage->Light.SpotLightsLocations[Index];
+
+        Vec3 LightInTerrainUprightPosition  = CurrentSpotLight->Attenuation.Position - *ObjectPosition;
+        Vec3 LightInTerrainObjectPosition   = *UprightToObjectSpace * LightInTerrainUprightPosition;
+
+        tglUniform3fv(SpotLightsVarLocations->AttenuationLocation.PositionLocation, 1, &LightInTerrainObjectPosition[0]);
+        tglUniform1f(SpotLightsVarLocations->AttenuationLocation.DisctanceMaxLocation, CurrentSpotLight->Attenuation.DisctanceMax);
+        tglUniform1f(SpotLightsVarLocations->AttenuationLocation.DisctanceMinLocation, CurrentSpotLight->Attenuation.DisctanceMin);
+        tglUniform1f(SpotLightsVarLocations->AttenuationLocation.AttenuationFactorLocation, CurrentSpotLight->Attenuation.AttenuationFactor);
+
+        tglUniform3fv(SpotLightsVarLocations->SpecLocation.ColorLocation, 1, &CurrentSpotLight->Specification.Color[0]);
+        tglUniform1f(SpotLightsVarLocations->SpecLocation.IntensityLocation, CurrentSpotLight->Specification.Intensity);
+        tglUniform1f(SpotLightsVarLocations->SpecLocation.AmbientIntensityLocation, CurrentSpotLight->Specification.AmbientIntensity);
+        tglUniform1f(SpotLightsVarLocations->SpecLocation.SpecularIntensityLocation, CurrentSpotLight->Specification.SpecularIntensity);
+
+        Vec3 SpotLightDirectionInObjectSpace = *UprightToObjectSpace * Lights->Direction;
+        tglUniform3fv(SpotLightsVarLocations->DirectionLocation, 1, &SpotLightDirectionInObjectSpace[0]);
+        tglUniform1f(SpotLightsVarLocations->CosCutoffAngleLocation, CurrentSpotLight->CosCutoffAngle);
+        tglUniform1f(SpotLightsVarLocations->CutoffAttenuationFactorLocation, CurrentSpotLight->CutoffAttenuationFactor);
+    }
+
+    tglUniform1i(VarStorage->Light.SpotLightsAmountLocation, LightAmount);
+}
+
 void PrepareFrame(Platform *Platform, GameContext *Cntx)
 {
     /*
@@ -894,10 +987,10 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     glViewport(0, 0, Platform->ScreenOpt.ActualWidth, Platform->ScreenOpt.ActualHeight);
 
     DirectionalLight* SceneMainLight                    = &Cntx->LightSource;
-    SceneMainLight->Specification.Color                 = { 1.0f, 1.0f, 1.0f };
-    SceneMainLight->Specification.Intensity             = 1.0f;
-    SceneMainLight->Specification.AmbientIntensity      = 0.10f;
-    SceneMainLight->Specification.SpecularIntensity     = 1.0f;
+    SceneMainLight->Specification.Color                 = { 0.5f, 0.5f, 0.5f };
+    SceneMainLight->Specification.Intensity             = 0.2f;
+    SceneMainLight->Specification.AmbientIntensity      = 0.1;
+    SceneMainLight->Specification.SpecularIntensity     = 0.0f;
     SceneMainLight->Direction                           = { 1.0f, 0.0f, 0.0f };
 
     Vec3        PointLightPosition  = { 20.0, 12.0f, 10.0f };
@@ -907,17 +1000,28 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         PointLight* CurrentScenePointLight = &ScenePointLights[Index];
 
         CurrentScenePointLight->Specification.Color             = PointLightColor;
-        CurrentScenePointLight->Specification.Intensity         = 1.0f;
-        CurrentScenePointLight->Specification.AmbientIntensity  = 0.35f;
-        CurrentScenePointLight->Specification.SpecularIntensity = 1.0f;
-        CurrentScenePointLight->DisctanceMax                    = 35.0f;
-        CurrentScenePointLight->DisctanceMin                    = 5.0f;
-        CurrentScenePointLight->AttenuationFactor               = 2.0f;
-        CurrentScenePointLight->Position                        = PointLightPosition;
+        CurrentScenePointLight->Specification.Intensity         = 0.0f;
+        CurrentScenePointLight->Specification.AmbientIntensity  = 0.0;
+        CurrentScenePointLight->Specification.SpecularIntensity = 0.0f;
+        CurrentScenePointLight->Attenuation.DisctanceMax        = 35.0f;
+        CurrentScenePointLight->Attenuation.DisctanceMin        = 5.0f;
+        CurrentScenePointLight->Attenuation.AttenuationFactor   = 2.0f;
+        CurrentScenePointLight->Attenuation.Position            = PointLightPosition;
 
         PointLightPosition.x    += 40.f;
         PointLightColor         = { 0.3f, 0.3f, 1.0f };
     }
+
+    SpotLight* SceneSpotLight = &Cntx->SpotLights[0];
+    SceneSpotLight->Specification.Color                 = { 1.0f, 1.0f, 1.0f };
+    SceneSpotLight->Specification.Intensity             = 1.0f;
+    SceneSpotLight->Specification.AmbientIntensity      = 0.05f;
+    SceneSpotLight->Specification.SpecularIntensity     = 1.0f;
+    SceneSpotLight->Attenuation.DisctanceMax            = 1000.0f;
+    SceneSpotLight->Attenuation.DisctanceMin            = 500.0f;
+    SceneSpotLight->Attenuation.AttenuationFactor       = 2.0f;
+    SceneSpotLight->CutoffAttenuationFactor             = 2.0f;
+    SceneSpotLight->CosCutoffAngle                      = cosf(DEGREE_TO_RAD(30.0f));
 
     InitShaderProgramsCache(Platform);
 
@@ -1045,42 +1149,28 @@ void Frame(Platform *Platform, GameContext *Cntx)
 
     tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldTransformationLocation, 1, GL_TRUE, FinalMat[0]);
 
-    PointLight* ScenePointLights    = Cntx->PointLights;
-    i32         Index = 0;
-    for (; Index < MAX_POINTS_LIGHTS; ++Index) {
-        PointLight* CurrentPointLight = &ScenePointLights[Index];
-        ShaderProgramVariablesStorage::LightWork::PointLightLocations* PointLightsVarLocations = &VarStorage->Light.PointLightsLocations[Index];
+    PointLight* ScenePointLights = Cntx->PointLights;
+    SetupPointLights(Cntx->PointLights, sizeof(Cntx->PointLights) / sizeof(*Cntx->PointLights), ShaderProgramsType::MeshShader, &TerrainWorldToObjectRotation, &Terrain->Transform.Position);
 
-        Vec3 LightInTerrainUprightPosition  = CurrentPointLight->Position - Terrain->Transform.Position;
-        Vec3 LightInTerrainObjectPosition   = TerrainWorldToObjectRotation * LightInTerrainUprightPosition;
-
-        tglUniform3fv(PointLightsVarLocations->PositionLocation, 1, &LightInTerrainObjectPosition[0]);
-        tglUniform1f(PointLightsVarLocations->DisctanceMaxLocation, CurrentPointLight->DisctanceMax);
-        tglUniform1f(PointLightsVarLocations->DisctanceMinLocation, CurrentPointLight->DisctanceMin);
-        tglUniform1f(PointLightsVarLocations->AttenuationFactorLocation, CurrentPointLight->AttenuationFactor);
-
-        tglUniform3fv(PointLightsVarLocations->SpecLocation.ColorLocation, 1, &CurrentPointLight->Specification.Color[0]);
-        tglUniform1f(PointLightsVarLocations->SpecLocation.IntensityLocation, CurrentPointLight->Specification.Intensity);
-        tglUniform1f(PointLightsVarLocations->SpecLocation.AmbientIntensityLocation, CurrentPointLight->Specification.AmbientIntensity);
-        tglUniform1f(PointLightsVarLocations->SpecLocation.SpecularIntensityLocation, CurrentPointLight->Specification.SpecularIntensity);
-    }
-
-    tglUniform1i(VarStorage->Light.PointLightsAmountLocation, Index);
+    SpotLight* SceneSpotLight               = &Cntx->SpotLights[0];
+    SceneSpotLight->Attenuation.Position    = Cntx->PlayerCamera.Transform.Position;
+    SceneSpotLight->Direction               = Target;
+    SetupSpotLights(SceneSpotLight, 1, ShaderProgramsType::MeshShader, &TerrainWorldToObjectRotation, &Terrain->Transform.Position);
 
     tglDrawElements(GL_TRIANGLES, Terrain->IndicesAmount, GL_UNSIGNED_INT, 0);
     // TERRAIN RENDERING END
 
-    if (ScenePointLights[0].DisctanceMin >= 33.0f) {
+    if (ScenePointLights[0].Attenuation.DisctanceMin >= 33.0f) {
         Cntx->TranslationDelta *= -1.0f;
     }
-    else if (ScenePointLights[0].DisctanceMin <= 0.0f) {
+    else if (ScenePointLights[0].Attenuation.DisctanceMin <= 0.0f) {
         Cntx->TranslationDelta *= -1.0f;
     }
 
-    for (Index = 0; Index < MAX_POINTS_LIGHTS; ++Index) {
+    for (i32 Index = 0; Index < MAX_POINTS_LIGHTS; ++Index) {
         PointLight* CurrentPointLight = &ScenePointLights[Index];
         
-        CurrentPointLight->DisctanceMin += Cntx->TranslationDelta;
+        CurrentPointLight->Attenuation.DisctanceMin += Cntx->TranslationDelta;
     }
 
     // MESHES RENDERING
@@ -1119,7 +1209,10 @@ void Frame(Platform *Platform, GameContext *Cntx)
         Mat4x4 FinalTransform = CameraTransformation * ObjectToWorldTranslation * ObjectToWorlRotation;
     
         tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldTransformationLocation, 1, GL_TRUE, FinalTransform[0]);
-    
+
+        SetupPointLights(Cntx->PointLights, sizeof(Cntx->PointLights) / sizeof(*Cntx->PointLights), ShaderProgramsType::MeshShader, &UprightToObjectSpaceRotation, &Transform->Position);
+        SetupSpotLights(SceneSpotLight, 1, ShaderProgramsType::MeshShader, &UprightToObjectSpaceRotation, &Transform->Position);
+
         for (i32 Index = 0; Index < Comp->MeshesAmount; ++Index) {
             MeshComponentObjects*   MeshInfo        = &Comp->MeshesInfo[Index];
             MeshMaterial*           MeshMaterial    = &MeshInfo->Material;
