@@ -54,6 +54,7 @@ typedef DEF_GL_FUNCTION(void, GLAPIENTRY, glGetShaderInfoLog, GLuint shader, GLs
 typedef DEF_GL_FUNCTION(void, GLAPIENTRY, glDeleteShader, GLuint shader);
 typedef DEF_GL_FUNCTION(void, GLAPIENTRY, glDrawElements, GLenum mode, GLsizei count, GLenum type, const void *indices);
 typedef DEF_GL_FUNCTION(void, GLAPIENTRY, glGenerateMipmap,GLenum target);
+typedef DEF_GL_FUNCTION(void, GLAPIENTRY, glVertexAttribIPointer, GLuint index, GLint size, GLenum type, GLsizei stride, const void* pointer);
 
 EXTERN_FUNCTION(glGenBuffers);
 EXTERN_FUNCTION(glBindBuffer);
@@ -85,6 +86,7 @@ EXTERN_FUNCTION(glGetShaderInfoLog);
 EXTERN_FUNCTION(glDeleteShader);
 EXTERN_FUNCTION(glDrawElements);
 EXTERN_FUNCTION(glGenerateMipmap);
+EXTERN_FUNCTION(glVertexAttribIPointer);
 
 Statuses LoadGLFunctions();
 

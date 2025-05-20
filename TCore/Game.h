@@ -11,18 +11,26 @@ struct Rotation {
     real32 Bank;
 };
 
-#define BATTLE_AREA_GRID_VERT_AMOUNT 3
-#define ONE_SQUARE_INDEX_AMOUNT 6
-#define TERRAIN_INDEX_AMOUNT SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT - 1) * ONE_SQUARE_INDEX_AMOUNT
-#define SCENE_OBJECTS_MAX 2
+#define BATTLE_AREA_GRID_VERT_AMOUNT    3
+#define ONE_SQUARE_INDEX_AMOUNT         6
+#define TERRAIN_INDEX_AMOUNT            SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT - 1) * ONE_SQUARE_INDEX_AMOUNT
+#define SCENE_OBJECTS_MAX               2
+#define DYNAMIC_SCENE_OBJECTS_MAX       1
+#define MAX_POINTS_LIGHTS               2
+#define MAX_SPOT_LIGHTS                 1
 
 enum OpenGLBuffersLocation {
+    // STATIC MESH
     GLPositionLocation,
     GLTextureLocation,
     GLNormalsLocation,
-
+    // SKELETAL MESH
+    GLBoneIndicesLocation,
+    GLBoneWeightsLocation,
+    // MISC
     GLIndexArrayLocation,
     GLVertexArrayLocation,
+
     GLLocationMax,
 };
 
@@ -37,11 +45,9 @@ struct Camera {
 
 enum ShaderProgramsType {
     MeshShader,
+    SkeletalMeshShader,
     ShaderProgramsTypeMax,
 };
-
-#define MAX_POINTS_LIGHTS   2
-#define MAX_SPOT_LIGHTS     1
 
 struct ShaderProgramVariablesStorage {
 
@@ -105,6 +111,10 @@ struct ShaderProgramVariablesStorage {
         i32                 PointLightsAmountLocation;
         i32                 SpotLightsAmountLocation;
     } Light;
+
+    struct AnimationInfo {
+        i32 BoneIDLocation;
+    } Animation;
 
 };
 
@@ -196,11 +206,16 @@ struct GameContext {
     bool32              PolygonModeActive;
     bool32              QWasTriggered;
 
+    bool32              ArrowUpWasTriggered;
+
     real32              TranslationDelta;
     real32              RotationDelta;
 
+    i32                 BoneID;
+
     Camera              PlayerCamera;
     SceneObject         TestSceneObjects[SCENE_OBJECTS_MAX];
+    SceneObject         TestDynamocSceneObjects[DYNAMIC_SCENE_OBJECTS_MAX];
     Terrain             Terrain;
 
     DirectionalLight    LightSource;

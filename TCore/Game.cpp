@@ -2,10 +2,16 @@
 #include "TLib/Math/Matrix.h"
 #include "TLib/Utils/Debug.h"
 #include "TLib/Utils/AssetsLoader.h"
+#include "TLib/3rdparty/ufbx/ufbx.h"
+#include "TLib/3rdparty/cgltf/cgltf.h"
 #include "EnginePlatform.h"
 #include "Game.h"
 #include "TGL.h"
 #include "TLib/3rdparty/stb/stb_image.h"
+
+#include "assimp/Importer.hpp"
+#include "assimp/scene.h"
+#include "assimp/postprocess.h"
 
 ShaderProgram ShadersProgramsCache[ShaderProgramsTypeMax];
 
@@ -553,7 +559,12 @@ ShadersName ShaderProgramNames[ShaderProgramsType::ShaderProgramsTypeMax] = {
     { 
         "data/shaders/mesh_component_shader.vs", 
         "data/shaders/mesh_component_shader.fs" 
-    }/*,
+    },
+    { 
+        "../skeletal_mesh_component_shader.vs", 
+        "../skeletal_mesh_component_shader.fs" 
+    }
+    /*,
     { 
         "data/shaders/terrain_shader.vs", 
         "data/shaders/terrain_shader.fs" 
@@ -590,6 +601,8 @@ void InitShaderProgramsCache(Platform *Platform)
         ShaderVariablesStorage->MaterialInfo.SpecularExpMap.Location        = tglGetUniformLocation(ShaderProgram, "SpecularExponentMap");
         ShaderVariablesStorage->MaterialInfo.SpecularExpMap.Unit            = SPECULAR_EXPONENT_MAP_UNIT;
         ShaderVariablesStorage->MaterialInfo.SpecularExpMap.UnitNum         = SPECULAR_EXPONENT_MAP_UNIT_NUM;
+
+        ShaderVariablesStorage->Animation.BoneIDLocation    = tglGetUniformLocation(ShaderProgram, "BoneID");
 
         ShaderVariablesStorage->Light.DirectionalLightSpecLocations.ColorLocation               = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Specification.Color");
         ShaderVariablesStorage->Light.DirectionalLightSpecLocations.IntensityLocation           = tglGetUniformLocation(ShaderProgram, "SceneDirectionalLight.Specification.Intensity");
@@ -738,7 +751,7 @@ void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad, ObjFileLoaderF
     tglGenVertexArrays(1, &Buffers[OpenGLBuffersLocation::GLVertexArrayLocation]); 
     tglBindVertexArray(Buffers[OpenGLBuffersLocation::GLVertexArrayLocation]);
 
-    tglGenBuffers(OpenGLBuffersLocation::GLLocationMax - 1, Buffers);
+    tglGenBuffers(OpenGLBuffersLocation::GLLocationMax - 1, Buffers); // NOTE(Ismail): -1 because we already allocate GLVertexArray
 
     tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLPositionLocation]);
     tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.Positions) * LoadFile.PositionsCount, LoadFile.Positions, GL_STATIC_DRAW);
@@ -852,6 +865,10 @@ const MeshLoaderNode SceneObjectsName[] = {
     }
 };
 
+const char *DynamicSceneObjectsName[] = {
+    "data/obj/SimpleTest2.gltf",
+};
+
 void SetupPointLights(PointLight* Lights, u32 LightAmount, ShaderProgramsType ShaderType, Mat3x3* UprightToObjectSpace, Vec3* ObjectPosition)
 {
     ShaderProgramVariablesStorage *VarStorage = &ShadersProgramsCache[ShaderType].ProgramVarsStorage;
@@ -906,6 +923,399 @@ void SetupSpotLights(SpotLight* Lights, u32 LightAmount, ShaderProgramsType Shad
 
     tglUniform1i(VarStorage->Light.SpotLightsAmountLocation, LightAmount);
 }
+
+struct iVec4 {
+    i32 x, y, z, w;
+};
+
+struct uVec4 {
+    union {
+        struct {
+            u32 x, y, z, w;
+        };
+        u32 ValueHolder[4];   
+    };
+};
+
+struct u8Vec4 {
+    union {
+        struct {
+            u8 x, y, z, w;
+        };
+        u32 ValueHolder;   
+    };
+};
+
+inline void UfbxVec3Convert(ufbx_vec3 *From, Vec3 *To)
+{
+    To->x = From->x;
+    To->y = From->y;
+    To->z = From->z;
+}
+
+struct glTF2File {
+    Vec3*           Positions;
+    Vec3*           Normals;
+    Vec2*           TextureCoord;
+    Vec4*           BoneWeights;
+    iVec4*          BoneIds;
+    u32*            Indices;
+    u32             MeshesCount;
+    u32             PositionsCount;
+    u32             NormalsCount;
+    u32             TexturesCount;
+    u32             BoneWeightsCount;
+    u32             BoneIdsCount;
+    u32             IndicesCount;
+};
+
+struct glTF2LoaderSize {
+    u32 PositionsSize;
+    u32 NormalsSize;
+    u32 TextureCoordSize;
+    u32 BoneWeightsSize;
+    u32 BoneIdsSize;
+    u32 IndicesSize;
+};
+
+void glTFRead(const char *Path, glTF2File *FileOut, glTF2LoaderSize *LoaderSize)
+{
+    u32             IndicesRead;
+    u32             PositionsRead;
+    u32             NormalsRead;
+    u32             TexturesCoordRead;
+    u32             BoneWeightsRead;
+    u32             BoneIdsRead;
+
+    const cgltf_accessor* AccessorPositions;
+    const cgltf_accessor* AccessorNormals;
+    const cgltf_accessor* AccessorTexturesCoord;
+    const cgltf_accessor* AccessorWeights;
+    const cgltf_accessor* AccessorJoints;
+
+    cgltf_options   LoadOptions = {};
+    cgltf_data*     Mesh        = NULL;
+
+    cgltf_result CallResult = cgltf_parse_file(&LoadOptions, Path, &Mesh);
+
+    if (CallResult != cgltf_result::cgltf_result_success) {
+        Assert(false);
+    }
+
+    CallResult = cgltf_load_buffers(&LoadOptions, Mesh, Path);
+
+    if (CallResult != cgltf_result::cgltf_result_success) {
+        Assert(false);
+    }
+
+    u32*    Indices         = FileOut->Indices;
+    Vec3*   Positions       = FileOut->Positions;
+    Vec3*   Normals         = FileOut->Normals;
+    Vec2*   TextureCoords   = FileOut->TextureCoord;
+    Vec4*   BoneWeights     = FileOut->BoneWeights;
+    iVec4*  BoneIds         = FileOut->BoneIds;
+
+    u32 IndicesSize         = LoaderSize->IndicesSize;
+    u32 PositionsSize       = LoaderSize->PositionsSize;
+    u32 NormalsSize         = LoaderSize->NormalsSize;
+    u32 TextureCoordsSize   = LoaderSize->TextureCoordSize;
+    u32 BoneWeightsSize     = LoaderSize->BoneWeightsSize;
+    u32 BoneIdsSize         = LoaderSize->BoneIdsSize;
+
+    i32 MeshesCount = (i32)Mesh->meshes_count;
+
+    Assert(MeshesCount == 1);
+
+    for (i32 MeshIndex = 0; MeshIndex < MeshesCount; ++MeshIndex) {
+        cgltf_mesh *CurrentMesh = &Mesh->meshes[MeshIndex];
+
+        if (CurrentMesh->primitives_count > 1) {
+            Assert(false); // NOTE(Ismail): for now primitives more that 1 not supported
+        }
+
+        cgltf_primitive *CurrentMeshPrimitive = &CurrentMesh->primitives[0];
+
+        Assert(CurrentMeshPrimitive->type == cgltf_primitive_type::cgltf_primitive_type_triangles);
+
+        AccessorPositions     = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_position,    0);
+        AccessorNormals       = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_normal,      0);
+        AccessorTexturesCoord = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_texcoord,    0);
+        AccessorWeights       = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_weights,     0);
+        AccessorJoints        = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_joints,      0);
+
+        Assert(AccessorPositions->component_type    == cgltf_component_type::cgltf_component_type_r_32f && 
+               AccessorPositions->type              == cgltf_type::cgltf_type_vec3 &&
+               AccessorPositions->stride            == 12);
+        Assert(AccessorNormals->component_type  == cgltf_component_type::cgltf_component_type_r_32f && 
+               AccessorNormals->type            == cgltf_type::cgltf_type_vec3 &&
+               AccessorNormals->stride          == 12);
+        Assert(AccessorTexturesCoord->component_type    == cgltf_component_type::cgltf_component_type_r_32f && 
+               AccessorTexturesCoord->type              == cgltf_type::cgltf_type_vec2 &&
+               AccessorTexturesCoord->stride            == 8);
+        Assert(AccessorWeights->component_type  == cgltf_component_type::cgltf_component_type_r_32f &&
+               AccessorWeights->type            == cgltf_type_vec4 &&
+               AccessorWeights->stride          == 16);
+        Assert(AccessorJoints->component_type   == cgltf_component_type::cgltf_component_type_r_8u &&
+               AccessorJoints->type             == cgltf_type_vec4 &&
+               AccessorJoints->stride           == 4);
+
+        const cgltf_accessor* NextJoints    = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_joints,      1);
+        const cgltf_accessor* NextWeights   = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_weights,     1);
+
+        Assert(NextJoints == NULL && NextWeights == NULL);
+        
+        PositionsRead       = (u32)cgltf_accessor_unpack_floats(AccessorPositions,     (real32*)Positions,     PositionsSize);
+        NormalsRead         = (u32)cgltf_accessor_unpack_floats(AccessorNormals,       (real32*)Normals,       NormalsSize);
+        TexturesCoordRead   = (u32)cgltf_accessor_unpack_floats(AccessorTexturesCoord, (real32*)TextureCoords, TextureCoordsSize);
+        BoneWeightsRead     = (u32)cgltf_accessor_unpack_floats(AccessorWeights,       (real32*)BoneWeights,   BoneWeightsSize);
+
+        BoneIdsRead = (u32)cgltf_accessor_unpack_indices_32bit_package(AccessorJoints, BoneIds, BoneIdsSize);
+
+        IndicesRead = (u32)cgltf_accessor_unpack_indices(CurrentMeshPrimitive->indices, Indices, sizeof(*Indices), IndicesSize);
+    }
+
+    FileOut->MeshesCount = MeshesCount;
+
+    FileOut->PositionsCount     = AccessorPositions->count;
+    FileOut->NormalsCount       = AccessorNormals->count;
+    FileOut->TexturesCount      = AccessorTexturesCoord->count;
+    FileOut->BoneWeightsCount   = AccessorWeights->count;
+    FileOut->BoneIdsCount       = AccessorJoints->count;
+    FileOut->IndicesCount       = IndicesRead;
+}
+
+void InitSkeletalMeshComponent(Platform *Platform, MeshComponent *SkeletalMesh)
+{
+    glTF2File       LoadFile            = {};
+    glTF2LoaderSize LoaderBufferSize    = {};
+    u32*            Buffers             = SkeletalMesh->BuffersHandler;
+
+    LoaderBufferSize.PositionsSize =    80000;
+    LoaderBufferSize.NormalsSize =      80000;
+    LoaderBufferSize.TextureCoordSize = 80000;
+    LoaderBufferSize.BoneIdsSize =      80000;
+    LoaderBufferSize.BoneWeightsSize =  80000;
+    LoaderBufferSize.IndicesSize =      80000 * 2;
+
+    LoadFile.Positions      = (Vec3*)Platform->AllocMem(sizeof(*LoadFile.Positions)     * LoaderBufferSize.PositionsSize);
+    LoadFile.Normals        = (Vec3*)Platform->AllocMem(sizeof(*LoadFile.Normals)       * LoaderBufferSize.NormalsSize);
+    LoadFile.TextureCoord   = (Vec2*)Platform->AllocMem(sizeof(*LoadFile.TextureCoord)  * LoaderBufferSize.TextureCoordSize);
+    LoadFile.BoneIds        = (iVec4*)Platform->AllocMem(sizeof(*LoadFile.BoneIds)      * LoaderBufferSize.BoneIdsSize);
+    LoadFile.BoneWeights    = (Vec4*)Platform->AllocMem(sizeof(*LoadFile.BoneWeights)   * LoaderBufferSize.BoneWeightsSize);
+    LoadFile.Indices        = (u32*)Platform->AllocMem(sizeof(*LoadFile.Indices)        * LoaderBufferSize.IndicesSize);
+
+    glTFRead(SkeletalMesh->ObjectPath, &LoadFile, &LoaderBufferSize);
+
+    tglGenVertexArrays(1, &SkeletalMesh->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]); 
+    tglBindVertexArray(Buffers[OpenGLBuffersLocation::GLVertexArrayLocation]);
+
+    tglGenBuffers(OpenGLBuffersLocation::GLLocationMax - 1, Buffers);
+
+    tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLPositionLocation]);
+    tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.Positions) * LoadFile.PositionsCount, LoadFile.Positions, GL_STATIC_DRAW);
+    tglVertexAttribPointer(OpenGLBuffersLocation::GLPositionLocation, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    tglEnableVertexAttribArray(OpenGLBuffersLocation::GLPositionLocation);
+
+    tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLTextureLocation]);
+    tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.TextureCoord) * LoadFile.TexturesCount, LoadFile.TextureCoord, GL_STATIC_DRAW);
+    tglVertexAttribPointer(OpenGLBuffersLocation::GLTextureLocation, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    tglEnableVertexAttribArray(OpenGLBuffersLocation::GLTextureLocation);
+
+    tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLNormalsLocation]);
+    tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.Normals) * LoadFile.NormalsCount, LoadFile.Normals, GL_STATIC_DRAW);
+    tglVertexAttribPointer(OpenGLBuffersLocation::GLNormalsLocation, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    tglEnableVertexAttribArray(OpenGLBuffersLocation::GLNormalsLocation);
+
+    tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLBoneIndicesLocation]);
+    tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.BoneIds) * LoadFile.BoneIdsCount, LoadFile.BoneIds, GL_STATIC_DRAW);
+    tglVertexAttribIPointer(OpenGLBuffersLocation::GLBoneIndicesLocation, 4, GL_INT, 0, (void*)0);
+    tglEnableVertexAttribArray(OpenGLBuffersLocation::GLBoneIndicesLocation);
+
+    tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLBoneWeightsLocation]);
+    tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.BoneWeights) * LoadFile.BoneWeightsCount, LoadFile.BoneWeights, GL_STATIC_DRAW);
+    tglVertexAttribPointer(OpenGLBuffersLocation::GLBoneWeightsLocation, 4, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    tglEnableVertexAttribArray(OpenGLBuffersLocation::GLBoneWeightsLocation);
+
+    tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLIndexArrayLocation]);
+    tglBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(*LoadFile.Indices) * LoadFile.IndicesCount, LoadFile.Indices, GL_STATIC_DRAW);
+
+    tglBindVertexArray(0);
+    tglBindBuffer(GL_ARRAY_BUFFER, 0);
+    tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    SkeletalMesh->MeshesInfo = (MeshComponentObjects*)Platform->AllocMem(sizeof(*SkeletalMesh->MeshesInfo) * LoadFile.MeshesCount);
+
+    for (i32 MeshIndex = 0; MeshIndex < LoadFile.MeshesCount; ++MeshIndex) {
+        MeshComponentObjects* CurrentMeshComponentObject = &SkeletalMesh->MeshesInfo[MeshIndex];
+        
+        CurrentMeshComponentObject->Material.AmbientColor   = {};
+        CurrentMeshComponentObject->Material.DiffuseColor   = {};
+        CurrentMeshComponentObject->Material.SpecularColor  = {};
+
+        CurrentMeshComponentObject->Material.HaveSpecularExponent   = 0;
+        CurrentMeshComponentObject->Material.HaveTexture            = 0;
+
+        CurrentMeshComponentObject->Material.SpecularExponentMapTextureHandle   = 0;
+        CurrentMeshComponentObject->Material.TextureHandle                      = 0;
+
+        CurrentMeshComponentObject->NumIndices      = LoadFile.IndicesCount;
+        CurrentMeshComponentObject->IndexOffset     = 0;
+        CurrentMeshComponentObject->VertexOffset    = 0;
+    }
+
+    SkeletalMesh->MeshesAmount  = LoadFile.MeshesCount;
+}
+
+/*
+void FbxTestRead(Platform *Platform)
+{
+    u64 MaxPositions    = 80000;
+    u64 MaxNormals      = 80000;
+    u64 MaxTexures      = 80000;
+    u64 MaxIndices      = MaxPositions * 2;
+
+    struct FbxMesh {
+        u32 NumVertices;
+        u32 NumIndices;
+    };
+
+    const char *Path = "data/obj/SimpleTest.fbx";
+    u64 PathSize = strlen("data/obj/SimpleTest.fbx");
+
+    ufbx_string_view PathView(Path, PathSize);
+
+    ufbx_scene *FbxScene = ufbx_load_file(PathView, NULL, NULL);
+
+    u32*    Indices         = (u32*)Platform->AllocMem(sizeof(*Indices) * MaxIndices);
+    Vec3*   Position        = (Vec3*)Platform->AllocMem(sizeof(*Position) * MaxPositions);
+    Vec3*   Normals         = (Vec3*)Platform->AllocMem(sizeof(*Normals) * MaxNormals);
+    Vec2*   TextureCoords   = (Vec2*)Platform->AllocMem(sizeof(*TextureCoords) * MaxTexures);
+
+    u32*    FlatIndices         = (u32*)Platform->AllocMem(sizeof(*Indices) * MaxIndices);
+    Vec3*   FlatPosition        = (Vec3*)Platform->AllocMem(sizeof(*Position) * MaxPositions);
+    Vec3*   FlatNormals         = (Vec3*)Platform->AllocMem(sizeof(*Normals) * MaxNormals);
+    Vec2*   FlatTextureCoords   = (Vec2*)Platform->AllocMem(sizeof(*TextureCoords) * MaxTexures);
+    iVec4*  FlatBoneIds         = (iVec4*)Platform->AllocMem(sizeof(*FlatBoneIds) * MaxTexures);
+    Vec4*   FlatBoneWeights     = (Vec4*)Platform->AllocMem(sizeof(*FlatBoneWeights) * MaxTexures);
+
+    u64 MaxMeshAmount = FbxScene->meshes.count;
+
+    for (u64 MeshIndex = 0; MeshIndex < MaxMeshAmount; ++MeshIndex) {
+        ufbx_mesh*  Mesh            = FbxScene->meshes[MeshIndex];
+        u64         AmountOfIndices = Mesh->num_indices;
+
+        for (u64 Index = 0; Index < AmountOfIndices; ++Index) {
+            ufbx_vertex_vec3*   VertexPositon           = &Mesh->vertex_position;
+            u32                 VertexPositionsIndex    = VertexPositon->indices[Index];
+
+            UfbxVec3Convert(&VertexPositon->values[VertexPositionsIndex], &FlatPosition[Index]);
+
+            ufbx_vertex_vec3*   VertexNormal        = &Mesh->vertex_normal;
+            u32                 VertexNormalIndex   = VertexNormal->indices[Index];
+
+            UfbxVec3Convert(&VertexNormal->values[VertexNormalIndex], &FlatNormals[Index]);
+
+            FlatIndices[Index] = Index;
+        }
+
+        if (Mesh->skin_deformers.count >= 1) {
+            Assert(false);
+        }
+
+        ufbx_skin_deformer*     SkinDeformers           = Mesh->skin_deformers[0];
+        ufbx_skin_vertex_list*  SkinVertices            = &SkinDeformers->vertices;
+        ufbx_skin_weight_list*  SkinWeights             = &SkinDeformers->weights;
+        u64                     AmountOfSkinVertices    = SkinVertices->count;
+        for (u64 SkinVertexIndex = 0; SkinVertexIndex < AmountOfSkinVertices; ++SkinVertexIndex) {
+            ufbx_skin_vertex*   SkinVertex      = &SkinVertices->data[SkinVertexIndex];
+            u32                 WeightBegin     = SkinVertex->weight_begin;
+            u32                 AmountOfWeights = SkinVertex->num_weights;
+            
+            for (u64 WeightsIndex = WeightsIndex; WeightsIndex < SkinCluster->num_weights; WeightsIndex++) {
+                u32 Vertex = SkinCluster->vertices[WeightsIndex];
+                real32 weight = SkinCluster->weights[WeightsIndex];
+
+                for (int k = 0; k < 4; k++) {
+                    if (temp[v].Weights[k] == 0.0f) {
+                        temp[v].BoneIDs[k] = boneIndex;
+                        temp[v].Weights[k] = weight;
+                        break;
+                    }
+                }
+            }
+        }
+
+    }
+
+    for (u64 MeshIndex = 0; MeshIndex < MaxMeshAmount; ++MeshIndex) {
+        ufbx_mesh* Mesh = FbxScene->meshes[MeshIndex];
+
+        for () {
+
+        }
+        
+        ufbx_vec3 *VertexPositions  = &Mesh->vertex_position[0];
+        ufbx_vec3 *VertexNormals    = &Mesh->vertex_normal[0];
+        ufbx_vec2 *VertexTextures   = &Mesh->vertex_uv[0];
+    }
+}
+*/
+
+/*
+void AssimpFbxTestRead(Platform *Platform)
+{
+    Assimp::Importer Importer;
+    u32 AssimpFlags = aiProcess_GenNormals | aiProcess_JoinIdenticalVertices;
+
+    const aiScene *Scene = Importer.ReadFile("data/obj/SimpleTest.fbx", AssimpFlags);
+
+    if (!Scene) {
+        Assert(false);
+    }
+
+    i32 TotalVertices   = 0;
+    i32 TotalIndices    = 0;
+    i32 TotalBones      = 0;
+
+    u32*    Indices     = (u32*)Platform->AllocMem(sizeof(*Indices)     * 100000);
+    Vec3*   Position    = (Vec3*)Platform->AllocMem(sizeof(*Position)   * 10000);
+    Vec3*   Normals     = (Vec3*)Platform->AllocMem(sizeof(*Normals)    * 10000);
+    iVec4*  BoneIDs     = (iVec4*)Platform->AllocMem(sizeof(*BoneIDs)   * 10000);
+    Vec4*   Weights     = (Vec4*)Platform->AllocMem(sizeof(*Weights)    * 10000);
+
+    for (i32 MeshIndex = 0; MeshIndex < Scene->mNumMeshes; ++MeshIndex) {
+        const aiMesh *Mesh = Scene->mMeshes[MeshIndex];
+
+        i32 MeshVertices    = Mesh->mNumVertices;
+        i32 MeshIndices     = Mesh->mNumFaces * 3;
+        i32 MeshBones       = Mesh->mNumBones;
+
+        TotalVertices   += MeshVertices;
+        TotalIndices    += MeshIndices;
+        TotalBones      += MeshBones;
+        
+
+        aiVector3D Vertices     = Mesh->mVertices[MeshIndex];
+        aiVector3D Normals      = Mesh->mNormals[MeshIndex];
+
+
+
+        if (TotalIndices > 100000 || TotalVertices > 10000) {
+            Assert(false);
+        }
+
+        if (Mesh->HasBones()) {
+            for (i32 BonesIndex = 0; BonesIndex < Mesh->mNumBones; ++BonesIndex) {
+                const aiBone *Bone = Mesh->mBones[BonesIndex];
+
+                for (i32 WeightsIndex = 0; WeightsIndex < Bone->mNumWeights; ++WeightsIndex) {
+                    aiVertexWeight Weight = Bone->mWeights[WeightsIndex];
+                }
+            }
+        }
+    }
+}
+*/
 
 void PrepareFrame(Platform *Platform, GameContext *Cntx)
 {
@@ -975,6 +1385,9 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         
     };
 
+    // FbxTestRead(Platform);
+    // AssimpFbxTestRead(Platform);
+
     // NOTE(Ismail): values specified by glClearColor are clamped to the range [0,1]
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
@@ -985,11 +1398,15 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     glFrontFace(GL_CW);
     
     glViewport(0, 0, Platform->ScreenOpt.ActualWidth, Platform->ScreenOpt.ActualHeight);
+    
+    InitShaderProgramsCache(Platform);
+
+    Cntx->BoneID = 0;
 
     DirectionalLight* SceneMainLight                    = &Cntx->LightSource;
     SceneMainLight->Specification.Color                 = { 0.5f, 0.5f, 0.5f };
-    SceneMainLight->Specification.Intensity             = 0.2f;
-    SceneMainLight->Specification.AmbientIntensity      = 0.1;
+    SceneMainLight->Specification.Intensity             = 0.0f;
+    SceneMainLight->Specification.AmbientIntensity      = 0.0;
     SceneMainLight->Specification.SpecularIntensity     = 0.0f;
     SceneMainLight->Direction                           = { 1.0f, 0.0f, 0.0f };
 
@@ -1017,13 +1434,11 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     SceneSpotLight->Specification.Intensity             = 1.0f;
     SceneSpotLight->Specification.AmbientIntensity      = 0.05f;
     SceneSpotLight->Specification.SpecularIntensity     = 1.0f;
-    SceneSpotLight->Attenuation.DisctanceMax            = 1000.0f;
-    SceneSpotLight->Attenuation.DisctanceMin            = 500.0f;
+    SceneSpotLight->Attenuation.DisctanceMax            = 75.0f;
+    SceneSpotLight->Attenuation.DisctanceMin            = 50.0f;
     SceneSpotLight->Attenuation.AttenuationFactor       = 2.0f;
     SceneSpotLight->CutoffAttenuationFactor             = 2.0f;
-    SceneSpotLight->CosCutoffAngle                      = cosf(DEGREE_TO_RAD(30.0f));
-
-    InitShaderProgramsCache(Platform);
+    SceneSpotLight->CosCutoffAngle                      = cosf(DEGREE_TO_RAD(25.0f));
 
     real32 Position = 10.0f;
     for (i32 Index = 0; Index < sizeof(SceneObjectsName) / sizeof(*SceneObjectsName); ++Index) {
@@ -1041,6 +1456,25 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         Object->Transform.Position.z = Position;
 
         InitMeshComponent(Platform, &Object->ObjMesh, CurrentMeshNode->Flags);
+
+        Position += 10.0f;
+    }
+
+    for (i32 Index = 0; Index < DYNAMIC_SCENE_OBJECTS_MAX; ++Index) {
+        SceneObject*    Object          = &Cntx->TestDynamocSceneObjects[Index];
+        const char*     CurrentMeshName = DynamicSceneObjectsName[Index];
+
+        Object->ObjMesh.ObjectPath = CurrentMeshName;
+
+        Object->Transform.Rotation.Bank    = 0.0f;
+        Object->Transform.Rotation.Pitch   = 0.0f;
+        Object->Transform.Rotation.Heading = 0.0f;
+    
+        Object->Transform.Position.x = 0.0f;
+        Object->Transform.Position.y = 0.0f;
+        Object->Transform.Position.z = Position;
+
+        InitSkeletalMeshComponent(Platform, &Object->ObjMesh);
 
         Position += 10.0f;
     }
@@ -1070,6 +1504,20 @@ void Frame(Platform *Platform, GameContext *Cntx)
     }
     else if (Platform->Input.QButton.State == KeyState::Released) {
         Cntx->QWasTriggered = 0;
+    }
+
+    if (Platform->Input.ArrowUp.State == KeyState::Pressed && !Cntx->ArrowUpWasTriggered) {
+        Cntx->ArrowUpWasTriggered = 1;
+
+        if (Cntx->BoneID < 5) {
+            ++Cntx->BoneID;
+        }
+        else {
+            Cntx->BoneID = 0;
+        }
+    }
+    else if (Platform->Input.ArrowUp.State == KeyState::Released) {
+        Cntx->ArrowUpWasTriggered = 0;
     }
 
     Mat4x4 PerspProjection = MakePerspProjection(60.0f, Platform->ScreenOpt.AspectRatio, 0.1f, 100.0f);
@@ -1244,4 +1692,40 @@ void Frame(Platform *Platform, GameContext *Cntx)
     }
 
     // MESHES RENDERING END
+
+    // SKELETAL MESHES RENDERING
+
+    Shader = &ShadersProgramsCache[ShaderProgramsType::SkeletalMeshShader];
+    tglUseProgram(Shader->Program);
+
+    VarStorage = &Shader->ProgramVarsStorage;
+
+    for (i32 Index = 0; Index < DYNAMIC_SCENE_OBJECTS_MAX; ++Index) {
+        SceneObject*    CurrentSceneObject  = &Cntx->TestDynamocSceneObjects[Index];
+        MeshComponent*  Comp                = &CurrentSceneObject->ObjMesh;
+        WorldTransform* Transform           = &CurrentSceneObject->Transform;
+    
+        tglBindVertexArray(Comp->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
+
+        Mat4x4 ObjectToWorldTranslation = {};
+        MakeTranslationFromVec(&Transform->Position, &ObjectToWorldTranslation);
+    
+        Mat4x4 ObjectToWorlRotation = {};
+        MakeObjectToUprightRotation(&Transform->Rotation, &ObjectToWorlRotation);
+    
+        Mat4x4 FinalTransform = CameraTransformation * ObjectToWorldTranslation * ObjectToWorlRotation;
+    
+        tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldTransformationLocation, 1, GL_TRUE, FinalTransform[0]);
+
+        tglUniform1i(VarStorage->Animation.BoneIDLocation, Cntx->BoneID);
+
+        for (i32 Index = 0; Index < Comp->MeshesAmount; ++Index) {
+            MeshComponentObjects*   MeshInfo        = &Comp->MeshesInfo[Index];
+            MeshMaterial*           MeshMaterial    = &MeshInfo->Material;
+    
+            tglDrawElementsBaseVertex(GL_TRIANGLES, MeshInfo->NumIndices, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * MeshInfo->IndexOffset), MeshInfo->VertexOffset);
+        }
+    }
+
+    // SKELETAL MESHES RENDERING END
 }

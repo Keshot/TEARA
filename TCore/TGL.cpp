@@ -31,6 +31,7 @@ TEARA_glGetShaderInfoLog            tglGetShaderInfoLog;
 TEARA_glDeleteShader                tglDeleteShader;
 TEARA_glDrawElements                tglDrawElements;
 TEARA_glGenerateMipmap              tglGenerateMipmap;
+TEARA_glVertexAttribIPointer        tglVertexAttribIPointer;
 
 #ifndef TEARA_DEBUG
 
@@ -68,6 +69,7 @@ TEARA_glGetShaderInfoLog            tglGetShaderInfoLogOrigin;
 TEARA_glDeleteShader                tglDeleteShaderOrigin;
 TEARA_glDrawElements                tglDrawElementsOrigin;
 TEARA_glGenerateMipmap              tglGenerateMipmapOrigin;
+TEARA_glVertexAttribIPointer        tglVertexAttribIPointerOrigin;
 
 #define DECLARE_DEBUG_GL_FUNCTION(return_type, name, args_func, args_to_call) \
     return_type t##name##DEBUG args_func                                      \
@@ -120,39 +122,41 @@ DECLARE_DEBUG_GL_FUNCTION_NO_RET(glGetShaderInfoLog, (GLuint shader, GLsizei max
 DECLARE_DEBUG_GL_FUNCTION_NO_RET(glDeleteShader, (GLuint shader), (shader))
 DECLARE_DEBUG_GL_FUNCTION_NO_RET(glDrawElements, (GLenum mode, GLsizei count, GLenum type, const void* indices), (mode, count, type, indices))
 DECLARE_DEBUG_GL_FUNCTION_NO_RET(glGenerateMipmap, (GLenum target), (target));
+DECLARE_DEBUG_GL_FUNCTION_NO_RET(glVertexAttribIPointer, (GLuint index, GLint size, GLenum type, GLsizei stride, const void* pointer), (index, size, type, stride, pointer));
 
 void LinkDebugFunction()
 {
-    tglGenBuffers =                 tglGenBuffersDEBUG;
-    tglBindBuffer =                 tglBindBufferDEBUG;
-    tglBufferData =                 tglBufferDataDEBUG;
-    tglEnableVertexAttribArray =    tglEnableVertexAttribArrayDEBUG;
-    tglVertexAttribPointer =        tglVertexAttribPointerDEBUG;
-    tglDisableVertexAttribArray =   tglDisableVertexAttribArrayDEBUG;
-    tglCreateProgram =              tglCreateProgramDEBUG;
-    tglCreateShader =               tglCreateShaderDEBUG;
-    tglShaderSource =               tglShaderSourceDEBUG;
-    tglCompileShader =              tglCompileShaderDEBUG;
-    tglGetShaderiv =                tglGetShaderivDEBUG;
-    tglAttachShader =               tglAttachShaderDEBUG;
-    tglLinkProgram =                tglLinkProgramDEBUG;
-    tglGetProgramiv =               tglGetProgramivDEBUG;
-    tglValidateProgram =            tglValidateProgramDEBUG;
-    tglUseProgram =                 tglUseProgramDEBUG;
-    tglGetProgramInfoLog =          tglGetProgramInfoLogDEBUG;
-    tglGetUniformLocation =         tglGetUniformLocationDEBUG;
-    tglUniform1f =                  tglUniform1fDEBUG;
-    tglUniformMatrix4fv =           tglUniformMatrix4fvDEBUG;
-    tglUniform1i =                  tglUniform1iDEBUG;
-    tglActiveTexture =              tglActiveTextureDEBUG;
-    tglGenVertexArrays =            tglGenVertexArraysDEBUG;
-    tglBindVertexArray =            tglBindVertexArrayDEBUG;
-    tglUniform3fv =                 tglUniform3fvDEBUG;
-    tglDrawElementsBaseVertex =     tglDrawElementsBaseVertexDEBUG;
-    tglGetShaderInfoLog =           tglGetShaderInfoLogDEBUG;
-    tglDeleteShader =               tglDeleteShaderDEBUG;
-    tglDrawElements =               tglDrawElementsDEBUG;
-    tglGenerateMipmap =             tglGenerateMipmapDEBUG;
+    tglGenBuffers               = tglGenBuffersDEBUG;
+    tglBindBuffer               = tglBindBufferDEBUG;
+    tglBufferData               = tglBufferDataDEBUG;
+    tglEnableVertexAttribArray  = tglEnableVertexAttribArrayDEBUG;
+    tglVertexAttribPointer      = tglVertexAttribPointerDEBUG;
+    tglDisableVertexAttribArray = tglDisableVertexAttribArrayDEBUG;
+    tglCreateProgram            = tglCreateProgramDEBUG;
+    tglCreateShader             = tglCreateShaderDEBUG;
+    tglShaderSource             = tglShaderSourceDEBUG;
+    tglCompileShader            = tglCompileShaderDEBUG;
+    tglGetShaderiv              = tglGetShaderivDEBUG;
+    tglAttachShader             = tglAttachShaderDEBUG;
+    tglLinkProgram              = tglLinkProgramDEBUG;
+    tglGetProgramiv             = tglGetProgramivDEBUG;
+    tglValidateProgram          = tglValidateProgramDEBUG;
+    tglUseProgram               = tglUseProgramDEBUG;
+    tglGetProgramInfoLog        = tglGetProgramInfoLogDEBUG;
+    tglGetUniformLocation       = tglGetUniformLocationDEBUG;
+    tglUniform1f                = tglUniform1fDEBUG;
+    tglUniformMatrix4fv         = tglUniformMatrix4fvDEBUG;
+    tglUniform1i                = tglUniform1iDEBUG;
+    tglActiveTexture            = tglActiveTextureDEBUG;
+    tglGenVertexArrays          = tglGenVertexArraysDEBUG;
+    tglBindVertexArray          = tglBindVertexArrayDEBUG;
+    tglUniform3fv               = tglUniform3fvDEBUG;
+    tglDrawElementsBaseVertex   = tglDrawElementsBaseVertexDEBUG;
+    tglGetShaderInfoLog         = tglGetShaderInfoLogDEBUG;
+    tglDeleteShader             = tglDeleteShaderDEBUG;
+    tglDrawElements             = tglDrawElementsDEBUG;
+    tglGenerateMipmap           = tglGenerateMipmapDEBUG;
+    tglVertexAttribIPointer     = tglVertexAttribIPointerDEBUG;
 }
 
 #define tglGenBuffers               tglGenBuffersOrigin 
@@ -185,6 +189,7 @@ void LinkDebugFunction()
 #define tglDeleteShader             tglDeleteShaderOrigin 
 #define tglDrawElements             tglDrawElementsOrigin 
 #define tglGenerateMipmap           tglGenerateMipmapOrigin 
+#define tglVertexAttribIPointer     tglVertexAttribIPointerOrigin
 
 #endif
 
@@ -367,6 +372,12 @@ Statuses LoadGLFunctions()
     }
 
     tglGenerateMipmap = (TEARA_glGenerateMipmap) tglGetProcAddress ("glGenerateMipmap");
+    if (!tglGenerateMipmap) {
+        // TODO (ismail): diagnostic?
+        return Statuses::Failed;
+    }
+
+    tglVertexAttribIPointer = (TEARA_glVertexAttribIPointer) tglGetProcAddress ("glVertexAttribIPointer");
     if (!tglGenerateMipmap) {
         // TODO (ismail): diagnostic?
         return Statuses::Failed;
