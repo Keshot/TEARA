@@ -1,6 +1,7 @@
 #version 460 core
 
-const int BoneInfluenceColorsMax = 4;
+const int BoneInfluenceColorsMax    = 4;
+const int MaxBones                  = 100;
 
 layout (location = 0) in vec3   VertexPosition;
 layout (location = 1) in vec2   VertexTextureCoordinate;
@@ -10,6 +11,7 @@ layout (location = 4) in vec4   VertexBoneWeights;
 
 out vec3 Color;
 
+uniform mat4x4  AnimationBonesMatrices[MaxBones];
 uniform mat4x4  ObjectToWorldTransformation;
 uniform int     BoneID;
 
@@ -56,9 +58,16 @@ void main()
         VertexColor = BoneInfluenceColors[3];
     }
 
-    vec4 ObjectPosition = vec4(VertexPosition, 1.0);
+    mat4x4 SkinningMatrix = AnimationBonesMatrices[VertexBoneIDs[0]] * VertexBoneWeights[0];
+    SkinningMatrix += AnimationBonesMatrices[VertexBoneIDs[1]] * VertexBoneWeights[1];
+    SkinningMatrix += AnimationBonesMatrices[VertexBoneIDs[2]] * VertexBoneWeights[2];
+    SkinningMatrix += AnimationBonesMatrices[VertexBoneIDs[3]] * VertexBoneWeights[3];
 
-    gl_Position = ObjectToWorldTransformation * ObjectPosition;
+    vec4 VertPosition = vec4(VertexPosition, 1.0);
+
+    vec4 SkinnedVertPosition = SkinningMatrix * VertPosition;
+
+    gl_Position = ObjectToWorldTransformation * SkinnedVertPosition;
 
     Color = VertexColor;
 }

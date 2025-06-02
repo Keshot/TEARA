@@ -1439,7 +1439,8 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
 
         u64 CyclesElapsed   = EndCycleCount - LastCycleCount;
         i64 CounterElapsed  = EndCounter.QuadPart - LastCounter.QuadPart;
-        real64 DeltaTime    = (1000.0f * ((real64)CounterElapsed / (real64)PerfCountFrequency)); // millisecond per frame
+        real64 DeltaTimeSec = ((real64)CounterElapsed / (real64)PerfCountFrequency);
+        real64 DeltaTime    = (1000.0f * DeltaTimeSec); // millisecond per frame
         real64 FPS          = (1000.0f / DeltaTime); // frame per seconds
         real64 MCPF         = (((real64)CyclesElapsed) / (1000.0f * 1000.0f)); // mega cycles per frame, how many cycles on CPU take last frame check rdtsc and hh ep 10
 
@@ -1447,6 +1448,8 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
         snprintf(Buffer, sizeof(Buffer), "| %.02fms/f | %.02f f/s | %.02f mc/f |\n", DeltaTime, FPS, MCPF);
 
         OutputDebugStringA(Buffer);
+
+        Context.DeltaTimeSec = (real32)DeltaTimeSec;
 
         LastCycleCount = EndCycleCount;
         LastCounter = EndCounter;

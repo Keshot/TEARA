@@ -27,169 +27,6 @@ struct NonUniformScale {
     Mat4x4 Scale;
 };
 
-struct Quat {
-    union {
-        struct {
-            real32 w, x, y, z;
-        };
-        struct {
-            real32 w;
-            Vec3 n;
-        };
-        real32 ValueHolder[4];   
-    };
-
-    Quat(real32 w, real32 x, real32 y, real32 z)
-        : w(w)
-        , x(x)
-        , y(y)
-        , z(z)
-    {
-    }
-
-    Quat(real32 angle, const Vec3& n) {
-        real32 alpha = angle / 2.0f;
-
-        w = cosf(alpha); 
-        this->n = n;
-        this->n *= sinf(alpha);
-    }
-
-    Quat operator-() const {
-        Quat Result(-w, -x, -y, -z);
-        return Result;
-    }
-
-    real32 Length() const {
-        return sqrtf(SQUARE(w) + SQUARE(x) + SQUARE(y) + SQUARE(z));
-    }
-
-    Quat operator*(const Quat &b) const {
-        Quat Result(
-            w * b.w - x * b.x - y * b.y - z * b.z,
-            w * b.x + x * b.w + y * b.z - z * b.y,
-            w * b.y + y * b.w + z * b.x - x * b.z,
-            w * b.z + z * b.w + x * b.y - y * b.x
-        );
-        return Result;
-    }
-
-    Vec3 operator*(const Vec3 &b) const 
-    {
-        // x = b.x(w^2 + x^2 - z^2 - y^2) + b.z(2*y*w + 2*z*x) + b.y(2*y*x - 2*z*w);
-        // y = b.y(y^2 + w^2 - z^2 - x^2) + b.x(2*x*y + 2*w*z) + b.z(2*z*y - 2*x*w);
-        // z = b.z(z^2 + w^2 - x^2 - y^2) + b.y(2*y*z + 2*w*x) + b.x(2*x*z - 2*w*y);
-
-        real32 ww = SQUARE(w);
-        real32 xx = SQUARE(x);
-        real32 yy = SQUARE(y);
-        real32 zz = SQUARE(z);
-
-        real32 wwyy = ww - yy;
-        real32 xxzz = xx - zz;
-
-        real32 yw2 = y * w * 2.0f;
-        real32 zx2 = z * x * 2.0f;
-        real32 yx2 = y * x * 2.0f;
-        real32 zw2 = z * w * 2.0f;
-        real32 zy2 = z * y * 2.0f;
-        real32 xw2 = x * w * 2.0f;
-
-        Vec3 Result = {
-            b.x * (wwyy + xxzz)         + b.z * (yw2 + zx2)     + b.y * (yx2 - zw2),
-            b.y * (yy + ww - zz - xx)   + b.x * (yx2 + zw2)     + b.z * (zy2 - xw2),
-            b.z * (wwyy - xxzz)         + b.y * (zy2 + xw2)     + b.x * (zx2 - yw2)
-        };
-
-        return Result;
-    }
-
-    void ToMat3(Mat3x3 *Result) const
-    {
-        real32 x2 = x * 2.0f;
-        real32 y2 = y * 2.0f;
-        real32 z2 = z * 2.0f;
-
-        real32 xx2 = x2 * x;
-        real32 yy2 = y2 * y;
-        real32 zz2 = z2 * z;
-
-        real32 wx2  = x2 * w;
-        real32 xy2  = x2 * y;
-        real32 xx   = x2 * x;
-
-        real32 wz2  = z2 * w;
-        real32 xz2  = z2 * x;
-        real32 zz   = z2 * z;
-
-        real32 wy2  = y2 * w;
-        real32 yz2  = y2 * z;
-        real32 yy   = y2 * y;
-
-        *Result = {
-            1.0f - yy2 - zz2,         xy2 - wz2,         xz2 + wy2,
-                   xy2 + wz2,  1.0f - xx2 - zz2,         yz2 - wx2,
-                   xz2 - wy2,         yz2 + wx2,  1.0f - xx2 - yy2,
-        };
-    }
-
-    inline real32 Dot(const Quat &b) const {
-        real32 Result = w * b.w + x * b.x + y * b.y + z * b.z;
-        return Result;
-    }
-
-    static Quat Slerp(const Quat &Src, const Quat &Dst, real32 Delta) {
-        if (Delta > 0.9999f) {
-            return Dst;
-        }
-        else if (Delta < 0.0001f) {
-            return Src;
-        }
-
-        real32 k0, k1;
-        Quat SrcTemp = Src;
-        real32 CosOmega = SrcTemp.Dot(Dst);
-
-        if (CosOmega < 0.0f) {
-            SrcTemp.w   = -Src.w;
-            SrcTemp.x   = -Src.x;
-            SrcTemp.y   = -Src.y;
-            SrcTemp.z   = -Src.z;
-            CosOmega    = -CosOmega;
-        }
-
-        if (CosOmega > 0.9999f) {
-            k0 = 1.0f - Delta;
-            k1 = Delta;
-        }
-        else {
-            real32 SinOmega = sqrtf(1.0f - SQUARE(CosOmega));
-
-            real32 Omega = atan2f(SinOmega, CosOmega);
-            real32 OneOverSinOmega = 1.0f / SinOmega;
-
-            k0 = sinf((1.0f - Delta) * Omega) * OneOverSinOmega;
-            k1 = sinf(Delta * Omega) * OneOverSinOmega;
-        }
-
-        Quat Result(
-            SrcTemp.w * k0 + Dst.w * k1,
-            SrcTemp.x * k0 + Dst.x * k1,
-            SrcTemp.y * k0 + Dst.y * k1,
-            SrcTemp.z * k0 + Dst.z * k1
-        );
-
-        return Result;
-    }
-};
-
-// From a to b with factor of t
-Vec3 Lerp(const Vec3 &a, const Vec3 &b, real32 t)
-{
-    Vec3 To = b - a;
-    return To * t;
-}
-
 // TODO(Ismail): correct for Gimbal Lock
 void MakeObjectToUprightRotation(Rotation *Rot, Mat4x4 *Mat)
 {
@@ -322,6 +159,16 @@ void CreateUniformScale(real32 ScaleFactor, UniformScale *Result)
 void CreateNonUniformScale(Vec3 *ScaleFactor, NonUniformScale *Result)
 {
     Result->Scale = {
+        ScaleFactor->x,           0.0f,          0.0f, 0.0f,
+                  0.0f, ScaleFactor->y,          0.0f, 0.0f,
+                  0.0f,          0.0f, ScaleFactor->z, 0.0f,
+                  0.0f,          0.0f,           0.0f, 1.0f,
+    };
+}
+
+void MakeScaleFromVector(Vec3* ScaleFactor, Mat4x4* Result)
+{
+    *Result = {
         ScaleFactor->x,           0.0f,          0.0f, 0.0f,
                   0.0f, ScaleFactor->y,          0.0f, 0.0f,
                   0.0f,          0.0f, ScaleFactor->z, 0.0f,
@@ -679,6 +526,16 @@ void InitShaderProgramsCache(Platform *Platform)
             CurrentSpotLight->CutoffAttenuationFactorLocation = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
         }
 
+        if (Index == ShaderProgramsType::SkeletalMeshShader) {
+            for (i32 MatrixIndex = 0; MatrixIndex < MAX_BONES; ++MatrixIndex) {
+                i32* MatrixLoc = &Shader->ProgramVarsStorage.Animation.AnimationMatricesLocation[MatrixIndex];
+
+                snprintf(HelperStringBuffer, sizeof(HelperStringBuffer), "AnimationBonesMatrices[%d]", MatrixIndex);
+
+                *MatrixLoc = tglGetUniformLocation(ShaderProgram, HelperStringBuffer);
+            }
+        }
+
         tglUseProgram(ShaderProgram);
 
         tglUniform1i(ShaderVariablesStorage->MaterialInfo.DiffuseTexture.Location, ShaderVariablesStorage->MaterialInfo.DiffuseTexture.UnitNum);
@@ -866,7 +723,9 @@ const MeshLoaderNode SceneObjectsName[] = {
 };
 
 const char *DynamicSceneObjectsName[] = {
-    "data/obj/SimpleTest2.gltf",
+    // "data/obj/AnotherBonesTest.gltf",
+    "data/obj/SimpleTest2Bones.gltf",
+    // "data/obj/SimpleTest2.gltf",
 };
 
 void SetupPointLights(PointLight* Lights, u32 LightAmount, ShaderProgramsType ShaderType, Mat3x3* UprightToObjectSpace, Vec3* ObjectPosition)
@@ -954,19 +813,21 @@ inline void UfbxVec3Convert(ufbx_vec3 *From, Vec3 *To)
 }
 
 struct glTF2File {
-    Vec3*           Positions;
-    Vec3*           Normals;
-    Vec2*           TextureCoord;
-    Vec4*           BoneWeights;
-    iVec4*          BoneIds;
-    u32*            Indices;
-    u32             MeshesCount;
-    u32             PositionsCount;
-    u32             NormalsCount;
-    u32             TexturesCount;
-    u32             BoneWeightsCount;
-    u32             BoneIdsCount;
-    u32             IndicesCount;
+    Skinning            Skelet;
+    AnimationsArray*    Anim;
+    Vec3*               Positions;
+    Vec3*               Normals;
+    Vec2*               TextureCoord;
+    Vec4*               BoneWeights;
+    iVec4*              BoneIds;
+    u32*                Indices;
+    u32                 MeshesCount;
+    u32                 PositionsCount;
+    u32                 NormalsCount;
+    u32                 TexturesCount;
+    u32                 BoneWeightsCount;
+    u32                 BoneIdsCount;
+    u32                 IndicesCount;
 };
 
 struct glTF2LoaderSize {
@@ -978,7 +839,110 @@ struct glTF2LoaderSize {
     u32 IndicesSize;
 };
 
-void glTFRead(const char *Path, glTF2File *FileOut, glTF2LoaderSize *LoaderSize)
+void MakeInverseTranslation(Mat4x4 *Result, real32 *Translation)
+{
+    *Result = {
+        1.0f, 0.0f, 0.0f, -Translation[_x_],
+        0.0f, 1.0f, 0.0f, -Translation[_y_],
+        0.0f, 0.0f, 1.0f, -Translation[_z_],
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+}
+
+void MakeInverseScale(Mat4x4 *Result, real32 *Scale)
+{
+    real32 x = 1.0f / Scale[_x_];
+    real32 y = 1.0f / Scale[_y_];
+    real32 z = 1.0f / Scale[_z_];
+
+    *Result = {
+           x, 0.0f, 0.0f, 0.0f,
+        0.0f,    y, 0.0f, 0.0f,
+        0.0f, 0.0f,    z, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+}
+
+// NOTE(ismail): here rotation represented as quaternion
+void MakeInverseRotation(Mat4x4 *Result, real32 *Rotation)
+{
+    Quat Rot = {
+        Rotation[_w_],
+        Rotation[_x_],
+        Rotation[_y_],
+        Rotation[_z_],
+    };
+
+    Rot.ToUprightToObjectMat4(Result);
+}
+
+void ReadJointNode(Skinning* Skin, cgltf_node* Joint, JointsInfo* ParentJoint, i32 Index, cgltf_node** RootJoints, i32 Len)
+{
+    if (!Joint) {
+        return;
+    }
+
+    JointsInfo* CurrentJointInfo    = &Skin->Joints[Index];
+    std::string BoneName            = Joint->name;
+
+    cgltf_float*    Translation = Joint->translation;
+    cgltf_float*    Scale       = Joint->scale;
+    cgltf_float*    Rotation    = Joint->rotation;
+
+    Mat4x4 InverseTranslationMatrix = {};
+    Mat4x4 InverseScaleMatrix       = {};
+    Mat4x4 InverseRotationMatrix    = {};
+    Mat4x4 ParentMatrix             = !ParentJoint ? Identity4x4 : ParentJoint->InverseBindMatrix;
+
+    MakeInverseTranslation(&InverseTranslationMatrix, Translation);
+    MakeInverseScale(&InverseScaleMatrix, Scale);
+    MakeInverseRotation(&InverseRotationMatrix, Rotation);
+
+    i32 ChildreJointsAmount = (i32)Joint->children_count;
+
+    if (ParentJoint) {
+        i32 ChildrenIndex = ParentJoint->ChildrenAmount;
+
+        Assert(ChildrenIndex <= MAX_JOINT_CHILDREN_AMOUNT);
+
+        ++ParentJoint->ChildrenAmount;
+
+        ParentJoint->Children[ChildrenIndex] = CurrentJointInfo;
+    }
+
+    CurrentJointInfo->BoneName.resize(BoneName.size());
+
+    CurrentJointInfo->BoneName              = BoneName;
+    CurrentJointInfo->Parent                = ParentJoint;
+    CurrentJointInfo->InverseBindMatrix     = InverseScaleMatrix * InverseRotationMatrix * InverseTranslationMatrix * ParentMatrix;
+    CurrentJointInfo->DefaultScale          = { Scale[_x_], Scale[_y_], Scale[_z_] };
+    CurrentJointInfo->DefaultRotation       = Rotation;
+    CurrentJointInfo->DefaultTranslation    = { Translation[_x_], Translation[_y_], Translation[_z_] };
+
+    i32 OriginalID = -1;
+    for (i32 RootJointID = 0; RootJointID < Len; ++RootJointID) {
+        cgltf_node** OriginalJoint = &RootJoints[RootJointID];
+
+        if (*OriginalJoint == Joint) {
+            OriginalID = OriginalJoint - RootJoints;
+
+            break;
+        }
+    }
+
+    Assert(OriginalID != -1);
+
+    BoneIDs& Ids = Skin->Bones[BoneName];
+
+    Ids.BoneID          = Index;
+    Ids.OriginalBoneID  = OriginalID;
+
+    for (i32 ChildrenJointIndex = 0; ChildrenJointIndex < ChildreJointsAmount; ++ChildrenJointIndex) {
+        ReadJointNode(Skin, Joint->children[ChildrenJointIndex], CurrentJointInfo, Index + 1, RootJoints, Len);
+    }
+}
+
+void glTFRead(const char *Path, glTF2File *FileOut, glTF2LoaderSize *LoaderSize, Platform *Platform)
 {
     u32             IndicesRead;
     u32             PositionsRead;
@@ -1008,12 +972,12 @@ void glTFRead(const char *Path, glTF2File *FileOut, glTF2LoaderSize *LoaderSize)
         Assert(false);
     }
 
-    u32*    Indices         = FileOut->Indices;
-    Vec3*   Positions       = FileOut->Positions;
-    Vec3*   Normals         = FileOut->Normals;
-    Vec2*   TextureCoords   = FileOut->TextureCoord;
-    Vec4*   BoneWeights     = FileOut->BoneWeights;
-    iVec4*  BoneIds         = FileOut->BoneIds;
+    u32*        Indices         = FileOut->Indices;
+    Vec3*       Positions       = FileOut->Positions;
+    Vec3*       Normals         = FileOut->Normals;
+    Vec2*       TextureCoords   = FileOut->TextureCoord;
+    Vec4*       BoneWeights     = FileOut->BoneWeights;
+    iVec4*      BoneIds         = FileOut->BoneIds;
 
     u32 IndicesSize         = LoaderSize->IndicesSize;
     u32 PositionsSize       = LoaderSize->PositionsSize;
@@ -1074,6 +1038,135 @@ void glTFRead(const char *Path, glTF2File *FileOut, glTF2LoaderSize *LoaderSize)
         IndicesRead = (u32)cgltf_accessor_unpack_indices(CurrentMeshPrimitive->indices, Indices, sizeof(*Indices), IndicesSize);
     }
 
+    if (Mesh->skins_count > 0) {
+
+        Assert(Mesh->skins_count == 1);
+
+        cgltf_skin* CurrentSkin = &Mesh->skins[0];
+        Skinning*   Skelet      = &FileOut->Skelet;
+
+        u32             JointsCount = (u32)CurrentSkin->joints_count;
+        cgltf_node**    Joints      = CurrentSkin->joints;
+        cgltf_node*     RootJoint   = Joints[0];
+
+        Skelet->Joints = (JointsInfo*)Platform->AllocMem(sizeof(*Skelet->Joints) * JointsCount);
+
+        ReadJointNode(Skelet, *Joints, NULL, 0, Joints, (i32)JointsCount);
+
+        FileOut->Skelet.JointsAmount = JointsCount;
+
+        i32 AnimationsCount = (i32)Mesh->animations_count;
+
+        Assert(AnimationsCount == 1);
+
+        cgltf_animation*    Animations  = Mesh->animations;
+        AnimationsArray*    AnimArray   = FileOut->Anim;
+        for (i32 AnimationIndex = 0; AnimationIndex < AnimationsCount; ++AnimationIndex) {
+            cgltf_animation*    CurrentAnimation    = &Animations[AnimationIndex];
+            Animation*          AnimationNode       = &AnimArray->Anims[AnimationIndex];
+
+            i32                             ChannelsCount   = (i32)CurrentAnimation->channels_count;
+            cgltf_animation_channel*        Channels        = CurrentAnimation->channels;
+            std::map<std::string, BoneIDs>& Bones           = Skelet->Bones;
+
+            real32          AnimationDuration   = 0.0f;
+            i32             BoneIndex           = 0;
+            cgltf_node*     LastTargetNode      = 0;
+            AnimationFrame* Frame               = 0;
+
+            for (i32 ChannelIndex = 0; ChannelIndex < ChannelsCount; ++ChannelIndex) {
+                cgltf_animation_channel*    CurrentChannel  = &Channels[ChannelIndex];
+                cgltf_animation_sampler*    CurrentSampler  = CurrentChannel->sampler;
+                cgltf_node*                 TargetNode      = CurrentChannel->target_node;
+
+                if (LastTargetNode != TargetNode) {
+                    Frame           = &AnimationNode->PerBonesFrame[BoneIndex++];
+                    LastTargetNode  = TargetNode;
+
+                    BoneIDs&    Ids = Bones.at(TargetNode->name);
+
+                    Frame->Target           = Ids.BoneID;
+                    Frame->OriginalBoneID   = Ids.OriginalBoneID;
+                }
+
+                cgltf_animation_path_type   ChannelType         = CurrentChannel->target_path;
+                cgltf_interpolation_type    InterpalationType   = CurrentSampler->interpolation;
+
+                Assert(ChannelType != cgltf_animation_path_type::cgltf_animation_path_type_invalid &&
+                       ChannelType != cgltf_animation_path_type::cgltf_animation_path_type_weights);
+
+                Assert(CurrentSampler->input->count == CurrentSampler->output->count);
+
+                AnimationTransformation* Transform;
+                switch(ChannelType) {
+                    case cgltf_animation_path_type::cgltf_animation_path_type_translation: {
+                        Transform = &Frame->Transformations[ATranslation];
+
+                        cgltf_accessor* TransformAccessor   = CurrentSampler->output;
+                        i32             TransformsCount     = TransformAccessor->count;
+                        for (i32 TransformIndex = 0; TransformIndex < TransformsCount; ++TransformIndex) {
+                            Vec3 Elem = {};
+                            cgltf_accessor_read_float(TransformAccessor, TransformIndex, Elem.ValueHolder, sizeof(Elem));
+
+                            Transform->Transforms[TransformIndex].Translation = Elem;
+                        }
+                    } break;
+
+                    case cgltf_animation_path_type::cgltf_animation_path_type_rotation: {
+                        Transform = &Frame->Transformations[ARotation];
+
+                        cgltf_accessor* TransformAccessor   = CurrentSampler->output;
+                        i32             TransformsCount     = TransformAccessor->count;
+                        for (i32 TransformIndex = 0; TransformIndex < TransformsCount; ++TransformIndex) {
+                            real32 Elem[4] = {};
+                            cgltf_accessor_read_float(TransformAccessor, TransformIndex, Elem, sizeof(Elem));
+
+                            Quat *Rot = &Transform->Transforms[TransformIndex].Rotation;
+                            Rot->w = Elem[_w_];
+                            Rot->x = Elem[_x_];
+                            Rot->y = Elem[_y_];
+                            Rot->z = Elem[_z_];
+                        }
+                    } break;
+
+                    case cgltf_animation_path_type::cgltf_animation_path_type_scale: {
+                        Transform = &Frame->Transformations[AScale];
+
+                        cgltf_accessor* TransformAccessor   = CurrentSampler->output;
+                        i32             TransformsCount     = TransformAccessor->count;
+                        for (i32 TransformIndex = 0; TransformIndex < TransformsCount; ++TransformIndex) {
+                            Vec3 Elem = {};
+                            cgltf_accessor_read_float(TransformAccessor, TransformIndex, Elem.ValueHolder, sizeof(Elem));
+
+                            Transform->Transforms[TransformIndex].Scale = Elem;
+                        }
+                    } break;
+                }
+
+                i32 KeyframesAmount = (i32)CurrentSampler->input->count;
+                for (i32 KeyframeIndex = 0; KeyframeIndex < KeyframesAmount; ++KeyframeIndex) {
+                    real32 Keyframe = 0.0f;
+                    cgltf_accessor_read_float(CurrentSampler->input, KeyframeIndex, &Keyframe, sizeof(Keyframe));
+
+                    Transform->Keyframes[KeyframeIndex] = Keyframe;
+
+                    if (Keyframe > AnimationDuration) {
+                        AnimationDuration = Keyframe;
+                    }
+                }
+                
+                Transform->Amount   = KeyframesAmount;
+                Transform->IType    = InterpalationType == cgltf_interpolation_type::cgltf_interpolation_type_linear ? ILinear : IStep;
+                Transform->Valid    = 1;
+            }
+
+            AnimationNode->MaxDuration  = AnimationDuration;
+            AnimationNode->FramesAmount = BoneIndex;
+        }
+
+        AnimArray->AnimsAmount = AnimationsCount;
+    }
+
     FileOut->MeshesCount = MeshesCount;
 
     FileOut->PositionsCount     = AccessorPositions->count;
@@ -1082,20 +1175,26 @@ void glTFRead(const char *Path, glTF2File *FileOut, glTF2LoaderSize *LoaderSize)
     FileOut->BoneWeightsCount   = AccessorWeights->count;
     FileOut->BoneIdsCount       = AccessorJoints->count;
     FileOut->IndicesCount       = IndicesRead;
+
+    cgltf_free(Mesh);
 }
 
-void InitSkeletalMeshComponent(Platform *Platform, MeshComponent *SkeletalMesh)
+void InitSkeletalMeshComponent(Platform *Platform, SkeletalMeshComponent *SkeletalMesh)
 {
-    glTF2File       LoadFile            = {};
-    glTF2LoaderSize LoaderBufferSize    = {};
-    u32*            Buffers             = SkeletalMesh->BuffersHandler;
+    glTF2File           LoadFile            = {};
+    glTF2LoaderSize     LoaderBufferSize    = {};
+    MeshComponent*      Mesh                = &SkeletalMesh->Mesh;
+    SkeletalComponent*  Skelet              = &SkeletalMesh->Skelet;
+    u32*                Buffers             = Mesh->BuffersHandler;
 
-    LoaderBufferSize.PositionsSize =    80000;
-    LoaderBufferSize.NormalsSize =      80000;
-    LoaderBufferSize.TextureCoordSize = 80000;
-    LoaderBufferSize.BoneIdsSize =      80000;
-    LoaderBufferSize.BoneWeightsSize =  80000;
-    LoaderBufferSize.IndicesSize =      80000 * 2;
+    LoaderBufferSize.PositionsSize      =   80000;
+    LoaderBufferSize.NormalsSize        =   80000;
+    LoaderBufferSize.TextureCoordSize   =   80000;
+    LoaderBufferSize.BoneIdsSize        =   80000;
+    LoaderBufferSize.BoneWeightsSize    =   80000;
+    LoaderBufferSize.IndicesSize        =   80000 * 2;
+
+    LoadFile.Anim = (AnimationsArray*)Platform->AllocMem(sizeof(*LoadFile.Anim));
 
     LoadFile.Positions      = (Vec3*)Platform->AllocMem(sizeof(*LoadFile.Positions)     * LoaderBufferSize.PositionsSize);
     LoadFile.Normals        = (Vec3*)Platform->AllocMem(sizeof(*LoadFile.Normals)       * LoaderBufferSize.NormalsSize);
@@ -1104,9 +1203,9 @@ void InitSkeletalMeshComponent(Platform *Platform, MeshComponent *SkeletalMesh)
     LoadFile.BoneWeights    = (Vec4*)Platform->AllocMem(sizeof(*LoadFile.BoneWeights)   * LoaderBufferSize.BoneWeightsSize);
     LoadFile.Indices        = (u32*)Platform->AllocMem(sizeof(*LoadFile.Indices)        * LoaderBufferSize.IndicesSize);
 
-    glTFRead(SkeletalMesh->ObjectPath, &LoadFile, &LoaderBufferSize);
+    glTFRead(Mesh->ObjectPath, &LoadFile, &LoaderBufferSize, Platform);
 
-    tglGenVertexArrays(1, &SkeletalMesh->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]); 
+    tglGenVertexArrays(1, &Buffers[OpenGLBuffersLocation::GLVertexArrayLocation]); 
     tglBindVertexArray(Buffers[OpenGLBuffersLocation::GLVertexArrayLocation]);
 
     tglGenBuffers(OpenGLBuffersLocation::GLLocationMax - 1, Buffers);
@@ -1143,10 +1242,10 @@ void InitSkeletalMeshComponent(Platform *Platform, MeshComponent *SkeletalMesh)
     tglBindBuffer(GL_ARRAY_BUFFER, 0);
     tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-    SkeletalMesh->MeshesInfo = (MeshComponentObjects*)Platform->AllocMem(sizeof(*SkeletalMesh->MeshesInfo) * LoadFile.MeshesCount);
+    Mesh->MeshesInfo = (MeshComponentObjects*)Platform->AllocMem(sizeof(*Mesh->MeshesInfo) * LoadFile.MeshesCount);
 
     for (i32 MeshIndex = 0; MeshIndex < LoadFile.MeshesCount; ++MeshIndex) {
-        MeshComponentObjects* CurrentMeshComponentObject = &SkeletalMesh->MeshesInfo[MeshIndex];
+        MeshComponentObjects* CurrentMeshComponentObject = &Mesh->MeshesInfo[MeshIndex];
         
         CurrentMeshComponentObject->Material.AmbientColor   = {};
         CurrentMeshComponentObject->Material.DiffuseColor   = {};
@@ -1163,7 +1262,9 @@ void InitSkeletalMeshComponent(Platform *Platform, MeshComponent *SkeletalMesh)
         CurrentMeshComponentObject->VertexOffset    = 0;
     }
 
-    SkeletalMesh->MeshesAmount  = LoadFile.MeshesCount;
+    Mesh->MeshesAmount  = LoadFile.MeshesCount;
+    Skelet->Skin        = LoadFile.Skelet;
+    Skelet->Animations  = LoadFile.Anim;
 }
 
 /*
@@ -1317,6 +1418,11 @@ void AssimpFbxTestRead(Platform *Platform)
 }
 */
 
+inline real32 CalcT(real32 t, real32 StartKeyframe, real32 EndKeyframe)
+{
+    return 1.0f - ((EndKeyframe - t) / (EndKeyframe - StartKeyframe));
+}
+
 void PrepareFrame(Platform *Platform, GameContext *Cntx)
 {
     /*
@@ -1461,10 +1567,10 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     }
 
     for (i32 Index = 0; Index < DYNAMIC_SCENE_OBJECTS_MAX; ++Index) {
-        SceneObject*    Object          = &Cntx->TestDynamocSceneObjects[Index];
-        const char*     CurrentMeshName = DynamicSceneObjectsName[Index];
+        DynamicSceneObject* Object          = &Cntx->TestDynamocSceneObjects[Index];
+        const char*         CurrentMeshName = DynamicSceneObjectsName[Index];
 
-        Object->ObjMesh.ObjectPath = CurrentMeshName;
+        Object->ObjMesh.Mesh.ObjectPath = CurrentMeshName;
 
         Object->Transform.Rotation.Bank    = 0.0f;
         Object->Transform.Rotation.Pitch   = 0.0f;
@@ -1481,8 +1587,143 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
 
     LoadTerrain(Platform, &Cntx->Terrain, "data/textures/grass_texture.jpg");
 
+    Cntx->SkinMatrix = (SkinningMatricesStorage*)Platform->AllocMem(sizeof(SkinningMatricesStorage));
+
     Cntx->TranslationDelta = 0.1f;
     Cntx->RotationDelta = 0.1f;
+}
+
+void ReadAndCalculateAnimationMatrices(Skinning* Skin, SkinningMatricesStorage* Matrices, Animation* Anim, JointsInfo* Joint, Mat4x4* ParentMat, real32 CurrentTime)
+{
+    BoneIDs& Ids = Skin->Bones[Joint->BoneName];
+
+    i32             FramesAmount    = Anim->FramesAmount;
+    AnimationFrame* Frames          = Anim->PerBonesFrame;
+    AnimationFrame* CurrentFrame    = 0;
+
+    for (i32 FrameIndex = 0; FrameIndex < FramesAmount; ++FrameIndex) {
+        AnimationFrame* Tmp = &Frames[FrameIndex];
+
+        if (Tmp->Target == Ids.BoneID) {
+            CurrentFrame = Tmp;
+
+            break;
+        }
+    }
+
+    Mat4x4 Parent           = ParentMat ? *ParentMat : Identity4x4;
+    Mat4x4 CurrentJointMat  = Identity4x4;
+
+    if (CurrentFrame) {
+        for (i32 TransformIndex = AScale; TransformIndex >= ATranslation; --TransformIndex) {
+            AnimationTransformation* Transform  = &CurrentFrame->Transformations[TransformIndex];
+
+            Assert(Transform->Valid);
+
+            i32 KeyframesAmount     = Transform->Amount;
+            i32 FirstKeyframeIndex  = 0;
+            i32 SecondKeyframeIndex = 0;
+
+            real32* Keyframes = Transform->Keyframes;
+            for (i32 KeyframeIndex = 0; KeyframeIndex < KeyframesAmount; ++KeyframeIndex) {
+                Assert(KeyframeIndex < (KeyframesAmount - 1));
+
+                real32 FrKeyframe = Keyframes[KeyframeIndex];
+                real32 ScKeyframe = Keyframes[KeyframeIndex + 1];
+                if (FrKeyframe <= CurrentTime && CurrentTime <= ScKeyframe) {
+                    FirstKeyframeIndex  = KeyframeIndex;
+                    SecondKeyframeIndex = KeyframeIndex + 1;
+
+                    break;
+                }
+            }
+
+            TransformationStorage* FrAnimTransform = &Transform->Transforms[FirstKeyframeIndex];
+            TransformationStorage* ScAnimTransform = &Transform->Transforms[SecondKeyframeIndex];
+
+            Mat4x4 CurrentIterationMat  = {};
+            if (Transform->IType == ILinear) {
+                real32 T = CalcT(CurrentTime, Keyframes[FirstKeyframeIndex], Keyframes[SecondKeyframeIndex]);
+
+                switch (TransformIndex) {
+
+                    case ATranslation: {
+                        Vec3 Translation = Lerp(FrAnimTransform->Translation, ScAnimTransform->Translation, T);
+
+                        MakeTranslationFromVec(&Translation, &CurrentIterationMat); 
+                    } break;
+
+                    case ARotation: {
+                        Quat DeltaRotation = Quat::Slerp(FrAnimTransform->Rotation, ScAnimTransform->Rotation, T);
+        
+                        Quat    FinalRotationQuat = DeltaRotation * FrAnimTransform->Rotation;
+                        Mat4x4  FinalRotation = {};
+
+                        FinalRotationQuat.ToMat4(&CurrentIterationMat);
+                    } break;
+
+                    case AScale: {
+                        Assert(false);
+                    } break;
+
+                }
+            }
+            else {
+                switch (TransformIndex) {
+
+                    case ATranslation: {
+                        MakeTranslationFromVec(&FrAnimTransform->Translation, &CurrentIterationMat); 
+                    } break;
+
+                    case ARotation: {
+                        FrAnimTransform->Rotation.ToMat4(&CurrentIterationMat);
+                    } break;
+
+                    case AScale: {
+                        MakeScaleFromVector(&FrAnimTransform->Scale, &CurrentIterationMat);
+                    } break;
+                }
+            }
+
+            CurrentJointMat = CurrentIterationMat * CurrentJointMat;
+        }
+    }
+    else {
+        Assert(false);
+    }
+
+    CurrentJointMat = Parent * CurrentJointMat;
+    Matrices->Matrices[Ids.OriginalBoneID] = CurrentJointMat;
+
+    i32 ChildrenAmount = Joint->ChildrenAmount;
+    for (i32 ChildrenIndex = 0; ChildrenIndex < ChildrenAmount; ++ChildrenIndex) {
+        ReadAndCalculateAnimationMatrices(Skin, Matrices, Anim, Joint->Children[ChildrenIndex], &CurrentJointMat, CurrentTime);
+    }
+}
+
+void FillSkinMatrix(SkinningMatricesStorage* Matrices, SkeletalComponent* Skelet, real32& AnimationDuration, i32 AnimationToPlay, bool32 Loop)
+{
+    AnimationsArray*    AnimArray = Skelet->Animations;
+    Skinning*           Skin = &Skelet->Skin;
+
+    Assert(AnimArray->AnimsAmount >= AnimationToPlay);
+
+    Animation* AnimToPlay = &AnimArray->Anims[AnimationToPlay];
+
+    if (Loop) {
+        AnimationDuration = fmodf(AnimationDuration, AnimToPlay->MaxDuration);
+    }
+    else {
+        if (AnimationDuration > AnimToPlay->MaxDuration) {
+            return;
+        }
+    }
+
+    JointsInfo* RootJoint = &Skin->Joints[0];
+
+    ReadAndCalculateAnimationMatrices(Skin, Matrices, AnimToPlay, RootJoint, 0, AnimationDuration);
+
+    Matrices->Amount = Skelet->Skin.JointsAmount;
 }
 
 void Frame(Platform *Platform, GameContext *Cntx)
@@ -1700,10 +1941,23 @@ void Frame(Platform *Platform, GameContext *Cntx)
 
     VarStorage = &Shader->ProgramVarsStorage;
 
+    SkinningMatricesStorage* MatrixStorage = Cntx->SkinMatrix;
+
+    Cntx->AnimationDuration += Cntx->DeltaTimeSec;
     for (i32 Index = 0; Index < DYNAMIC_SCENE_OBJECTS_MAX; ++Index) {
-        SceneObject*    CurrentSceneObject  = &Cntx->TestDynamocSceneObjects[Index];
-        MeshComponent*  Comp                = &CurrentSceneObject->ObjMesh;
-        WorldTransform* Transform           = &CurrentSceneObject->Transform;
+        DynamicSceneObject* CurrentSceneObject  = &Cntx->TestDynamocSceneObjects[Index];
+        MeshComponent*      Comp                = &CurrentSceneObject->ObjMesh.Mesh;
+        WorldTransform*     Transform           = &CurrentSceneObject->Transform;
+        SkeletalComponent*  Skin                = &CurrentSceneObject->ObjMesh.Skelet;
+
+        FillSkinMatrix(MatrixStorage, Skin, Cntx->AnimationDuration, 0, 1);
+
+        ShaderProgramVariablesStorage::AnimationInfo* AnimVar = &VarStorage->Animation;
+        for (i32 MatrixIndex = 0; MatrixIndex < MatrixStorage->Amount; ++MatrixIndex) {
+            Mat4x4* Mat = &MatrixStorage->Matrices[MatrixIndex];
+
+            tglUniformMatrix4fv(AnimVar->AnimationMatricesLocation[MatrixIndex], 1, GL_TRUE, (*Mat)[0]);
+        }
     
         tglBindVertexArray(Comp->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
 
