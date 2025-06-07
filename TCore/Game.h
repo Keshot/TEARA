@@ -61,6 +61,14 @@ struct Quat {
         real32 ValueHolder[4];   
     };
 
+    Quat()
+        : w(0.0f)
+        , x(0.0f)
+        , y(0.0f)
+        , z(0.0f) 
+    {
+    }
+
     Quat(real32 w, real32 x, real32 y, real32 z)
         : w(w)
         , x(x)
@@ -290,7 +298,12 @@ struct BoneIDs {
     i32 BoneID;
 };
 
+struct Armature {
+    JointsInfo Info;
+};
+
 struct Skinning {
+    Armature                        SkinArmature;
     std::map<std::string, BoneIDs>  Bones;
     JointsInfo*                     Joints;
     u32                             JointsAmount;
@@ -557,6 +570,8 @@ struct GameContext {
     SpotLight           SpotLights[MAX_SPOT_LIGHTS];
 
     SkinningMatricesStorage* SkinMatrix;
+
+    bool32 EWasPressed;
 };
 
 #endif

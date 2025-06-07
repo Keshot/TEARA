@@ -724,8 +724,9 @@ const MeshLoaderNode SceneObjectsName[] = {
 
 const char *DynamicSceneObjectsName[] = {
     // "data/obj/AnotherBonesTest.gltf",
-    "data/obj/SimpleTest2Bones.gltf",
+    // "data/obj/SimpleTest2Bones.gltf",
     // "data/obj/SimpleTest2.gltf",
+    "data/obj/untitled.gltf"
 };
 
 void SetupPointLights(PointLight* Lights, u32 LightAmount, ShaderProgramsType ShaderType, Mat3x3* UprightToObjectSpace, Vec3* ObjectPosition)
@@ -993,55 +994,57 @@ void glTFRead(const char *Path, glTF2File *FileOut, glTF2LoaderSize *LoaderSize,
     for (i32 MeshIndex = 0; MeshIndex < MeshesCount; ++MeshIndex) {
         cgltf_mesh *CurrentMesh = &Mesh->meshes[MeshIndex];
 
-        if (CurrentMesh->primitives_count > 1) {
-            Assert(false); // NOTE(Ismail): for now primitives more that 1 not supported
+        i32                 PrimitivesAmount    = (i32)CurrentMesh->primitives_count;
+        cgltf_primitive*    PrimitivesBase      = CurrentMesh->primitives;
+        for (i32 PrimitiveIndex = 0; PrimitiveIndex < PrimitivesAmount; ++PrimitiveIndex) {
+            cgltf_primitive* CurrentMeshPrimitive = &PrimitivesBase[PrimitiveIndex];
+
+            Assert(CurrentMeshPrimitive->type == cgltf_primitive_type::cgltf_primitive_type_triangles);
+
+            AccessorPositions     = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_position,    0);
+            AccessorNormals       = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_normal,      0);
+            AccessorTexturesCoord = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_texcoord,    0);
+            AccessorWeights       = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_weights,     0);
+            AccessorJoints        = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_joints,      0);
+
+            Assert(AccessorPositions->component_type    == cgltf_component_type::cgltf_component_type_r_32f && 
+                   AccessorPositions->type              == cgltf_type::cgltf_type_vec3 &&
+                   AccessorPositions->stride            == 12);
+            Assert(AccessorNormals->component_type  == cgltf_component_type::cgltf_component_type_r_32f && 
+                   AccessorNormals->type            == cgltf_type::cgltf_type_vec3 &&
+                   AccessorNormals->stride          == 12);
+            Assert(AccessorTexturesCoord->component_type    == cgltf_component_type::cgltf_component_type_r_32f && 
+                   AccessorTexturesCoord->type              == cgltf_type::cgltf_type_vec2 &&
+                   AccessorTexturesCoord->stride            == 8);
+            Assert(AccessorWeights->component_type  == cgltf_component_type::cgltf_component_type_r_32f &&
+                   AccessorWeights->type            == cgltf_type_vec4 &&
+                   AccessorWeights->stride          == 16);
+            Assert(AccessorJoints->component_type   == cgltf_component_type::cgltf_component_type_r_8u &&
+                   AccessorJoints->type             == cgltf_type_vec4 &&
+                   AccessorJoints->stride           == 4);
+
+            const cgltf_accessor* NextJoints    = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_joints,      1);
+            const cgltf_accessor* NextWeights   = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_weights,     1);
+
+            Assert(NextJoints == NULL && NextWeights == NULL);
+            
+            PositionsRead       = (u32)cgltf_accessor_unpack_floats(AccessorPositions,     (real32*)Positions,     PositionsSize);
+            NormalsRead         = (u32)cgltf_accessor_unpack_floats(AccessorNormals,       (real32*)Normals,       NormalsSize);
+            TexturesCoordRead   = (u32)cgltf_accessor_unpack_floats(AccessorTexturesCoord, (real32*)TextureCoords, TextureCoordsSize);
+            BoneWeightsRead     = (u32)cgltf_accessor_unpack_floats(AccessorWeights,       (real32*)BoneWeights,   BoneWeightsSize);
+
+            BoneIdsRead = (u32)cgltf_accessor_unpack_indices_32bit_package(AccessorJoints, BoneIds, BoneIdsSize);
+
+            IndicesRead = (u32)cgltf_accessor_unpack_indices(CurrentMeshPrimitive->indices, Indices, sizeof(*Indices), IndicesSize);
         }
 
-        cgltf_primitive *CurrentMeshPrimitive = &CurrentMesh->primitives[0];
-
-        Assert(CurrentMeshPrimitive->type == cgltf_primitive_type::cgltf_primitive_type_triangles);
-
-        AccessorPositions     = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_position,    0);
-        AccessorNormals       = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_normal,      0);
-        AccessorTexturesCoord = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_texcoord,    0);
-        AccessorWeights       = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_weights,     0);
-        AccessorJoints        = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_joints,      0);
-
-        Assert(AccessorPositions->component_type    == cgltf_component_type::cgltf_component_type_r_32f && 
-               AccessorPositions->type              == cgltf_type::cgltf_type_vec3 &&
-               AccessorPositions->stride            == 12);
-        Assert(AccessorNormals->component_type  == cgltf_component_type::cgltf_component_type_r_32f && 
-               AccessorNormals->type            == cgltf_type::cgltf_type_vec3 &&
-               AccessorNormals->stride          == 12);
-        Assert(AccessorTexturesCoord->component_type    == cgltf_component_type::cgltf_component_type_r_32f && 
-               AccessorTexturesCoord->type              == cgltf_type::cgltf_type_vec2 &&
-               AccessorTexturesCoord->stride            == 8);
-        Assert(AccessorWeights->component_type  == cgltf_component_type::cgltf_component_type_r_32f &&
-               AccessorWeights->type            == cgltf_type_vec4 &&
-               AccessorWeights->stride          == 16);
-        Assert(AccessorJoints->component_type   == cgltf_component_type::cgltf_component_type_r_8u &&
-               AccessorJoints->type             == cgltf_type_vec4 &&
-               AccessorJoints->stride           == 4);
-
-        const cgltf_accessor* NextJoints    = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_joints,      1);
-        const cgltf_accessor* NextWeights   = cgltf_find_accessor(CurrentMeshPrimitive, cgltf_attribute_type::cgltf_attribute_type_weights,     1);
-
-        Assert(NextJoints == NULL && NextWeights == NULL);
-        
-        PositionsRead       = (u32)cgltf_accessor_unpack_floats(AccessorPositions,     (real32*)Positions,     PositionsSize);
-        NormalsRead         = (u32)cgltf_accessor_unpack_floats(AccessorNormals,       (real32*)Normals,       NormalsSize);
-        TexturesCoordRead   = (u32)cgltf_accessor_unpack_floats(AccessorTexturesCoord, (real32*)TextureCoords, TextureCoordsSize);
-        BoneWeightsRead     = (u32)cgltf_accessor_unpack_floats(AccessorWeights,       (real32*)BoneWeights,   BoneWeightsSize);
-
-        BoneIdsRead = (u32)cgltf_accessor_unpack_indices_32bit_package(AccessorJoints, BoneIds, BoneIdsSize);
-
-        IndicesRead = (u32)cgltf_accessor_unpack_indices(CurrentMeshPrimitive->indices, Indices, sizeof(*Indices), IndicesSize);
     }
 
     if (Mesh->skins_count > 0) {
 
         Assert(Mesh->skins_count == 1);
 
+        // TODO(Ismail): use already created inverse_bind_matrix in CurrentSkin
         cgltf_skin* CurrentSkin = &Mesh->skins[0];
         Skinning*   Skelet      = &FileOut->Skelet;
 
@@ -1078,6 +1081,12 @@ void glTFRead(const char *Path, glTF2File *FileOut, glTF2LoaderSize *LoaderSize,
                 cgltf_animation_channel*    CurrentChannel  = &Channels[ChannelIndex];
                 cgltf_animation_sampler*    CurrentSampler  = CurrentChannel->sampler;
                 cgltf_node*                 TargetNode      = CurrentChannel->target_node;
+
+                bool32 BoneFind = Bones.find(TargetNode->name) != Bones.end();
+                if (!BoneFind) {
+                    // TODO(Ismail): now we just continue but need to handle that case
+                    continue;
+                }
 
                 if (LastTargetNode != TargetNode) {
                     Frame           = &AnimationNode->PerBonesFrame[BoneIndex++];
@@ -1438,8 +1447,8 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         0.0f
     };
 
-    Quat a(DEGREE_TO_RAD(0.0f), n);
-    Quat b(DEGREE_TO_RAD(45.0f), n);
+    Quat a(DEGREE_TO_RAD(45.0f), n);
+    Quat b(DEGREE_TO_RAD(135.0f), n);
 
     Mat3x3 TestMat = {};
 
@@ -1449,7 +1458,9 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
 
     Quat DeltaQuat = Quat::Slerp(a, b, 1.0f);
 
-    Vec3 WooDooMagic = (DeltaQuat * a) * Pos;
+    Quat RotQuat = (DeltaQuat * a);
+
+    Vec3 WooDooMagic = RotQuat * Pos;
     */
 
     real32 TrianglePosition[] = {
@@ -1616,7 +1627,9 @@ void ReadAndCalculateAnimationMatrices(Skinning* Skin, SkinningMatricesStorage* 
 
     if (CurrentFrame) {
         for (i32 TransformIndex = AScale; TransformIndex >= ATranslation; --TransformIndex) {
-            AnimationTransformation* Transform  = &CurrentFrame->Transformations[TransformIndex];
+            AnimationTransformation*    Transform           = &CurrentFrame->Transformations[TransformIndex];
+            Mat4x4                      CurrentIterationMat = {};
+            bool32                      KeyframesFound      = 0;
 
             Assert(Transform->Valid);
 
@@ -1634,54 +1647,79 @@ void ReadAndCalculateAnimationMatrices(Skinning* Skin, SkinningMatricesStorage* 
                     FirstKeyframeIndex  = KeyframeIndex;
                     SecondKeyframeIndex = KeyframeIndex + 1;
 
+                    KeyframesFound = 1;
+
+                    break;
+                }
+                else if (FrKeyframe > CurrentTime) {
+                    switch (TransformIndex) {
+
+                        case ATranslation: {
+                            MakeTranslationFromVec(&Joint->DefaultTranslation, &CurrentIterationMat); 
+                        } break;
+
+                        case ARotation: {
+                            Joint->DefaultRotation.ToMat4(&CurrentIterationMat);
+                        } break;
+
+                        case AScale: {
+                            MakeScaleFromVector(&Joint->DefaultScale, &CurrentIterationMat);
+                        } break;
+                    }
+
                     break;
                 }
             }
 
-            TransformationStorage* FrAnimTransform = &Transform->Transforms[FirstKeyframeIndex];
-            TransformationStorage* ScAnimTransform = &Transform->Transforms[SecondKeyframeIndex];
+            if (KeyframesFound) {
+                TransformationStorage* FrAnimTransform = &Transform->Transforms[FirstKeyframeIndex];
+                TransformationStorage* ScAnimTransform = &Transform->Transforms[SecondKeyframeIndex];
 
-            Mat4x4 CurrentIterationMat  = {};
-            if (Transform->IType == ILinear) {
-                real32 T = CalcT(CurrentTime, Keyframes[FirstKeyframeIndex], Keyframes[SecondKeyframeIndex]);
+                if (Transform->IType == ILinear) {
+                    real32 T = CalcT(CurrentTime, Keyframes[FirstKeyframeIndex], Keyframes[SecondKeyframeIndex]);
 
-                switch (TransformIndex) {
+                    switch (TransformIndex) {
 
-                    case ATranslation: {
-                        Vec3 Translation = Lerp(FrAnimTransform->Translation, ScAnimTransform->Translation, T);
+                        case ATranslation: {
+                            Assert(false);
+                            
+                            Vec3 DeltaTranslation = Lerp(FrAnimTransform->Translation, ScAnimTransform->Translation, T);
 
-                        MakeTranslationFromVec(&Translation, &CurrentIterationMat); 
-                    } break;
+                            Vec3 FinalTranslation = FrAnimTransform->Translation + DeltaTranslation;
 
-                    case ARotation: {
-                        Quat DeltaRotation = Quat::Slerp(FrAnimTransform->Rotation, ScAnimTransform->Rotation, T);
-        
-                        Quat    FinalRotationQuat = DeltaRotation * FrAnimTransform->Rotation;
-                        Mat4x4  FinalRotation = {};
+                            MakeTranslationFromVec(&FinalTranslation, &CurrentIterationMat); 
+                        } break;
 
-                        FinalRotationQuat.ToMat4(&CurrentIterationMat);
-                    } break;
+                        case ARotation: {
+                            Quat DeltaRotation = Quat::Slerp(FrAnimTransform->Rotation, ScAnimTransform->Rotation, T);
+                        
+                            Quat    FinalRotationQuat = DeltaRotation;
+                            Mat4x4  FinalRotation = {};
 
-                    case AScale: {
-                        Assert(false);
-                    } break;
+                            FinalRotationQuat.ToMat4(&CurrentIterationMat);
+                        } break;
 
+                        case AScale: {
+                            Assert(false);
+                        } break;
+
+                    }
                 }
-            }
-            else {
-                switch (TransformIndex) {
+                else {
+                    switch (TransformIndex) {
 
-                    case ATranslation: {
-                        MakeTranslationFromVec(&FrAnimTransform->Translation, &CurrentIterationMat); 
-                    } break;
+                        case ATranslation: {
+                            MakeTranslationFromVec(&FrAnimTransform->Translation, &CurrentIterationMat); 
+                        } break;
 
-                    case ARotation: {
-                        FrAnimTransform->Rotation.ToMat4(&CurrentIterationMat);
-                    } break;
+                        case ARotation: {
+                            FrAnimTransform->Rotation.ToMat4(&CurrentIterationMat);
+                        } break;
 
-                    case AScale: {
-                        MakeScaleFromVector(&FrAnimTransform->Scale, &CurrentIterationMat);
-                    } break;
+                        case AScale: {
+                            MakeScaleFromVector(&FrAnimTransform->Scale, &CurrentIterationMat);
+                        } break;
+                    }
                 }
             }
 
@@ -1692,12 +1730,13 @@ void ReadAndCalculateAnimationMatrices(Skinning* Skin, SkinningMatricesStorage* 
         Assert(false);
     }
 
-    CurrentJointMat = Parent * CurrentJointMat;
+    Mat4x4 ExportMat = Parent * CurrentJointMat;
+    CurrentJointMat = ExportMat * Joint->InverseBindMatrix;
     Matrices->Matrices[Ids.OriginalBoneID] = CurrentJointMat;
 
     i32 ChildrenAmount = Joint->ChildrenAmount;
     for (i32 ChildrenIndex = 0; ChildrenIndex < ChildrenAmount; ++ChildrenIndex) {
-        ReadAndCalculateAnimationMatrices(Skin, Matrices, Anim, Joint->Children[ChildrenIndex], &CurrentJointMat, CurrentTime);
+        ReadAndCalculateAnimationMatrices(Skin, Matrices, Anim, Joint->Children[ChildrenIndex], &ExportMat, CurrentTime);
     }
 }
 
@@ -1950,6 +1989,13 @@ void Frame(Platform *Platform, GameContext *Cntx)
         WorldTransform*     Transform           = &CurrentSceneObject->Transform;
         SkeletalComponent*  Skin                = &CurrentSceneObject->ObjMesh.Skelet;
 
+        if (Platform->Input.EButton.State == KeyState::Pressed && !Cntx->EWasPressed) {
+            Cntx->AnimationDuration += 0.01;
+            Cntx->EWasPressed = 1;
+        }
+        else if (Platform->Input.EButton.State == KeyState::Released) {
+            Cntx->EWasPressed = 0;
+        }
         FillSkinMatrix(MatrixStorage, Skin, Cntx->AnimationDuration, 0, 1);
 
         ShaderProgramVariablesStorage::AnimationInfo* AnimVar = &VarStorage->Animation;
