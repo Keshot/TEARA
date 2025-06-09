@@ -813,31 +813,35 @@ inline void UfbxVec3Convert(ufbx_vec3 *From, Vec3 *To)
     To->z = From->z;
 }
 
-struct glTF2File {
-    Skinning            Skelet;
-    AnimationsArray*    Anim;
-    Vec3*               Positions;
-    Vec3*               Normals;
-    Vec2*               TextureCoord;
-    Vec4*               BoneWeights;
-    iVec4*              BoneIds;
-    u32*                Indices;
-    u32                 MeshesCount;
-    u32                 PositionsCount;
-    u32                 NormalsCount;
-    u32                 TexturesCount;
-    u32                 BoneWeightsCount;
-    u32                 BoneIdsCount;
-    u32                 IndicesCount;
+#define MAX_MESH_PRIMITIVES 5
+#define MAX_MESHES          5
+
+struct glTF2Primitives {
+    Material    MeshMaterial;
+    Vec3*       Positions;
+    Vec3*       Normals;
+    Vec2*       TextureCoord;
+    Vec4*       BoneWeights;
+    iVec4*      BoneIds;
+    u32*        Indices;
+    u32         PositionsCount;
+    u32         NormalsCount;
+    u32         TexturesCount;
+    u32         BoneWeightsCount;
+    u32         BoneIdsCount;
+    u32         IndicesCount;
 };
 
-struct glTF2LoaderSize {
-    u32 PositionsSize;
-    u32 NormalsSize;
-    u32 TextureCoordSize;
-    u32 BoneWeightsSize;
-    u32 BoneIdsSize;
-    u32 IndicesSize;
+struct glTF2Mesh {
+    glTF2Primitives MeshPrimitives[MAX_MESH_PRIMITIVES];
+    i32             PrimitivesAmount;
+};
+
+struct glTF2File {
+    Skinning            Skelet;
+    AnimationsArray*    Animations;
+    glTF2Mesh           Meshes[MAX_MESHES];
+    i32                 MeshesAmount;
 };
 
 void MakeInverseTranslation(Mat4x4 *Result, real32 *Translation)
@@ -877,7 +881,7 @@ void MakeInverseRotation(Mat4x4 *Result, real32 *Rotation)
     Rot.ToUprightToObjectMat4(Result);
 }
 
-void ReadJointNode(Skinning* Skin, cgltf_node* Joint, JointsInfo* ParentJoint, i32 Index, cgltf_node** RootJoints, i32 Len)
+void ReadJointNode(Skinning* Skin, cgltf_node* Joint, JointsInfo* ParentJoint, i32& Index, cgltf_node** RootJoints, i32 Len)
 {
     if (!Joint) {
         return;
@@ -938,12 +942,16 @@ void ReadJointNode(Skinning* Skin, cgltf_node* Joint, JointsInfo* ParentJoint, i
     Ids.BoneID          = Index;
     Ids.OriginalBoneID  = OriginalID;
 
+    ++Index;
+
     for (i32 ChildrenJointIndex = 0; ChildrenJointIndex < ChildreJointsAmount; ++ChildrenJointIndex) {
-        ReadJointNode(Skin, Joint->children[ChildrenJointIndex], CurrentJointInfo, Index + 1, RootJoints, Len);
+        ReadJointNode(Skin, Joint->children[ChildrenJointIndex], CurrentJointInfo, Index, RootJoints, Len);
     }
 }
 
-void glTFRead(const char *Path, glTF2File *FileOut, glTF2LoaderSize *LoaderSize, Platform *Platform)
+#define DEFAULT_BUFFER_SIZE 80000
+
+void glTFRead(const char *Path, Platform* Platform, glTF2File *FileOut)
 {
     u32             IndicesRead;
     u32             PositionsRead;
@@ -973,31 +981,33 @@ void glTFRead(const char *Path, glTF2File *FileOut, glTF2LoaderSize *LoaderSize,
         Assert(false);
     }
 
-    u32*        Indices         = FileOut->Indices;
-    Vec3*       Positions       = FileOut->Positions;
-    Vec3*       Normals         = FileOut->Normals;
-    Vec2*       TextureCoords   = FileOut->TextureCoord;
-    Vec4*       BoneWeights     = FileOut->BoneWeights;
-    iVec4*      BoneIds         = FileOut->BoneIds;
+    i32         MeshesCount = (i32)Mesh->meshes_count;
+    glTF2Mesh*  MeshesOut   = FileOut->Meshes;
 
-    u32 IndicesSize         = LoaderSize->IndicesSize;
-    u32 PositionsSize       = LoaderSize->PositionsSize;
-    u32 NormalsSize         = LoaderSize->NormalsSize;
-    u32 TextureCoordsSize   = LoaderSize->TextureCoordSize;
-    u32 BoneWeightsSize     = LoaderSize->BoneWeightsSize;
-    u32 BoneIdsSize         = LoaderSize->BoneIdsSize;
-
-    i32 MeshesCount = (i32)Mesh->meshes_count;
-
-    Assert(MeshesCount == 1);
+    Assert(MeshesCount <= MAX_MESHES);
 
     for (i32 MeshIndex = 0; MeshIndex < MeshesCount; ++MeshIndex) {
-        cgltf_mesh *CurrentMesh = &Mesh->meshes[MeshIndex];
+        cgltf_mesh* CurrentMesh     = &Mesh->meshes[MeshIndex];
+        glTF2Mesh*  CurrentMeshOut  = &MeshesOut[MeshIndex];
 
         i32                 PrimitivesAmount    = (i32)CurrentMesh->primitives_count;
         cgltf_primitive*    PrimitivesBase      = CurrentMesh->primitives;
+        glTF2Primitives*    MeshPrimitivesOut   = CurrentMeshOut->MeshPrimitives;
+
+        Assert(PrimitivesAmount <= MAX_MESH_PRIMITIVES);
+        
         for (i32 PrimitiveIndex = 0; PrimitiveIndex < PrimitivesAmount; ++PrimitiveIndex) {
-            cgltf_primitive* CurrentMeshPrimitive = &PrimitivesBase[PrimitiveIndex];
+            cgltf_primitive*    CurrentMeshPrimitive            = &PrimitivesBase[PrimitiveIndex];
+            cgltf_material*     CurrentMeshPrimitiveMaterial    = CurrentMeshPrimitive->material;
+            glTF2Primitives*    CurrentPrimitiveOut             = &MeshPrimitivesOut[PrimitiveIndex];
+            Material*           CurrentPrimitiveMaterial        = &CurrentPrimitiveOut->MeshMaterial;
+
+            Vec3*    Positions      = (Vec3*)   Platform->AllocMem(sizeof(*CurrentPrimitiveOut->Positions)      * DEFAULT_BUFFER_SIZE);
+            Vec3*    Normals        = (Vec3*)   Platform->AllocMem(sizeof(*CurrentPrimitiveOut->Normals)        * DEFAULT_BUFFER_SIZE);
+            Vec2*    TextureCoords  = (Vec2*)   Platform->AllocMem(sizeof(*CurrentPrimitiveOut->TextureCoord)   * DEFAULT_BUFFER_SIZE);
+            iVec4*   BoneIDs        = (iVec4*)  Platform->AllocMem(sizeof(*CurrentPrimitiveOut->BoneIds)        * DEFAULT_BUFFER_SIZE);
+            Vec4*    BoneWeights    = (Vec4*)   Platform->AllocMem(sizeof(*CurrentPrimitiveOut->BoneWeights)    * DEFAULT_BUFFER_SIZE);
+            u32*     Indices        = (u32*)    Platform->AllocMem(sizeof(*CurrentPrimitiveOut->Indices)        * DEFAULT_BUFFER_SIZE * 2);
 
             Assert(CurrentMeshPrimitive->type == cgltf_primitive_type::cgltf_primitive_type_triangles);
 
@@ -1028,17 +1038,60 @@ void glTFRead(const char *Path, glTF2File *FileOut, glTF2LoaderSize *LoaderSize,
 
             Assert(NextJoints == NULL && NextWeights == NULL);
             
-            PositionsRead       = (u32)cgltf_accessor_unpack_floats(AccessorPositions,     (real32*)Positions,     PositionsSize);
-            NormalsRead         = (u32)cgltf_accessor_unpack_floats(AccessorNormals,       (real32*)Normals,       NormalsSize);
-            TexturesCoordRead   = (u32)cgltf_accessor_unpack_floats(AccessorTexturesCoord, (real32*)TextureCoords, TextureCoordsSize);
-            BoneWeightsRead     = (u32)cgltf_accessor_unpack_floats(AccessorWeights,       (real32*)BoneWeights,   BoneWeightsSize);
+            PositionsRead       = (u32)cgltf_accessor_unpack_floats(AccessorPositions,     (real32*)Positions,     DEFAULT_BUFFER_SIZE);
+            NormalsRead         = (u32)cgltf_accessor_unpack_floats(AccessorNormals,       (real32*)Normals,       DEFAULT_BUFFER_SIZE);
+            TexturesCoordRead   = (u32)cgltf_accessor_unpack_floats(AccessorTexturesCoord, (real32*)TextureCoords, DEFAULT_BUFFER_SIZE);
+            BoneWeightsRead     = (u32)cgltf_accessor_unpack_floats(AccessorWeights,       (real32*)BoneWeights,   DEFAULT_BUFFER_SIZE);
 
-            BoneIdsRead = (u32)cgltf_accessor_unpack_indices_32bit_package(AccessorJoints, BoneIds, BoneIdsSize);
+            BoneIdsRead = (u32)cgltf_accessor_unpack_indices_32bit_package(AccessorJoints, BoneIDs, DEFAULT_BUFFER_SIZE);
 
-            IndicesRead = (u32)cgltf_accessor_unpack_indices(CurrentMeshPrimitive->indices, Indices, sizeof(*Indices), IndicesSize);
+            IndicesRead = (u32)cgltf_accessor_unpack_indices(CurrentMeshPrimitive->indices, Indices, sizeof(*Indices), DEFAULT_BUFFER_SIZE * 2);
+
+            CurrentPrimitiveOut->Positions      = Positions;
+            CurrentPrimitiveOut->Normals        = Normals;
+            CurrentPrimitiveOut->TextureCoord   = TextureCoords;
+            CurrentPrimitiveOut->BoneIds        = BoneIDs;
+            CurrentPrimitiveOut->BoneWeights    = BoneWeights;
+            CurrentPrimitiveOut->Indices        = Indices;
+
+            Assert(CurrentMeshPrimitiveMaterial->has_pbr_metallic_roughness);
+
+            CurrentPrimitiveMaterial->AmbientColor = { 1.0f, 1.0f, 1.0f };
+
+            cgltf_pbr_metallic_roughness* Diffuse = &CurrentMeshPrimitiveMaterial->pbr_metallic_roughness;
+
+            char* DiffuseTextureFileName = Diffuse->base_color_texture.texture->image->uri;
+
+            memcpy_s(CurrentPrimitiveMaterial->TextureFilePath, 
+                     sizeof(CurrentPrimitiveMaterial->TextureFilePath), 
+                     DiffuseTextureFileName, 
+                     strlen(DiffuseTextureFileName));
+            
+            CurrentPrimitiveMaterial->DiffuseColor = { Diffuse->base_color_factor[_x_], Diffuse->base_color_factor[_y_], Diffuse->base_color_factor[_z_] };
+            CurrentPrimitiveMaterial->HaveTexture = 1;
+
+            if (CurrentMeshPrimitiveMaterial->has_specular) {
+                cgltf_specular* Specular = &CurrentMeshPrimitiveMaterial->specular;
+
+                char *SpecularTextureFileName = Specular->specular_texture.texture->image->uri;
+                memcpy_s(CurrentPrimitiveMaterial->SpecularExpFilePath, 
+                         sizeof(CurrentPrimitiveMaterial->SpecularExpFilePath), 
+                         SpecularTextureFileName, 
+                         strlen(SpecularTextureFileName));
+
+                CurrentPrimitiveMaterial->SpecularColor = { 
+                    Specular->specular_color_factor[_x_], 
+                    Specular->specular_color_factor[_y_], 
+                    Specular->specular_color_factor[_z_] 
+                };
+                CurrentPrimitiveMaterial->HaveSpecularExponent  = 1;
+            }
         }
 
+        CurrentMeshOut->PrimitivesAmount = PrimitivesAmount;
     }
+
+    FileOut->MeshesAmount = MeshesCount;
 
     if (Mesh->skins_count > 0) {
 
@@ -1054,7 +1107,9 @@ void glTFRead(const char *Path, glTF2File *FileOut, glTF2LoaderSize *LoaderSize,
 
         Skelet->Joints = (JointsInfo*)Platform->AllocMem(sizeof(*Skelet->Joints) * JointsCount);
 
-        ReadJointNode(Skelet, *Joints, NULL, 0, Joints, (i32)JointsCount);
+        i32 IndexCounter = 0;
+
+        ReadJointNode(Skelet, *Joints, NULL, IndexCounter, Joints, (i32)JointsCount);
 
         FileOut->Skelet.JointsAmount = JointsCount;
 
@@ -1063,7 +1118,7 @@ void glTFRead(const char *Path, glTF2File *FileOut, glTF2LoaderSize *LoaderSize,
         Assert(AnimationsCount == 1);
 
         cgltf_animation*    Animations  = Mesh->animations;
-        AnimationsArray*    AnimArray   = FileOut->Anim;
+        AnimationsArray*    AnimArray   = FileOut->Animations;
         for (i32 AnimationIndex = 0; AnimationIndex < AnimationsCount; ++AnimationIndex) {
             cgltf_animation*    CurrentAnimation    = &Animations[AnimationIndex];
             Animation*          AnimationNode       = &AnimArray->Anims[AnimationIndex];
@@ -1176,49 +1231,26 @@ void glTFRead(const char *Path, glTF2File *FileOut, glTF2LoaderSize *LoaderSize,
         AnimArray->AnimsAmount = AnimationsCount;
     }
 
-    FileOut->MeshesCount = MeshesCount;
-
-    FileOut->PositionsCount     = AccessorPositions->count;
-    FileOut->NormalsCount       = AccessorNormals->count;
-    FileOut->TexturesCount      = AccessorTexturesCoord->count;
-    FileOut->BoneWeightsCount   = AccessorWeights->count;
-    FileOut->BoneIdsCount       = AccessorJoints->count;
-    FileOut->IndicesCount       = IndicesRead;
-
     cgltf_free(Mesh);
 }
 
 void InitSkeletalMeshComponent(Platform *Platform, SkeletalMeshComponent *SkeletalMesh)
 {
     glTF2File           LoadFile            = {};
-    glTF2LoaderSize     LoaderBufferSize    = {};
     MeshComponent*      Mesh                = &SkeletalMesh->Mesh;
     SkeletalComponent*  Skelet              = &SkeletalMesh->Skelet;
     u32*                Buffers             = Mesh->BuffersHandler;
 
-    LoaderBufferSize.PositionsSize      =   80000;
-    LoaderBufferSize.NormalsSize        =   80000;
-    LoaderBufferSize.TextureCoordSize   =   80000;
-    LoaderBufferSize.BoneIdsSize        =   80000;
-    LoaderBufferSize.BoneWeightsSize    =   80000;
-    LoaderBufferSize.IndicesSize        =   80000 * 2;
+    LoadFile.Animations = (AnimationsArray*)Platform->AllocMem(sizeof(*LoadFile.Animations));
 
-    LoadFile.Anim = (AnimationsArray*)Platform->AllocMem(sizeof(*LoadFile.Anim));
-
-    LoadFile.Positions      = (Vec3*)Platform->AllocMem(sizeof(*LoadFile.Positions)     * LoaderBufferSize.PositionsSize);
-    LoadFile.Normals        = (Vec3*)Platform->AllocMem(sizeof(*LoadFile.Normals)       * LoaderBufferSize.NormalsSize);
-    LoadFile.TextureCoord   = (Vec2*)Platform->AllocMem(sizeof(*LoadFile.TextureCoord)  * LoaderBufferSize.TextureCoordSize);
-    LoadFile.BoneIds        = (iVec4*)Platform->AllocMem(sizeof(*LoadFile.BoneIds)      * LoaderBufferSize.BoneIdsSize);
-    LoadFile.BoneWeights    = (Vec4*)Platform->AllocMem(sizeof(*LoadFile.BoneWeights)   * LoaderBufferSize.BoneWeightsSize);
-    LoadFile.Indices        = (u32*)Platform->AllocMem(sizeof(*LoadFile.Indices)        * LoaderBufferSize.IndicesSize);
-
-    glTFRead(Mesh->ObjectPath, &LoadFile, &LoaderBufferSize, Platform);
+    glTFRead(Mesh->ObjectPath, Platform, &LoadFile);
 
     tglGenVertexArrays(1, &Buffers[OpenGLBuffersLocation::GLVertexArrayLocation]); 
     tglBindVertexArray(Buffers[OpenGLBuffersLocation::GLVertexArrayLocation]);
 
     tglGenBuffers(OpenGLBuffersLocation::GLLocationMax - 1, Buffers);
 
+    /*
     tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLPositionLocation]);
     tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.Positions) * LoadFile.PositionsCount, LoadFile.Positions, GL_STATIC_DRAW);
     tglVertexAttribPointer(OpenGLBuffersLocation::GLPositionLocation, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
@@ -1246,14 +1278,14 @@ void InitSkeletalMeshComponent(Platform *Platform, SkeletalMeshComponent *Skelet
 
     tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLIndexArrayLocation]);
     tglBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(*LoadFile.Indices) * LoadFile.IndicesCount, LoadFile.Indices, GL_STATIC_DRAW);
-
+    */
     tglBindVertexArray(0);
     tglBindBuffer(GL_ARRAY_BUFFER, 0);
     tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-    Mesh->MeshesInfo = (MeshComponentObjects*)Platform->AllocMem(sizeof(*Mesh->MeshesInfo) * LoadFile.MeshesCount);
+    Mesh->MeshesInfo = (MeshComponentObjects*)Platform->AllocMem(sizeof(*Mesh->MeshesInfo) * LoadFile.MeshesAmount);
 
-    for (i32 MeshIndex = 0; MeshIndex < LoadFile.MeshesCount; ++MeshIndex) {
+    for (i32 MeshIndex = 0; MeshIndex < LoadFile.MeshesAmount; ++MeshIndex) {
         MeshComponentObjects* CurrentMeshComponentObject = &Mesh->MeshesInfo[MeshIndex];
         
         CurrentMeshComponentObject->Material.AmbientColor   = {};
@@ -1266,14 +1298,14 @@ void InitSkeletalMeshComponent(Platform *Platform, SkeletalMeshComponent *Skelet
         CurrentMeshComponentObject->Material.SpecularExponentMapTextureHandle   = 0;
         CurrentMeshComponentObject->Material.TextureHandle                      = 0;
 
-        CurrentMeshComponentObject->NumIndices      = LoadFile.IndicesCount;
+        CurrentMeshComponentObject->NumIndices      = 0;// LoadFile.IndicesCount;
         CurrentMeshComponentObject->IndexOffset     = 0;
         CurrentMeshComponentObject->VertexOffset    = 0;
     }
 
-    Mesh->MeshesAmount  = LoadFile.MeshesCount;
-    Skelet->Skin        = LoadFile.Skelet;
-    Skelet->Animations  = LoadFile.Anim;
+    //Mesh->MeshesAmount  = LoadFile.MeshesCount;
+    //Skelet->Skin        = LoadFile.Skelet;
+    //Skelet->Animations  = LoadFile.Anim;
 }
 
 /*
