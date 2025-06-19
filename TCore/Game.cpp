@@ -813,9 +813,6 @@ inline void UfbxVec3Convert(ufbx_vec3 *From, Vec3 *To)
     To->z = From->z;
 }
 
-#define MAX_MESH_PRIMITIVES 5
-#define MAX_MESHES          5
-
 struct glTF2Primitives {
     Material    MeshMaterial;
     Vec3*       Positions;
@@ -1054,6 +1051,13 @@ void glTFRead(const char *Path, Platform* Platform, glTF2File *FileOut)
             CurrentPrimitiveOut->BoneWeights    = BoneWeights;
             CurrentPrimitiveOut->Indices        = Indices;
 
+            CurrentPrimitiveOut->PositionsCount   = AccessorPositions->count;
+            CurrentPrimitiveOut->NormalsCount     = AccessorNormals->count;
+            CurrentPrimitiveOut->TexturesCount    = AccessorTexturesCoord->count;
+            CurrentPrimitiveOut->BoneWeightsCount = AccessorWeights->count;
+            CurrentPrimitiveOut->BoneIdsCount     = AccessorJoints->count;
+            CurrentPrimitiveOut->IndicesCount     = CurrentMeshPrimitive->indices->count;
+
             Assert(CurrentMeshPrimitiveMaterial->has_pbr_metallic_roughness);
 
             CurrentPrimitiveMaterial->AmbientColor = { 1.0f, 1.0f, 1.0f };
@@ -1234,78 +1238,136 @@ void glTFRead(const char *Path, Platform* Platform, glTF2File *FileOut)
     cgltf_free(Mesh);
 }
 
+const char *ResourceFolderLocation = "data/obj/";
+
 void InitSkeletalMeshComponent(Platform *Platform, SkeletalMeshComponent *SkeletalMesh)
 {
+    char                FullFileName[500]   = {};
     glTF2File           LoadFile            = {};
-    MeshComponent*      Mesh                = &SkeletalMesh->Mesh;
     SkeletalComponent*  Skelet              = &SkeletalMesh->Skelet;
-    u32*                Buffers             = Mesh->BuffersHandler;
 
     LoadFile.Animations = (AnimationsArray*)Platform->AllocMem(sizeof(*LoadFile.Animations));
 
-    glTFRead(Mesh->ObjectPath, Platform, &LoadFile);
+    glTFRead(SkeletalMesh->ObjectPath, Platform, &LoadFile);
 
-    tglGenVertexArrays(1, &Buffers[OpenGLBuffersLocation::GLVertexArrayLocation]); 
-    tglBindVertexArray(Buffers[OpenGLBuffersLocation::GLVertexArrayLocation]);
+    i32         MeshesAmount    = LoadFile.MeshesAmount;
+    glTF2Mesh*  Meshes          = LoadFile.Meshes;
+    for (i32 MeshIndex = 0; MeshIndex < MeshesAmount; ++MeshIndex) {
+        glTF2Mesh* CurrentMesh = &Meshes[MeshIndex];
 
-    tglGenBuffers(OpenGLBuffersLocation::GLLocationMax - 1, Buffers);
+        i32                 PrimitivesAmount    = CurrentMesh->PrimitivesAmount;
+        glTF2Primitives*    Primitives          = CurrentMesh->MeshPrimitives;
+        for (i32 PrimitiveIndex = 0; PrimitiveIndex < PrimitivesAmount; ++PrimitiveIndex) {
+            glTF2Primitives*    CurrentPrimitive        = &Primitives[PrimitiveIndex];
+            MeshPrimitives*     CurrentPrimitiveOut     = &SkeletalMesh->Primitives[PrimitiveIndex];
+            u32*                CurrentPrimitiveBuffers = CurrentPrimitiveOut->BuffersHandler;
+            Material*           CurrentPrimitiveMat     = &CurrentPrimitive->MeshMaterial;
+            MeshMaterial*       CurrentPrimitiveOutMat  = &CurrentPrimitiveOut->Material;
 
-    /*
-    tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLPositionLocation]);
-    tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.Positions) * LoadFile.PositionsCount, LoadFile.Positions, GL_STATIC_DRAW);
-    tglVertexAttribPointer(OpenGLBuffersLocation::GLPositionLocation, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    tglEnableVertexAttribArray(OpenGLBuffersLocation::GLPositionLocation);
+            tglGenVertexArrays(1,  &CurrentPrimitiveBuffers[OpenGLBuffersLocation::GLVertexArrayLocation]); 
+            tglBindVertexArray(CurrentPrimitiveBuffers[OpenGLBuffersLocation::GLVertexArrayLocation]);
 
-    tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLTextureLocation]);
-    tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.TextureCoord) * LoadFile.TexturesCount, LoadFile.TextureCoord, GL_STATIC_DRAW);
-    tglVertexAttribPointer(OpenGLBuffersLocation::GLTextureLocation, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    tglEnableVertexAttribArray(OpenGLBuffersLocation::GLTextureLocation);
+            tglGenBuffers(OpenGLBuffersLocation::GLLocationMax - 1, CurrentPrimitiveBuffers);
 
-    tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLNormalsLocation]);
-    tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.Normals) * LoadFile.NormalsCount, LoadFile.Normals, GL_STATIC_DRAW);
-    tglVertexAttribPointer(OpenGLBuffersLocation::GLNormalsLocation, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    tglEnableVertexAttribArray(OpenGLBuffersLocation::GLNormalsLocation);
+            tglBindBuffer(GL_ARRAY_BUFFER, CurrentPrimitiveBuffers[OpenGLBuffersLocation::GLPositionLocation]);
+            tglBufferData(GL_ARRAY_BUFFER, sizeof(*CurrentPrimitive->Positions) * CurrentPrimitive->PositionsCount, CurrentPrimitive->Positions, GL_STATIC_DRAW);
+            tglVertexAttribPointer(OpenGLBuffersLocation::GLPositionLocation, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+            tglEnableVertexAttribArray(OpenGLBuffersLocation::GLPositionLocation);
 
-    tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLBoneIndicesLocation]);
-    tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.BoneIds) * LoadFile.BoneIdsCount, LoadFile.BoneIds, GL_STATIC_DRAW);
-    tglVertexAttribIPointer(OpenGLBuffersLocation::GLBoneIndicesLocation, 4, GL_INT, 0, (void*)0);
-    tglEnableVertexAttribArray(OpenGLBuffersLocation::GLBoneIndicesLocation);
+            tglBindBuffer(GL_ARRAY_BUFFER, CurrentPrimitiveBuffers[OpenGLBuffersLocation::GLTextureLocation]);
+            tglBufferData(GL_ARRAY_BUFFER, sizeof(*CurrentPrimitive->TextureCoord) * CurrentPrimitive->TexturesCount, CurrentPrimitive->TextureCoord, GL_STATIC_DRAW);
+            tglVertexAttribPointer(OpenGLBuffersLocation::GLTextureLocation, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+            tglEnableVertexAttribArray(OpenGLBuffersLocation::GLTextureLocation);
 
-    tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLBoneWeightsLocation]);
-    tglBufferData(GL_ARRAY_BUFFER, sizeof(*LoadFile.BoneWeights) * LoadFile.BoneWeightsCount, LoadFile.BoneWeights, GL_STATIC_DRAW);
-    tglVertexAttribPointer(OpenGLBuffersLocation::GLBoneWeightsLocation, 4, GL_FLOAT, GL_FALSE, 0, (void*)0);
-    tglEnableVertexAttribArray(OpenGLBuffersLocation::GLBoneWeightsLocation);
+            tglBindBuffer(GL_ARRAY_BUFFER, CurrentPrimitiveBuffers[OpenGLBuffersLocation::GLNormalsLocation]);
+            tglBufferData(GL_ARRAY_BUFFER, sizeof(*CurrentPrimitive->Normals) * CurrentPrimitive->NormalsCount, CurrentPrimitive->Normals, GL_STATIC_DRAW);
+            tglVertexAttribPointer(OpenGLBuffersLocation::GLNormalsLocation, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+            tglEnableVertexAttribArray(OpenGLBuffersLocation::GLNormalsLocation);
 
-    tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLIndexArrayLocation]);
-    tglBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(*LoadFile.Indices) * LoadFile.IndicesCount, LoadFile.Indices, GL_STATIC_DRAW);
-    */
-    tglBindVertexArray(0);
-    tglBindBuffer(GL_ARRAY_BUFFER, 0);
-    tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+            tglBindBuffer(GL_ARRAY_BUFFER, CurrentPrimitiveBuffers[OpenGLBuffersLocation::GLBoneIndicesLocation]);
+            tglBufferData(GL_ARRAY_BUFFER, sizeof(*CurrentPrimitive->BoneIds) * CurrentPrimitive->BoneIdsCount, CurrentPrimitive->BoneIds, GL_STATIC_DRAW);
+            tglVertexAttribIPointer(OpenGLBuffersLocation::GLBoneIndicesLocation, 4, GL_INT, 0, (void*)0);
+            tglEnableVertexAttribArray(OpenGLBuffersLocation::GLBoneIndicesLocation);
 
-    Mesh->MeshesInfo = (MeshComponentObjects*)Platform->AllocMem(sizeof(*Mesh->MeshesInfo) * LoadFile.MeshesAmount);
+            tglBindBuffer(GL_ARRAY_BUFFER, CurrentPrimitiveBuffers[OpenGLBuffersLocation::GLBoneWeightsLocation]);
+            tglBufferData(GL_ARRAY_BUFFER, sizeof(*CurrentPrimitive->BoneWeights) * CurrentPrimitive->BoneWeightsCount, CurrentPrimitive->BoneWeights, GL_STATIC_DRAW);
+            tglVertexAttribPointer(OpenGLBuffersLocation::GLBoneWeightsLocation, 4, GL_FLOAT, GL_FALSE, 0, (void*)0);
+            tglEnableVertexAttribArray(OpenGLBuffersLocation::GLBoneWeightsLocation);
 
-    for (i32 MeshIndex = 0; MeshIndex < LoadFile.MeshesAmount; ++MeshIndex) {
-        MeshComponentObjects* CurrentMeshComponentObject = &Mesh->MeshesInfo[MeshIndex];
-        
-        CurrentMeshComponentObject->Material.AmbientColor   = {};
-        CurrentMeshComponentObject->Material.DiffuseColor   = {};
-        CurrentMeshComponentObject->Material.SpecularColor  = {};
+            tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, CurrentPrimitiveBuffers[OpenGLBuffersLocation::GLIndexArrayLocation]);
+            tglBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(*CurrentPrimitive->Indices) * CurrentPrimitive->IndicesCount, CurrentPrimitive->Indices, GL_STATIC_DRAW);
 
-        CurrentMeshComponentObject->Material.HaveSpecularExponent   = 0;
-        CurrentMeshComponentObject->Material.HaveTexture            = 0;
+            tglBindVertexArray(0);
+            tglBindBuffer(GL_ARRAY_BUFFER, 0);
+            tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-        CurrentMeshComponentObject->Material.SpecularExponentMapTextureHandle   = 0;
-        CurrentMeshComponentObject->Material.TextureHandle                      = 0;
+            if (CurrentPrimitiveMat->HaveTexture) {
+                TextureFile Texture = {};
 
-        CurrentMeshComponentObject->NumIndices      = 0;// LoadFile.IndicesCount;
-        CurrentMeshComponentObject->IndexOffset     = 0;
-        CurrentMeshComponentObject->VertexOffset    = 0;
+                snprintf(FullFileName, sizeof(FullFileName), "%s%s", ResourceFolderLocation, CurrentPrimitiveMat->TextureFilePath);
+
+                if (LoadTextureFile(FullFileName, &Texture, 0) != Statuses::Success) {
+                    Assert(false);
+                }
+
+                CurrentPrimitiveOutMat->HaveTexture = 1;
+
+                glGenTextures(1, &CurrentPrimitiveOutMat->TextureHandle);
+                glBindTexture(GL_TEXTURE_2D, CurrentPrimitiveOutMat->TextureHandle);
+
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, Texture.Width, Texture.Height, 0, GL_RGB, GL_UNSIGNED_BYTE, Texture.Data);
+                tglGenerateMipmap(GL_TEXTURE_2D);
+
+                FreeTextureFile(&Texture);
+    
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+
+            /*
+            if (CurrentPrimitiveMat->HaveSpecularExponent) {
+                TextureFile SpecularTexture = {};
+
+                snprintf(FullFileName, sizeof(FullFileName), "%s%s", ResourceFolderLocation, CurrentPrimitiveMat->SpecularExpFilePath);
+
+                if (LoadTextureFile(FullFileName, &SpecularTexture, 1) != Statuses::Success) {
+                    Assert(false);
+                }
+
+                CurrentPrimitiveOutMat->HaveSpecularExponent = 1;
+
+                glGenTextures(1, &CurrentPrimitiveOutMat->SpecularExponentMapTextureHandle);
+                glBindTexture(GL_TEXTURE_2D, CurrentPrimitiveOutMat->SpecularExponentMapTextureHandle);
+
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, SpecularTexture.Width, SpecularTexture.Height, 0, GL_RED, GL_UNSIGNED_BYTE, SpecularTexture.Data);
+
+                FreeTextureFile(&SpecularTexture);
+            
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+            */
+
+            CurrentPrimitiveOutMat->AmbientColor  = CurrentPrimitiveMat->AmbientColor;
+            CurrentPrimitiveOutMat->DiffuseColor  = CurrentPrimitiveMat->DiffuseColor;
+            CurrentPrimitiveOutMat->SpecularColor = CurrentPrimitiveMat->SpecularColor;
+
+            CurrentPrimitiveOut->InidicesAmount = CurrentPrimitive->IndicesCount;
+        }
+
+        SkeletalMesh->PrimitivesAmount = PrimitivesAmount;
     }
 
-    //Mesh->MeshesAmount  = LoadFile.MeshesCount;
-    //Skelet->Skin        = LoadFile.Skelet;
-    //Skelet->Animations  = LoadFile.Anim;
+    Skelet->Skin        = LoadFile.Skelet;
+    Skelet->Animations  = LoadFile.Animations;
 }
 
 /*
@@ -1613,15 +1675,13 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         DynamicSceneObject* Object          = &Cntx->TestDynamocSceneObjects[Index];
         const char*         CurrentMeshName = DynamicSceneObjectsName[Index];
 
-        Object->ObjMesh.Mesh.ObjectPath = CurrentMeshName;
+        Object->ObjMesh.ObjectPath  = CurrentMeshName;
 
-        Object->Transform.Rotation.Bank    = 0.0f;
-        Object->Transform.Rotation.Pitch   = 0.0f;
-        Object->Transform.Rotation.Heading = 0.0f;
+        Object->Transform.Rotation = { 0.0f, 0.0f, 0.0f };
     
-        Object->Transform.Position.x = 0.0f;
-        Object->Transform.Position.y = 0.0f;
-        Object->Transform.Position.z = Position;
+        Object->Transform.Position = { 0.0f, 0.0f, Position };
+
+        Object->Transform.Scale = { 0.04f, 0.04f, 0.04f };
 
         InitSkeletalMeshComponent(Platform, &Object->ObjMesh);
 
@@ -1713,8 +1773,6 @@ void ReadAndCalculateAnimationMatrices(Skinning* Skin, SkinningMatricesStorage* 
                     switch (TransformIndex) {
 
                         case ATranslation: {
-                            Assert(false);
-                            
                             Vec3 DeltaTranslation = Lerp(FrAnimTransform->Translation, ScAnimTransform->Translation, T);
 
                             Vec3 FinalTranslation = FrAnimTransform->Translation + DeltaTranslation;
@@ -1732,7 +1790,21 @@ void ReadAndCalculateAnimationMatrices(Skinning* Skin, SkinningMatricesStorage* 
                         } break;
 
                         case AScale: {
-                            Assert(false);
+                            real32 X1 = FrAnimTransform->Scale[_x_];
+                            real32 Y1 = FrAnimTransform->Scale[_y_];
+                            real32 Z1 = FrAnimTransform->Scale[_z_];
+
+                            real32 X2 = ScAnimTransform->Scale[_x_];
+                            real32 Y2 = ScAnimTransform->Scale[_y_];
+                            real32 Z2 = ScAnimTransform->Scale[_z_];
+
+                            real32 FX = ((X2 - X1) * T) + X1;
+                            real32 FY = ((Y2 - Y1) * T) + Y1;
+                            real32 FZ = ((Z2 - Z1) * T) + Z1;
+
+                            Vec3 FinalScale = { FX, FY, FZ };
+
+                            MakeScaleFromVector(&FinalScale, &CurrentIterationMat);
                         } break;
 
                     }
@@ -1832,7 +1904,7 @@ void Frame(Platform *Platform, GameContext *Cntx)
         Cntx->ArrowUpWasTriggered = 0;
     }
 
-    Mat4x4 PerspProjection = MakePerspProjection(60.0f, Platform->ScreenOpt.AspectRatio, 0.1f, 100.0f);
+    Mat4x4 PerspProjection = MakePerspProjection(60.0f, Platform->ScreenOpt.AspectRatio, 0.1f, 1500.0f);
 
     Cntx->PlayerCamera.Transform.Rotation.Bank      = 0.0f;
     Cntx->PlayerCamera.Transform.Rotation.Pitch     += RAD_TO_DEGREE(Platform->Input.MouseInput.Moution.y) * 0.5f;
@@ -2016,10 +2088,10 @@ void Frame(Platform *Platform, GameContext *Cntx)
 
     Cntx->AnimationDuration += Cntx->DeltaTimeSec;
     for (i32 Index = 0; Index < DYNAMIC_SCENE_OBJECTS_MAX; ++Index) {
-        DynamicSceneObject* CurrentSceneObject  = &Cntx->TestDynamocSceneObjects[Index];
-        MeshComponent*      Comp                = &CurrentSceneObject->ObjMesh.Mesh;
-        WorldTransform*     Transform           = &CurrentSceneObject->Transform;
-        SkeletalComponent*  Skin                = &CurrentSceneObject->ObjMesh.Skelet;
+        DynamicSceneObject*     CurrentSceneObject  = &Cntx->TestDynamocSceneObjects[Index];
+        SkeletalMeshComponent*  Comp                = &CurrentSceneObject->ObjMesh;
+        WorldTransform*         Transform           = &CurrentSceneObject->Transform;
+        SkeletalComponent*      Skin                = &CurrentSceneObject->ObjMesh.Skelet;
 
         if (Platform->Input.EButton.State == KeyState::Pressed && !Cntx->EWasPressed) {
             Cntx->AnimationDuration += 0.01;
@@ -2036,26 +2108,51 @@ void Frame(Platform *Platform, GameContext *Cntx)
 
             tglUniformMatrix4fv(AnimVar->AnimationMatricesLocation[MatrixIndex], 1, GL_TRUE, (*Mat)[0]);
         }
-    
-        tglBindVertexArray(Comp->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
-
+        
         Mat4x4 ObjectToWorldTranslation = {};
         MakeTranslationFromVec(&Transform->Position, &ObjectToWorldTranslation);
-    
+
         Mat4x4 ObjectToWorlRotation = {};
         MakeObjectToUprightRotation(&Transform->Rotation, &ObjectToWorlRotation);
-    
-        Mat4x4 FinalTransform = CameraTransformation * ObjectToWorldTranslation * ObjectToWorlRotation;
-    
+
+        Mat4x4 ObjectToWorldScale = {};
+        MakeScaleFromVector(&Transform->Scale, &ObjectToWorldScale);
+
+        Mat4x4 FinalTransform = CameraTransformation * ObjectToWorldTranslation * ObjectToWorlRotation * ObjectToWorldScale;
+
         tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldTransformationLocation, 1, GL_TRUE, FinalTransform[0]);
 
         tglUniform1i(VarStorage->Animation.BoneIDLocation, Cntx->BoneID);
 
-        for (i32 Index = 0; Index < Comp->MeshesAmount; ++Index) {
-            MeshComponentObjects*   MeshInfo        = &Comp->MeshesInfo[Index];
-            MeshMaterial*           MeshMaterial    = &MeshInfo->Material;
-    
-            tglDrawElementsBaseVertex(GL_TRIANGLES, MeshInfo->NumIndices, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * MeshInfo->IndexOffset), MeshInfo->VertexOffset);
+        i32             PrimitivesAmount    = Comp->PrimitivesAmount;
+        MeshPrimitives* Primitives          = Comp->Primitives;
+        for (i32 PrimitiveIndex = 0; PrimitiveIndex < PrimitivesAmount; ++PrimitiveIndex) {
+            MeshPrimitives* Primitive   = &Primitives[PrimitiveIndex];
+            MeshMaterial*   Material    =  &Primitive->Material;
+
+            tglBindVertexArray(Primitive->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
+
+            if (Material->HaveTexture) {
+                tglActiveTexture(VarStorage->MaterialInfo.DiffuseTexture.Unit);
+                glBindTexture(GL_TEXTURE_2D, Material->TextureHandle);
+            }
+            else {
+                tglActiveTexture(VarStorage->MaterialInfo.DiffuseTexture.Unit);
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+
+            /*
+            if (Material->HaveSpecularExponent) {
+                tglActiveTexture(VarStorage->MaterialInfo.SpecularExpMap.Unit);
+                glBindTexture(GL_TEXTURE_2D, Material->SpecularExponentMapTextureHandle);
+            }
+            else {
+                tglActiveTexture(VarStorage->MaterialInfo.SpecularExpMap.Unit);
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+            */
+
+            tglDrawElements(GL_TRIANGLES, Primitive->InidicesAmount, GL_UNSIGNED_INT, 0);
         }
     }
 

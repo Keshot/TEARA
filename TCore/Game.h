@@ -23,9 +23,11 @@ struct Rotation {
 #define MAX_POINTS_LIGHTS               2
 #define MAX_SPOT_LIGHTS                 1
 #define MAX_BONES                       100
-#define MAX_KEYFRAMES                   30
+#define MAX_KEYFRAMES                   200
 #define MAX_CHARACTER_ANIMATIONS        20
 #define MAX_JOINT_CHILDREN_AMOUNT       10
+#define MAX_MESH_PRIMITIVES             5
+#define MAX_MESHES                      1
 
 enum OpenGLBuffersLocation {
     // STATIC MESH
@@ -358,6 +360,7 @@ struct AnimationsArray {
 struct WorldTransform {
     Vec3        Position;
     Rotation    Rotation;
+    Vec3        Scale;
 };
 
 struct Camera {
@@ -506,8 +509,16 @@ struct MeshComponent {
     u32                     BuffersHandler[GLLocationMax];
 };
 
+struct MeshPrimitives {
+    MeshMaterial    Material;
+    u32             BuffersHandler[GLLocationMax];
+    u32             InidicesAmount;
+};
+
 struct SkeletalMeshComponent {
-    MeshComponent       Mesh;
+    const char*         ObjectPath;
+    MeshPrimitives      Primitives[MAX_MESH_PRIMITIVES];
+    i32                 PrimitivesAmount;
     SkeletalComponent   Skelet;
 };
 

@@ -9,7 +9,7 @@ layout (location = 2) in vec3   VertexNormals;
 layout (location = 3) in ivec4  VertexBoneIDs;
 layout (location = 4) in vec4   VertexBoneWeights;
 
-out vec3 Color;
+out vec2 TextureCoordinate;
 
 uniform mat4x4  AnimationBonesMatrices[MaxBones];
 uniform mat4x4  ObjectToWorldTransformation;
@@ -69,5 +69,5 @@ void main()
 
     gl_Position = ObjectToWorldTransformation * SkinnedVertPosition;
 
-    Color = VertexColor;
+    TextureCoordinate   = VertexTextureCoordinate;
 }
