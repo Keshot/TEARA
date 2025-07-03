@@ -376,7 +376,8 @@ enum ShaderProgramsType {
 struct ShaderProgramVariablesStorage {
 
     struct ObjectTransform {
-        i32                 ObjectToWorldTransformationLocation;
+        i32 ObjectToWorldTransformationLocation;
+        i32 ObjectToWorldScaleAndRotateLocation;
     } Transform;
 
     struct ObjectMaterial {

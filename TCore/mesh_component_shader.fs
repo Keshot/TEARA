@@ -1,5 +1,8 @@
 #version 460 core
 
+const int MaxPointLights    = 2;
+const int MaxSpotLights     = 1;
+
 struct Material {
     vec3 AmbientColor;
     vec3 DiffuseColor;
@@ -49,11 +52,8 @@ struct LightCalculationResult {
     vec3 SpecularColor;
 };
 
-const int MAX_POINTS_LIGHTS = 2;
-const int MAX_SPOT_LIGHTS   = 1;
-
-in vec2 TextureCoordinate;
-in vec3 Normals;
+in vec2 FragmentTextureCoordinate;
+in vec3 FragmentNormal;
 in vec3 FragmentPosition;
 
 uniform vec3            ViewerPosition;
@@ -61,10 +61,10 @@ uniform vec3            ViewerPosition;
 uniform DirectionLight  SceneDirectionalLight;
 
 uniform int             PointLightsAmount;
-uniform PointLight      PointLights[MAX_POINTS_LIGHTS];
+uniform PointLight      PointLights[MaxPointLights];
 
 uniform int             SpotLightsAmount;
-uniform SpotLight       SpotLights[MAX_SPOT_LIGHTS];
+uniform SpotLight       SpotLights[MaxSpotLights];
 
 uniform sampler2D       DiffuseTexture;
 uniform sampler2D       SpecularExponentMap;
@@ -102,7 +102,7 @@ LightCalculationResult CalcLightInternal(in LightSpec Specification, in vec3 Lig
 
     vec3    VP          = normalize(ViewerPosition - FragmentPosition);
     vec3    R           = reflect(LD, N);
-    float   SpecularExp = texture(SpecularExponentMap, TextureCoordinate).r * 255.0;
+    float   SpecularExp = texture(SpecularExponentMap, FragmentTextureCoordinate).r * 255.0;
 
     float SpecularFactor = pow(max(dot(R, VP), 0), SpecularExp);
 
@@ -163,7 +163,7 @@ LightCalculationResult CalcSpotLight(in SpotLight Light)
 void main()
 {
     Info.FragmentMaterial   = MeshMaterial;
-    Info.FragmentNormal     = normalize(Normals);
+    Info.FragmentNormal     = normalize(FragmentNormal);
 
     LightCalculationResult DirectionalLightResult = CalcDirectionalLight(SceneDirectionalLight);
 
@@ -185,7 +185,7 @@ void main()
         SpotLightsResult.SpecularColor += CurrentSpotLightResult.SpecularColor;
     }
 
-    vec3 Albedo = texture(DiffuseTexture, TextureCoordinate).rgb;
+    vec3 Albedo = texture(DiffuseTexture, FragmentTextureCoordinate).rgb;
 
     vec3 AmbientColor   = DirectionalLightResult.AmbientColor  + PointLightsResult.AmbientColor  + SpotLightsResult.AmbientColor;
     vec3 DiffuseColor   = DirectionalLightResult.DiffuseColor  + PointLightsResult.DiffuseColor  + SpotLightsResult.DiffuseColor;
