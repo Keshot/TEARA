@@ -710,6 +710,7 @@ void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad, ObjFileLoaderF
 struct MeshLoaderNode {
     const char*         ObjName;
     ObjFileLoaderFlags  Flags;
+    Vec3                InitialScale;
 };
 
 const MeshLoaderNode SceneObjectsName[] = {
@@ -718,6 +719,11 @@ const MeshLoaderNode SceneObjectsName[] = {
         {
             /* GenerateSmoothNormals */  1,
             /* SelfGenerateNormals   */  0
+        },
+        {
+            1.0f,
+            1.0f,
+            1.0f
         }
     },
     {
@@ -725,6 +731,11 @@ const MeshLoaderNode SceneObjectsName[] = {
         {
             /* GenerateSmoothNormals */  0,
             /* SelfGenerateNormals   */  0
+        },
+        {
+            4.0f,
+            4.0f,
+            4.0f
         }
     }
 };
@@ -1548,6 +1559,26 @@ void AssimpFbxTestRead(Platform *Platform)
 }
 */
 
+static const Vec3 ParticleSquareAppearance[4] {
+    {  0.5f,  0.5f, 0.0f },
+    {  0.5f, -0.5f, 0.0f },
+    { -0.5f, -0.5f, 0.0f },
+    { -0.5f,  0.5f, 0.0f },
+};
+
+struct Particle {
+    Vec3    Position;
+    Vec3    Velocity;
+    Vec3    Acceleration;
+    real32  Damping;
+    real32  InverseMass;
+
+    void Integrate(real32 DeltaT)
+    {
+        
+    }
+};
+
 inline real32 CalcT(real32 t, real32 StartKeyframe, real32 EndKeyframe)
 {
     return 1.0f - ((EndKeyframe - t) / (EndKeyframe - StartKeyframe));
@@ -1643,10 +1674,10 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
 
     DirectionalLight* SceneMainLight                    = &Cntx->LightSource;
     SceneMainLight->Specification.Color                 = { 1.0f, 1.0f, 1.0f };
-    SceneMainLight->Specification.Intensity             = 0.15f;
-    SceneMainLight->Specification.AmbientIntensity      = 0.001;
+    SceneMainLight->Specification.Intensity             = 0.85f;
+    SceneMainLight->Specification.AmbientIntensity      = 0.3;
     SceneMainLight->Specification.SpecularIntensity     = 1.0f;
-    SceneMainLight->Direction                           = { 1.0f, 0.0f, 0.0f };
+    SceneMainLight->Direction                           = { 0.707, -0.707f, 0.0f };
 
     Vec3        PointLightPosition  = { 20.0, 12.0f, 10.0f };
     Vec3        PointLightColor     = { 1.0f, 0.3f, 0.3f };
@@ -1687,7 +1718,7 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
 
         Object->Transform.Rotation  = { 0.0f, 0.0f, 0.0f };
         Object->Transform.Position  = { 0.0f, 0.0f, Position };
-        Object->Transform.Scale     = { 1.0f, 1.0f, 1.0f };
+        Object->Transform.Scale     = CurrentMeshNode->InitialScale;
 
         InitMeshComponent(Platform, &Object->ObjMesh, CurrentMeshNode->Flags);
 
