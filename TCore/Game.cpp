@@ -410,6 +410,10 @@ ShadersName ShaderProgramNames[ShaderProgramsType::ShaderProgramsTypeMax] = {
     { 
         "../skeletal_mesh_component_shader.vs", 
         "../skeletal_mesh_component_shader.fs" 
+    },
+    { 
+        "../particle_shader.vs", 
+        "../particle_shader.fs" 
     }
     /*,
     { 
@@ -705,6 +709,42 @@ void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad, ObjFileLoaderF
 
     ToLoad->MeshesAmount    = LoadFile.MeshesCount;
     ToLoad->MeshesInfo      = ComponentObjects;
+}
+
+void InitParticleSystem(ParticleSystem *Sys)
+{
+    Vec3 ParticleSquareAppearance[4] {
+        {  0.5f,  0.5f, 0.0f },
+        {  0.5f, -0.5f, 0.0f },
+        { -0.5f, -0.5f, 0.0f },
+        { -0.5f,  0.5f, 0.0f },
+    };
+
+    u32 ParticlesIndices[6] {
+        0, 1, 2,
+        2, 3, 0
+    };
+
+    u32* Buffers = Sys->BuffersHandler;
+
+    Sys->IndicesAmount = sizeof(ParticlesIndices) / sizeof(*ParticlesIndices);
+
+    tglGenVertexArrays(1, &Buffers[OpenGLBuffersLocation::GLVertexArrayLocation]); 
+    tglBindVertexArray(Buffers[OpenGLBuffersLocation::GLVertexArrayLocation]);
+
+    tglGenBuffers(OpenGLBuffersLocation::GLLocationMax - 1, Buffers); // NOTE(Ismail): -1 because we already allocate GLVertexArray
+
+    tglBindBuffer(GL_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLPositionLocation]);
+    tglBufferData(GL_ARRAY_BUFFER, sizeof(ParticleSquareAppearance), ParticleSquareAppearance, GL_STATIC_DRAW);
+    tglVertexAttribPointer(OpenGLBuffersLocation::GLPositionLocation, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    tglEnableVertexAttribArray(OpenGLBuffersLocation::GLPositionLocation);
+
+    tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Buffers[OpenGLBuffersLocation::GLIndexArrayLocation]);
+    tglBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(ParticlesIndices), ParticlesIndices, GL_STATIC_DRAW);
+
+    tglBindVertexArray(0);
+    tglBindBuffer(GL_ARRAY_BUFFER, 0);
+    tglBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
 struct MeshLoaderNode {
@@ -1559,25 +1599,7 @@ void AssimpFbxTestRead(Platform *Platform)
 }
 */
 
-static const Vec3 ParticleSquareAppearance[4] {
-    {  0.5f,  0.5f, 0.0f },
-    {  0.5f, -0.5f, 0.0f },
-    { -0.5f, -0.5f, 0.0f },
-    { -0.5f,  0.5f, 0.0f },
-};
 
-struct Particle {
-    Vec3    Position;
-    Vec3    Velocity;
-    Vec3    Acceleration;
-    real32  Damping;
-    real32  InverseMass;
-
-    void Integrate(real32 DeltaT)
-    {
-        
-    }
-};
 
 inline real32 CalcT(real32 t, real32 StartKeyframe, real32 EndKeyframe)
 {
@@ -1739,6 +1761,25 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
 
         Position += 10.0f;
     }
+
+    Particle *SceneParticles = Cntx->SceneParticles;
+    for (i32 Index = 0; Index < PARTICLES_MAX; ++Index) {
+        Particle*       Particle            = &SceneParticles[Index];
+        WorldTransform* ParticleTransform   = &Particle->Transform;
+
+        *ParticleTransform = {};
+
+        ParticleTransform->Scale    = { 5.0f, 5.0f, 5.0f };
+        ParticleTransform->Position = { 0.0f,  0.0f, 2.0f };
+
+        Particle->Velocity      = { 0.0f, 25.0f, 0.0f };
+        Particle->Damping       = 0.8f;
+        Particle->InverseMass   = 1.0f / 2.0f;
+
+        Particle->Acceleration  = GRAVITY;
+    }
+
+    InitParticleSystem(&Cntx->ParticleSystem);
 
     LoadTerrain(Platform, &Cntx->Terrain, "data/textures/grass_texture.jpg");
 
@@ -2206,4 +2247,41 @@ void Frame(Platform *Platform, GameContext *Cntx)
     }
 
     // SKELETAL MESHES RENDERING END
+
+    // PARTICLE RENDERER
+
+    Shader = &ShadersProgramsCache[ShaderProgramsType::ParticlesShader];
+    tglUseProgram(Shader->Program);
+
+    VarStorage = &Shader->ProgramVarsStorage;
+
+    Particle*       SceneParticles  = Cntx->SceneParticles;
+    ParticleSystem* ParticleSys     = &Cntx->ParticleSystem;
+    for (i32 Index = 0; Index < PARTICLES_MAX; ++Index) {
+        Particle*       CurrentParticle = &SceneParticles[Index];
+        WorldTransform* Transform       = &CurrentParticle->Transform;
+
+        CurrentParticle->Integrate(Cntx->DeltaTimeSec);
+
+        Mat4x4 ObjectToWorldTranslation = {};
+        MakeTranslationFromVec(&Transform->Position, &ObjectToWorldTranslation);
+
+        Mat4x4 ObjectToWorlRotation = {};
+        MakeObjectToUprightRotation(&Transform->Rotation, &ObjectToWorlRotation);
+
+        Mat4x4 ObjectToWorldScale = {};
+        MakeScaleFromVector(&Transform->Scale, &ObjectToWorldScale);
+
+        Mat4x4 ObjectToWorldTransformation = CameraTransformation * ObjectToWorldTranslation;
+        Mat4x4 ObjectToWorldScaleAndRotate = ObjectToWorlRotation * ObjectToWorldScale;
+
+        tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldTransformationLocation, 1, GL_TRUE, ObjectToWorldTransformation[0]);
+        tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldScaleAndRotateLocation, 1, GL_TRUE, ObjectToWorldScaleAndRotate[0]);
+
+        tglBindVertexArray(ParticleSys->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
+
+        tglDrawElements(GL_TRIANGLES, ParticleSys->IndicesAmount, GL_UNSIGNED_INT, 0);
+    }
+
+    // PARTICLE RENDERER END
 }

@@ -368,7 +368,7 @@ Statuses LoadGLFunctions()
     tglDrawElements = (TEARA_glDrawElements) tglGetProcAddress ("glDrawElements");
     if (!tglDrawElements) {
         // TODO (ismail): diagnostic?
-        return Statuses::Failed;
+        tglDrawElements = glDrawElements;
     }
 
     tglGenerateMipmap = (TEARA_glGenerateMipmap) tglGetProcAddress ("glGenerateMipmap");

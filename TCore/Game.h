@@ -44,6 +44,8 @@ enum OpenGLBuffersLocation {
     GLLocationMax,
 };
 
+const Vec3 GRAVITY = { 0.0f, -10.0f, 0.0f };
+
 enum _Local_Constants_ {
     _x_ = 0,
     _y_ = 1,
@@ -324,8 +326,6 @@ enum InterpolationType {
     IMax,
 };
 
-
-
 union TransformationStorage {
     Vec3    Translation;
     Quat    Rotation;
@@ -370,6 +370,7 @@ struct Camera {
 enum ShaderProgramsType {
     MeshShader,
     SkeletalMeshShader,
+    ParticlesShader,
     ShaderProgramsTypeMax,
 };
 
@@ -556,6 +557,39 @@ struct SkinningMatricesStorage {
     i32     Amount;
 };
 
+#define PARTICLES_MAX 1
+
+struct ParticleSystem {
+    u32 BuffersHandler[GLLocationMax];
+    i32 IndicesAmount;
+};
+
+struct Particle {
+    WorldTransform  Transform;
+    Vec3            Velocity;
+    Vec3            Acceleration;
+    real32          Damping;
+    real32          InverseMass;
+
+    void Integrate(real32 DeltaT)
+    {
+        // x(t) = x0 + v*t
+        // v(t) = v0*t + a*t
+        
+        Transform.Position += Velocity * DeltaT;
+        
+        // NOTE(Ismail): it may cause some perfomance issue, if we will be simulate many particles
+        // so check it for optimization if it will need
+        real32 DampingEffect = powf(Damping, DeltaT);
+
+        Vec3 AccelerationTmp = Acceleration * DeltaT;
+
+        Velocity += AccelerationTmp;
+
+        Velocity *= DampingEffect;
+    }
+};
+
 struct GameContext {
     real32  DeltaTimeSec;
 
@@ -576,6 +610,8 @@ struct GameContext {
     SceneObject         TestSceneObjects[SCENE_OBJECTS_MAX];
     DynamicSceneObject  TestDynamocSceneObjects[DYNAMIC_SCENE_OBJECTS_MAX];
     Terrain             Terrain;
+    Particle            SceneParticles[PARTICLES_MAX];
+    ParticleSystem      ParticleSystem;
 
     DirectionalLight    LightSource;
     PointLight          PointLights[MAX_POINTS_LIGHTS];
