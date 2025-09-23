@@ -53,6 +53,7 @@ struct Input {
     Key     KButton;
     Key     LButton;
     Key     JButton;
+    Key     MButton;
 
     Key     ArrowUp;
     Key     ArrowDown;
@@ -72,10 +73,14 @@ struct ScreenOptions {
     real32  AspectRatio;
 };
 
+enum MouseCursorState { Lock, Unlock };
+
 struct Platform {
     ScreenOptions                   ScreenOpt;
     Input                           Input;
     bool32                          Running;
+    bool32                          CursorSwitched;
+    MouseCursorState                CursorState;
 
     TEARA_PlatformAllocateMemory    AllocMem;
     TEARA_PlatformReleaseMemory     ReleaseMem;

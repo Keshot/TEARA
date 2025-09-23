@@ -1,3 +1,10 @@
+#include <imgui.h>
+#include <imgui_impl_opengl3.h>
+#include <imgui_impl_win32.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
 #include <windows.h>
 #include <windowsx.h>
 #include <stdio.h>
@@ -359,7 +366,6 @@ static LRESULT WinMainCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM 
     // NOTE(ismail): normally windows pipeline is GetMessage TranslateMessage and then DispatchMessage
     // DispatchMessage call our user space callback which must handle messages by self or send it in DefWindowProc
     // but sometimes windows can send message in user space callback by yourself
-
     LRESULT Result = 0;
 
     switch (Message) {
@@ -415,6 +421,18 @@ static void WinProcessKey(Key *ProcessKey, KeyState NewKeyState)
     }
 }
 
+static void SetCursorToCenter()
+{
+    POINT CursorCenterPos= { Win32App.EnginePlatformDetails.ScreenOpt.ActualCenterWidth, 
+                             Win32App.EnginePlatformDetails.ScreenOpt.ActualCenterHeight };
+                    
+    ClientToScreen(Win32App.Window, &CursorCenterPos);
+    SetCursorPos(CursorCenterPos.x, CursorCenterPos.y);
+}
+
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND Window, UINT Message, WPARAM WParam, LPARAM LParam);
+
 static void WinProcessMessages()
 {
     u32         VirtualKeyCode;
@@ -425,6 +443,10 @@ static void WinProcessMessages()
     POINT       CursorCenterPos;
 
     while (PeekMessageA(&Message, Win32App.Window, 0, 0, PM_REMOVE)) {
+        if (ImGui_ImplWin32_WndProcHandler(Win32App.Window, Message.message, Message.wParam, Message.lParam)) {
+            continue;
+        }
+
         switch (Message.message) {
             case WM_QUIT: {
                 Win32App.EnginePlatformDetails.Running = false;
@@ -500,6 +522,10 @@ static void WinProcessMessages()
                         case WIN_ARROW_LEFT_KEY_CODE: {
                             WinProcessKey(&Win32App.EnginePlatformDetails.Input.ArrowLeft, NewState);
                         } break;
+
+                        case WIN_M_KEY_CODE: {
+                            WinProcessKey(&Win32App.EnginePlatformDetails.Input.MButton, NewState);
+                        } break;
                     
                         default: break;
                     }
@@ -517,15 +543,13 @@ static void WinProcessMessages()
                 real32 x = (real32)GET_X_LPARAM(Message.lParam);
                 real32 y = (real32)GET_Y_LPARAM(Message.lParam);
 
-                Win32App.EnginePlatformDetails.Input.MouseInput.Moution.x = ((x * Win32App.EnginePlatformDetails.Input.MouseInput.NormalizedWidth)  - 1.0f);
-                Win32App.EnginePlatformDetails.Input.MouseInput.Moution.y = ((y * Win32App.EnginePlatformDetails.Input.MouseInput.NormalizedHeight) - 1.0f);
+                if (Win32App.EnginePlatformDetails.CursorState == MouseCursorState::Lock) {
+                    Win32App.EnginePlatformDetails.Input.MouseInput.Moution.x = ((x * Win32App.EnginePlatformDetails.Input.MouseInput.NormalizedWidth)  - 1.0f);
+                    Win32App.EnginePlatformDetails.Input.MouseInput.Moution.y = ((y * Win32App.EnginePlatformDetails.Input.MouseInput.NormalizedHeight) - 1.0f);
 
-                CursorCenterPos = { 
-                    Win32App.EnginePlatformDetails.ScreenOpt.ActualCenterWidth, 
-                    Win32App.EnginePlatformDetails.ScreenOpt.ActualCenterHeight
-                };
-                ClientToScreen(Win32App.Window, &CursorCenterPos);
-                SetCursorPos(CursorCenterPos.x, CursorCenterPos.y);
+                    SetCursorToCenter();
+                }
+
 		    } break;
 
             default: {
@@ -1413,6 +1437,17 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
     }
 #endif
 
+    IMGUI_CHECKVERSION();
+    
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+    ImGui::StyleColorsDark();
+
+    ImGui_ImplWin32_InitForOpenGL(Win32App.Window);
+    ImGui_ImplOpenGL3_Init();
+
     LARGE_INTEGER LastCounter;
     QueryPerformanceCounter(&LastCounter);
     u64 LastCycleCount = __rdtsc();
@@ -1421,15 +1456,48 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
 
     PrepareFrame(&Win32App.EnginePlatformDetails, &Context);
 
+    bool ShowDemoWindow = true;
+
     while (Win32App.EnginePlatformDetails.Running) {
+        bool32              CursorSwitched  = Win32App.EnginePlatformDetails.CursorSwitched;
+        MouseCursorState    State           = Win32App.EnginePlatformDetails.CursorState;
+
+        if (CursorSwitched) {
+            if (State == MouseCursorState::Lock) {
+                ShowCursor(FALSE);
+                SetCursorToCenter();
+            }
+            else {
+                ShowCursor(TRUE);
+            }
+            
+            Win32App.EnginePlatformDetails.CursorSwitched = 0;
+        }
+
         WinProcessMessages();
+
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplWin32_NewFrame();
+        ImGui::NewFrame();
+
+        {
+            static float f = 0.0f;
+            static int Counter = 0;
+
+            ImGui::Begin("Animation Editor");
+
+            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
+            
+            ImGui::End();
+        }
+
+        ImGui::Render();
 
         Frame(&Win32App.EnginePlatformDetails, &Context);
 
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
         SwapBuffers(Win32App.WindowDeviceContext);
-#if OLD_CODE
-        Frame();
-#endif
 
         // NOTE(ismail): some very usefull thing for perfomance debuging
         u64 EndCycleCount = __rdtsc();

@@ -22,8 +22,8 @@ struct Rotation {
 #define DYNAMIC_SCENE_OBJECTS_MAX       1
 #define MAX_POINTS_LIGHTS               2
 #define MAX_SPOT_LIGHTS                 1
-#define MAX_BONES                       100
-#define MAX_KEYFRAMES                   200
+#define MAX_BONES                       200
+#define MAX_KEYFRAMES                   400
 #define MAX_CHARACTER_ANIMATIONS        20
 #define MAX_JOINT_CHILDREN_AMOUNT       10
 #define MAX_MESH_PRIMITIVES             5
@@ -302,12 +302,7 @@ struct BoneIDs {
     i32 BoneID;
 };
 
-struct Armature {
-    JointsInfo Info;
-};
-
 struct Skinning {
-    Armature                        SkinArmature;
     std::map<std::string, BoneIDs>  Bones;
     JointsInfo*                     Joints;
     u32                             JointsAmount;
@@ -371,6 +366,7 @@ enum ShaderProgramsType {
     MeshShader,
     SkeletalMeshShader,
     ParticlesShader,
+    DebugDraw,
     ShaderProgramsTypeMax,
 };
 
@@ -590,11 +586,18 @@ struct Particle {
     }
 };
 
+struct FrameData {
+    Mat4x4                  CameraTransformation;
+    SkinningMatricesStorage SkinMatrix;
+};
+
 struct GameContext {
     real32  DeltaTimeSec;
 
     bool32  PolygonModeActive;
     bool32  QWasTriggered;
+    bool32  MWasTriggered;
+    bool32  EditorModeOn;
 
     bool32  ArrowUpWasTriggered;
 
@@ -616,8 +619,6 @@ struct GameContext {
     DirectionalLight    LightSource;
     PointLight          PointLights[MAX_POINTS_LIGHTS];
     SpotLight           SpotLights[MAX_SPOT_LIGHTS];
-
-    SkinningMatricesStorage* SkinMatrix;
 
     bool32 EWasPressed;
 };
