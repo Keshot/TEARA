@@ -18,7 +18,7 @@ struct Rotation {
 #define BATTLE_AREA_GRID_VERT_AMOUNT    3
 #define ONE_SQUARE_INDEX_AMOUNT         6
 #define TERRAIN_INDEX_AMOUNT            SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT - 1) * ONE_SQUARE_INDEX_AMOUNT
-#define SCENE_OBJECTS_MAX               2
+#define SCENE_OBJECTS_MAX               3
 #define DYNAMIC_SCENE_OBJECTS_MAX       1
 #define MAX_POINTS_LIGHTS               2
 #define MAX_SPOT_LIGHTS                 1
@@ -373,8 +373,8 @@ enum ShaderProgramsType {
 struct ShaderProgramVariablesStorage {
 
     struct ObjectTransform {
-        i32 ObjectToWorldTransformationLocation;
-        i32 ObjectToWorldScaleAndRotateLocation;
+        i32 ObjectToCameraSpaceTransformationLocation;
+        i32 ObjectGeneralTransformationLocation;
     } Transform;
 
     struct ObjectMaterial {
@@ -520,14 +520,23 @@ struct SkeletalMeshComponent {
     SkeletalComponent   Skelet;
 };
 
+struct DynamicSceneObject;
+
+struct ObjectNesting {
+    std::string         AttachedToBone;
+    DynamicSceneObject* Parent;
+};
+
 struct SceneObject {
     WorldTransform  Transform;
     MeshComponent   ObjMesh;
+    ObjectNesting   Nesting;
 };
 
 struct DynamicSceneObject {
     WorldTransform          Transform;
     SkeletalMeshComponent   ObjMesh;
+    ObjectNesting           Nesting;
 };
 
 struct TerrainLoadFile {

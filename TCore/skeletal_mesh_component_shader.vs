@@ -13,8 +13,8 @@ out vec3 FragmentNormal;
 out vec3 FragmentPosition;
 
 uniform mat4x4  AnimationBonesMatrices[MaxBones];
-uniform mat4x4  ObjectToWorldTransformation;        // perspective projection, world to camera space rotation, world to camera space translation, object to world translation
-uniform mat4x4  ObjectToWorldScaleAndRotate;        // object to world scale and rotation
+uniform mat4x4  ObjectToCameraSpaceTransformation;  // root to world translation, camera space transformation and perspective projection.
+uniform mat4x4  ObjectGeneralTransformation;        // object to world/root scale, rotation, translation, attach matrix transformation, and root to world rotation and scale.
 
 void main()
 {
@@ -26,15 +26,15 @@ void main()
     // position calculation
     vec4 Pos = vec4(VertexPosition, 1.0);
 
-    vec4 FragmentPositionTmp = ObjectToWorldScaleAndRotate * SkinningMatrix * Pos;
+    vec4 FragmentPositionTmp = ObjectGeneralTransformation * SkinningMatrix * Pos;
 
     FragmentPosition    = FragmentPositionTmp.xyz;
-    gl_Position         = ObjectToWorldTransformation * FragmentPositionTmp;
+    gl_Position         = ObjectToCameraSpaceTransformation * FragmentPositionTmp;
     // position calculation end
 
     //normal calculation
     mat3x3 NormalsSkinningMatrix    = transpose(inverse(mat3(SkinningMatrix)));
-    mat3x3 NormalObjecToWorldMatrix = transpose(inverse(mat3(ObjectToWorldScaleAndRotate)));
+    mat3x3 NormalObjecToWorldMatrix = transpose(inverse(mat3(ObjectGeneralTransformation)));
 
     FragmentNormal  = normalize(NormalObjecToWorldMatrix * NormalsSkinningMatrix * VertexNormals);
     //normal calculation end

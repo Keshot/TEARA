@@ -172,6 +172,20 @@ void MakeScaleFromVector(Vec3* ScaleFactor, Mat4x4* Result)
     };
 }
 
+void MakeScaleFromVectorRelative(Vec3* ScaleFactor, Vec3* RelativeTo, Mat4x4* Result)
+{
+    real32 x = 1.0f / RelativeTo->x;
+    real32 y = 1.0f / RelativeTo->y;
+    real32 z = 1.0f / RelativeTo->z;
+
+    *Result = {
+        ScaleFactor->x * x,               0.0f,               0.0f, 0.0f,
+                      0.0f, ScaleFactor->y * y,               0.0f, 0.0f,
+                      0.0f,               0.0f, ScaleFactor->z * z, 0.0f,
+                      0.0f,               0.0f,               0.0f, 1.0f,
+    };
+}
+
 void MakeTranslationFromVec(Vec3 *TranslationVec, Mat4x4 *TranslationMat)
 {
     *TranslationMat = {
@@ -441,8 +455,8 @@ void InitShaderProgramsCache(Platform *Platform)
 
         u32 ShaderProgram = CreateShaderProgram(Platform, Names->VertexShaderName, Names->FragmentShaderName);
 
-        ShaderVariablesStorage->Transform.ObjectToWorldTransformationLocation   = tglGetUniformLocation(ShaderProgram, "ObjectToWorldTransformation");
-        ShaderVariablesStorage->Transform.ObjectToWorldScaleAndRotateLocation   = tglGetUniformLocation(ShaderProgram, "ObjectToWorldScaleAndRotate");
+        ShaderVariablesStorage->Transform.ObjectToCameraSpaceTransformationLocation = tglGetUniformLocation(ShaderProgram, "ObjectToCameraSpaceTransformation");
+        ShaderVariablesStorage->Transform.ObjectGeneralTransformationLocation       = tglGetUniformLocation(ShaderProgram, "ObjectGeneralTransformation");
 
         ShaderVariablesStorage->MaterialInfo.MaterialAmbientColorLocation   = tglGetUniformLocation(ShaderProgram, "MeshMaterial.AmbientColor");
         ShaderVariablesStorage->MaterialInfo.MaterialDiffuseColorLocation   = tglGetUniformLocation(ShaderProgram, "MeshMaterial.DiffuseColor");
@@ -824,6 +838,18 @@ const MeshLoaderNode SceneObjectsName[] = {
             4.0f,
             4.0f,
             4.0f
+        }
+    },
+    {
+        "data/obj/cube_brick_texture.obj",
+        {
+            /* GenerateSmoothNormals */  0,
+            /* SelfGenerateNormals   */  0
+        },
+        {
+            1.0f,
+            1.0f,
+            1.0f
         }
     }
 };
@@ -1789,7 +1815,7 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         Object->ObjMesh.ObjectPath = CurrentMeshNode->ObjName;
 
         Object->Transform.Rotation  = { 0.0f, 0.0f, 0.0f };
-        Object->Transform.Position  = { 0.0f, 0.0f, Position };
+        Object->Transform.Position  = { 0.0f, 0.0f, Index == 1 ? 0.0f : Position };
         Object->Transform.Scale     = CurrentMeshNode->InitialScale;
 
         InitMeshComponent(Platform, &Object->ObjMesh, CurrentMeshNode->Flags);
@@ -1811,6 +1837,9 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
 
         Position += 10.0f;
     }
+
+    Cntx->TestSceneObjects[1].Nesting.Parent            = &Cntx->TestDynamocSceneObjects[0];
+    Cntx->TestSceneObjects[1].Nesting.AttachedToBone    = "mixamorig5:LeftHand";
 
     Particle *SceneParticles = Cntx->SceneParticles;
     for (i32 Index = 0; Index < PARTICLES_MAX; ++Index) {
@@ -2039,6 +2068,66 @@ static void RenderPrepareFrame(GameContext *Cntx, FrameData *Data)
     }
 }
 
+static void SetupObjectRendering(GameContext* Ctx, FrameData* Data, WorldTransform& ObjectTransform,
+                                 ShaderProgramVariablesStorage*  VarStorage, ObjectNesting& Nesting, 
+                                 ShaderProgramsType ShaderType)
+{
+    Mat4x4  ObjectToCameraSpaceTransformation   = {};
+    Mat4x4  ObjectGeneralTransformation         = {};
+    Mat4x4  RootTransformation                  = Identity4x4; 
+    Mat4x4  ObjectTranslation                   = {};
+    Mat4x4  ObjectRotation                      = {};
+    Mat4x4  ObjectScale                         = {};
+    Vec3    CameraPosition                      = Ctx->PlayerCamera.Transform.Position;
+    Vec3    ObjectPosition;
+
+    MakeTranslationFromVec(&ObjectTransform.Position, &ObjectTranslation);
+    MakeObjectToUprightRotation(&ObjectTransform.Rotation, &ObjectRotation);
+
+    if (Nesting.Parent) {
+        DynamicSceneObject*             ParentObject    = Nesting.Parent;
+        WorldTransform&                 ParentTransform = ParentObject->Transform;
+        std::map<std::string, BoneIDs>& Bones           = ParentObject->ObjMesh.Skelet.Skin.Bones;
+
+        Mat4x4 RootToWorldTranslation   = {};
+        Mat4x4 RootToWorldRotation      = {};
+        Mat4x4 RootToWorldScale         = {};
+
+        MakeTranslationFromVec(&ParentTransform.Position, &RootToWorldTranslation);
+        MakeObjectToUprightRotation(&ParentTransform.Rotation, &RootToWorldRotation);
+        MakeScaleFromVector(&ParentTransform.Scale, &RootToWorldScale);
+
+        MakeScaleFromVectorRelative(&ObjectTransform.Scale, &ParentTransform.Scale, &ObjectScale);
+
+        BoneIDs& Ids = Bones[Nesting.AttachedToBone];
+        
+        Mat4x4& AttachedBoneMat = Data->SkinMatrix.Matrices[Ids.OriginalBoneID];
+
+        ObjectToCameraSpaceTransformation   = Data->CameraTransformation * RootToWorldTranslation;
+        ObjectGeneralTransformation         = RootToWorldRotation * RootToWorldScale * AttachedBoneMat * 
+                                              ObjectTranslation * ObjectRotation * ObjectScale;
+                                        
+        ObjectPosition = ParentTransform.Position;
+    }
+    else {
+        MakeScaleFromVector(&ObjectTransform.Scale, &ObjectScale);
+
+        ObjectToCameraSpaceTransformation   = Data->CameraTransformation * ObjectTranslation;
+        ObjectGeneralTransformation         = ObjectRotation * ObjectScale;
+
+        ObjectPosition = ObjectTransform.Position;
+    }
+
+    tglUniformMatrix4fv(VarStorage->Transform.ObjectToCameraSpaceTransformationLocation, 1, GL_TRUE, ObjectToCameraSpaceTransformation[0]);
+    tglUniformMatrix4fv(VarStorage->Transform.ObjectGeneralTransformationLocation, 1, GL_TRUE, ObjectGeneralTransformation[0]);
+
+    Vec3 CameraPositionInObjectUprightSpace = CameraPosition - ObjectPosition;
+    tglUniform3fv(VarStorage->Light.ViewerPositionLocation, 1, &CameraPositionInObjectUprightSpace[0]);
+
+    SetupPointLights(Ctx->PointLights, MAX_POINTS_LIGHTS, ShaderType, &ObjectPosition);
+    SetupSpotLights(Ctx->SpotLights, MAX_SPOT_LIGHTS, ShaderType, &ObjectPosition);
+}
+
 static void DrawSkeletalMesh(Platform *Platform, GameContext *Cntx, FrameData *Data)
 {
     ShaderProgram* Shader = &ShadersProgramsCache[ShaderProgramsType::SkeletalMeshShader];
@@ -2046,11 +2135,11 @@ static void DrawSkeletalMesh(Platform *Platform, GameContext *Cntx, FrameData *D
     
     tglUseProgram(Shader->Program);
 
-    SetupDirectionalLight(&Cntx->LightSource, ShaderProgramsType::SkeletalMeshShader);
-
     SkinningMatricesStorage* MatrixStorage = &Data->SkinMatrix;
 
-    Cntx->AnimationDuration += Cntx->DeltaTimeSec;
+    SetupDirectionalLight(&Cntx->LightSource, ShaderProgramsType::SkeletalMeshShader);
+
+    // Cntx->AnimationDuration += Cntx->DeltaTimeSec;
     for (i32 Index = 0; Index < DYNAMIC_SCENE_OBJECTS_MAX; ++Index) {
         DynamicSceneObject*     CurrentSceneObject  = &Cntx->TestDynamocSceneObjects[Index];
         SkeletalMeshComponent*  Comp                = &CurrentSceneObject->ObjMesh;
@@ -2072,27 +2161,8 @@ static void DrawSkeletalMesh(Platform *Platform, GameContext *Cntx, FrameData *D
 
             tglUniformMatrix4fv(AnimVar->AnimationMatricesLocation[MatrixIndex], 1, GL_TRUE, (*Mat)[0]);
         }
-        
-        Mat4x4 ObjectToWorldTranslation = {};
-        MakeTranslationFromVec(&Transform->Position, &ObjectToWorldTranslation);
 
-        Mat4x4 ObjectToWorlRotation = {};
-        MakeObjectToUprightRotation(&Transform->Rotation, &ObjectToWorlRotation);
-
-        Mat4x4 ObjectToWorldScale = {};
-        MakeScaleFromVector(&Transform->Scale, &ObjectToWorldScale);
-
-        Mat4x4 ObjectToWorldTransformation = Data->CameraTransformation * ObjectToWorldTranslation;
-        Mat4x4 ObjectToWorldScaleAndRotate = ObjectToWorlRotation * ObjectToWorldScale;
-
-        tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldTransformationLocation, 1, GL_TRUE, ObjectToWorldTransformation[0]);
-        tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldScaleAndRotateLocation, 1, GL_TRUE, ObjectToWorldScaleAndRotate[0]);
-
-        Vec3 CameraPositionInObjectUprightSpace = Cntx->PlayerCamera.Transform.Position - Transform->Position;
-        tglUniform3fv(VarStorage->Light.ViewerPositionLocation, 1, &CameraPositionInObjectUprightSpace[0]);
-
-        SetupPointLights(Cntx->PointLights, MAX_POINTS_LIGHTS, ShaderProgramsType::SkeletalMeshShader, &Transform->Position);
-        SetupSpotLights(Cntx->SpotLights, MAX_SPOT_LIGHTS, ShaderProgramsType::SkeletalMeshShader, &Transform->Position);
+        SetupObjectRendering(Cntx, Data, *Transform, VarStorage, CurrentSceneObject->Nesting, ShaderProgramsType::SkeletalMeshShader);
 
         // tglUniform1i(VarStorage->Animation.BoneIDLocation, Cntx->BoneID); TODO(ismail): add in future for debugging
 
@@ -2130,6 +2200,56 @@ static void DrawSkeletalMesh(Platform *Platform, GameContext *Cntx, FrameData *D
         }
     }
 
+}
+
+static void DrawStaticMesh(Platform *Platform, GameContext *Cntx, FrameData *Data)
+{
+    ShaderProgram*                  Shader          = &ShadersProgramsCache[ShaderProgramsType::MeshShader];
+    ShaderProgramVariablesStorage*  VarStorage      = &Shader->ProgramVarsStorage;
+
+    tglUseProgram(Shader->Program);    
+
+    SetupDirectionalLight(&Cntx->LightSource, ShaderProgramsType::MeshShader);
+
+    for (i32 Index = 0; Index < SCENE_OBJECTS_MAX; ++Index) {
+        SceneObject*    CurrentSceneObject  = &Cntx->TestSceneObjects[Index];
+        MeshComponent*  Comp                = &CurrentSceneObject->ObjMesh;
+        WorldTransform* Transform           = &CurrentSceneObject->Transform;
+
+        Transform->Rotation.Heading += Cntx->RotationDelta;
+
+        SetupObjectRendering(Cntx, Data, *Transform, VarStorage, CurrentSceneObject->Nesting, ShaderProgramsType::MeshShader);
+
+        tglBindVertexArray(Comp->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
+        for (i32 Index = 0; Index < Comp->MeshesAmount; ++Index) {
+            MeshComponentObjects*   MeshInfo        = &Comp->MeshesInfo[Index];
+            MeshMaterial*           MeshMaterial    = &MeshInfo->Material;
+
+            tglUniform3fv(VarStorage->MaterialInfo.MaterialDiffuseColorLocation, 1,   &MeshMaterial->DiffuseColor[0]);
+            tglUniform3fv(VarStorage->MaterialInfo.MaterialAmbientColorLocation, 1,   &MeshMaterial->AmbientColor[0]);
+            tglUniform3fv(VarStorage->MaterialInfo.MaterialSpecularColorLocation, 1,  &MeshMaterial->SpecularColor[0]);
+            
+            if (MeshMaterial->HaveTexture) {
+                tglActiveTexture(VarStorage->MaterialInfo.DiffuseTexture.Unit);
+                glBindTexture(GL_TEXTURE_2D, MeshMaterial->TextureHandle);
+            }
+            else {
+                tglActiveTexture(VarStorage->MaterialInfo.DiffuseTexture.Unit);
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+
+            if (MeshMaterial->HaveSpecularExponent) {
+                tglActiveTexture(VarStorage->MaterialInfo.SpecularExpMap.Unit);
+                glBindTexture(GL_TEXTURE_2D, MeshMaterial->SpecularExponentMapTextureHandle);
+            }
+            else {
+                tglActiveTexture(VarStorage->MaterialInfo.SpecularExpMap.Unit);
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+        
+            tglDrawElementsBaseVertex(GL_TRIANGLES, MeshInfo->NumIndices, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * MeshInfo->IndexOffset), MeshInfo->VertexOffset);
+        }
+    }
 }
 
 void Frame(Platform *Platform, GameContext *Cntx)
@@ -2211,7 +2331,7 @@ void Frame(Platform *Platform, GameContext *Cntx)
 
     Frame.CameraTransformation = CameraTransformation;
 
-    if(0) {
+    if(1) {
         DirectionalLight *SceneDirLight = &Cntx->LightSource;
 
         SpotLight* SceneSpotLight               = &Cntx->SpotLights[0];
@@ -2254,8 +2374,8 @@ void Frame(Platform *Platform, GameContext *Cntx)
         Mat4x4 TerrainWorldTransformation = CameraTransformation * TerrainWorldTranslation;
         Mat4x4 TerrainWorldScaleAndRotate = TerrainWorldRotation * TerrainWorldScale;
 
-        tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldTransformationLocation, 1, GL_TRUE, TerrainWorldTransformation[0]);
-        tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldScaleAndRotateLocation, 1, GL_TRUE, TerrainWorldScaleAndRotate[0]);
+        tglUniformMatrix4fv(VarStorage->Transform.ObjectToCameraSpaceTransformationLocation, 1, GL_TRUE, TerrainWorldTransformation[0]);
+        tglUniformMatrix4fv(VarStorage->Transform.ObjectGeneralTransformationLocation, 1, GL_TRUE, TerrainWorldScaleAndRotate[0]);
 
         Vec3 ViewerPositionInTerrainUpright = Cntx->PlayerCamera.Transform.Position - Terrain->Transform.Position;
         tglUniform3fv(VarStorage->Light.ViewerPositionLocation, 1, &ViewerPositionInTerrainUpright[0]);
@@ -2282,67 +2402,8 @@ void Frame(Platform *Platform, GameContext *Cntx)
         }
 
         // MESHES RENDERING
-        SetupDirectionalLight(SceneDirLight, ShaderProgramsType::MeshShader);
 
-        for (i32 Index = 0; Index < SCENE_OBJECTS_MAX; ++Index) {
-            SceneObject*    CurrentSceneObject  = &Cntx->TestSceneObjects[Index];
-            MeshComponent*  Comp                = &CurrentSceneObject->ObjMesh;
-            WorldTransform* Transform           = &CurrentSceneObject->Transform;
-
-            Transform->Rotation.Heading += Cntx->RotationDelta;
-        
-            Mat4x4 ObjectToWorldTranslation = {};
-            MakeTranslationFromVec(&Transform->Position, &ObjectToWorldTranslation);
-        
-            Mat4x4 ObjectToWorlRotation = {};
-            MakeObjectToUprightRotation(&Transform->Rotation, &ObjectToWorlRotation);
-
-            Mat4x4 ObjectToWorldScale = {};
-            MakeScaleFromVector(&Transform->Scale, &ObjectToWorldScale);
-
-            Mat4x4 ObjectToWorldTransformation = CameraTransformation * ObjectToWorldTranslation;
-            Mat4x4 ObjectToWorldScaleAndRotate = ObjectToWorlRotation * ObjectToWorldScale;
-
-            tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldTransformationLocation, 1, GL_TRUE, ObjectToWorldTransformation[0]);
-            tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldScaleAndRotateLocation, 1, GL_TRUE, ObjectToWorldScaleAndRotate[0]);
-
-            Vec3 CameraPositionInObjectUprightSpace = Cntx->PlayerCamera.Transform.Position - Transform->Position;
-            tglUniform3fv(VarStorage->Light.ViewerPositionLocation, 1, &CameraPositionInObjectUprightSpace[0]);
-
-            SetupPointLights(Cntx->PointLights, MAX_POINTS_LIGHTS, ShaderProgramsType::MeshShader, &Transform->Position);
-            SetupSpotLights(Cntx->SpotLights, MAX_SPOT_LIGHTS, ShaderProgramsType::MeshShader, &Transform->Position);
-        
-            tglBindVertexArray(Comp->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
-
-            for (i32 Index = 0; Index < Comp->MeshesAmount; ++Index) {
-                MeshComponentObjects*   MeshInfo        = &Comp->MeshesInfo[Index];
-                MeshMaterial*           MeshMaterial    = &MeshInfo->Material;
-
-                tglUniform3fv(VarStorage->MaterialInfo.MaterialDiffuseColorLocation, 1,   &MeshMaterial->DiffuseColor[0]);
-                tglUniform3fv(VarStorage->MaterialInfo.MaterialAmbientColorLocation, 1,   &MeshMaterial->AmbientColor[0]);
-                tglUniform3fv(VarStorage->MaterialInfo.MaterialSpecularColorLocation, 1,  &MeshMaterial->SpecularColor[0]);
-
-                if (MeshMaterial->HaveTexture) {
-                    tglActiveTexture(VarStorage->MaterialInfo.DiffuseTexture.Unit);
-                    glBindTexture(GL_TEXTURE_2D, MeshMaterial->TextureHandle);
-                }
-                else {
-                    tglActiveTexture(VarStorage->MaterialInfo.DiffuseTexture.Unit);
-                    glBindTexture(GL_TEXTURE_2D, 0);
-                }
-
-                if (MeshMaterial->HaveSpecularExponent) {
-                    tglActiveTexture(VarStorage->MaterialInfo.SpecularExpMap.Unit);
-                    glBindTexture(GL_TEXTURE_2D, MeshMaterial->SpecularExponentMapTextureHandle);
-                }
-                else {
-                    tglActiveTexture(VarStorage->MaterialInfo.SpecularExpMap.Unit);
-                    glBindTexture(GL_TEXTURE_2D, 0);
-                }
-            
-                tglDrawElementsBaseVertex(GL_TRIANGLES, MeshInfo->NumIndices, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * MeshInfo->IndexOffset), MeshInfo->VertexOffset);
-            }
-        }
+        DrawStaticMesh(Platform, Cntx, &Frame);
 
         // MESHES RENDERING END
 
@@ -2379,8 +2440,8 @@ void Frame(Platform *Platform, GameContext *Cntx)
             Mat4x4 ObjectToWorldTransformation = CameraTransformation * ObjectToWorldTranslation;
             Mat4x4 ObjectToWorldScaleAndRotate = ObjectToWorlRotation * ObjectToWorldScale;
 
-            tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldTransformationLocation, 1, GL_TRUE, ObjectToWorldTransformation[0]);
-            tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldScaleAndRotateLocation, 1, GL_TRUE, ObjectToWorldScaleAndRotate[0]);
+            tglUniformMatrix4fv(VarStorage->Transform.ObjectToCameraSpaceTransformationLocation, 1, GL_TRUE, ObjectToWorldTransformation[0]);
+            tglUniformMatrix4fv(VarStorage->Transform.ObjectGeneralTransformationLocation, 1, GL_TRUE, ObjectToWorldScaleAndRotate[0]);
 
             tglBindVertexArray(ParticleSys->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
 
@@ -2396,6 +2457,97 @@ void Frame(Platform *Platform, GameContext *Cntx)
         // DEBUG DRAW RENDERER END
     }
     else {
+        /*
+        ShaderProgram*                  Shader          = &ShadersProgramsCache[ShaderProgramsType::MeshShader];
+        ShaderProgramVariablesStorage*  VarStorage      = &Shader->ProgramVarsStorage;
+        Mat4x4&                         CameraTransform = Frame.CameraTransformation;
+
+        tglUseProgram(Shader->Program);    
+
+        SetupDirectionalLight(&Cntx->LightSource, ShaderProgramsType::MeshShader);
+
+        DynamicSceneObject* Player = &Cntx->TestDynamocSceneObjects[0];
+
+        std::map<std::string, BoneIDs>& Bones = Player->ObjMesh.Skelet.Skin.Bones;
+
+        BoneIDs IDs = Bones["mixamorig5:LeftHand"];
+        Mat4x4& AttachMat = Frame.SkinMatrix.Matrices[IDs.OriginalBoneID];
+
+        for (i32 Index = 0; Index < 1; ++Index) {
+            SceneObject*    CurrentSceneObject  = &Cntx->TestSceneObjects[1];
+            MeshComponent*  Comp                = &CurrentSceneObject->ObjMesh;
+            WorldTransform* RootTransform       = &Player->Transform;
+            WorldTransform* ObjectTransform     = &CurrentSceneObject->Transform;
+
+            ObjectTransform->Position = {};
+
+            // Transform->Rotation.Heading += Cntx->RotationDelta;
+
+            Mat4x4 ObjectToWorldTranslation = {};
+            MakeTranslationFromVec(&ObjectTransform->Position, &ObjectToWorldTranslation);
+
+            Mat4x4 ObjectToWorlRotation = {};
+            MakeObjectToUprightRotation(&ObjectTransform->Rotation, &ObjectToWorlRotation);
+
+            Mat4x4 ObjectToWorldScale = {};
+            MakeScaleFromVectorRelative(&ObjectTransform->Scale, &RootTransform->Scale, &ObjectToWorldScale);
+
+            Mat4x4 RootToWorldTranslation = {};
+            MakeTranslationFromVec(&RootTransform->Position, &RootToWorldTranslation);
+
+            Mat4x4 RootToWorldRotation = {};
+            MakeObjectToUprightRotation(&RootTransform->Rotation, &RootToWorldRotation);
+
+            Mat4x4 RootToWorldScale = {};
+            MakeScaleFromVector(&RootTransform->Scale, &RootToWorldScale);
+
+            Mat4x4 RootTransformation = RootToWorldTranslation * RootToWorldRotation * RootToWorldScale * AttachMat;
+
+            Mat4x4 ObjectToWorldTransformation = CameraTransform * RootTransformation * ObjectToWorldTranslation;
+            Mat4x4 ObjectToWorldScaleAndRotate = ObjectToWorlRotation * ObjectToWorldScale;
+
+            tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldTransformationLocation, 1, GL_TRUE, ObjectToWorldTransformation[0]);
+            tglUniformMatrix4fv(VarStorage->Transform.ObjectToWorldScaleAndRotateLocation, 1, GL_TRUE, ObjectToWorldScaleAndRotate[0]);
+
+            Vec3 CameraPositionInObjectUprightSpace = Cntx->PlayerCamera.Transform.Position - RootTransform->Position;
+
+            tglUniform3fv(VarStorage->Light.ViewerPositionLocation, 1, &CameraPositionInObjectUprightSpace[0]);
+
+            SetupPointLights(Cntx->PointLights, MAX_POINTS_LIGHTS, ShaderProgramsType::MeshShader, &RootTransform->Position);
+            SetupSpotLights(Cntx->SpotLights, MAX_SPOT_LIGHTS, ShaderProgramsType::MeshShader, &RootTransform->Position);
+
+            tglBindVertexArray(Comp->BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
+            for (i32 Index = 0; Index < Comp->MeshesAmount; ++Index) {
+                MeshComponentObjects*   MeshInfo        = &Comp->MeshesInfo[Index];
+                MeshMaterial*           MeshMaterial    = &MeshInfo->Material;
+
+                tglUniform3fv(VarStorage->MaterialInfo.MaterialDiffuseColorLocation, 1,   &MeshMaterial->DiffuseColor[0]);
+                tglUniform3fv(VarStorage->MaterialInfo.MaterialAmbientColorLocation, 1,   &MeshMaterial->AmbientColor[0]);
+                tglUniform3fv(VarStorage->MaterialInfo.MaterialSpecularColorLocation, 1,  &MeshMaterial->SpecularColor[0]);
+
+                if (MeshMaterial->HaveTexture) {
+                    tglActiveTexture(VarStorage->MaterialInfo.DiffuseTexture.Unit);
+                    glBindTexture(GL_TEXTURE_2D, MeshMaterial->TextureHandle);
+                }
+                else {
+                    tglActiveTexture(VarStorage->MaterialInfo.DiffuseTexture.Unit);
+                    glBindTexture(GL_TEXTURE_2D, 0);
+                }
+
+                if (MeshMaterial->HaveSpecularExponent) {
+                    tglActiveTexture(VarStorage->MaterialInfo.SpecularExpMap.Unit);
+                    glBindTexture(GL_TEXTURE_2D, MeshMaterial->SpecularExponentMapTextureHandle);
+                }
+                else {
+                    tglActiveTexture(VarStorage->MaterialInfo.SpecularExpMap.Unit);
+                    glBindTexture(GL_TEXTURE_2D, 0);
+                }
+            
+                tglDrawElementsBaseVertex(GL_TRIANGLES, MeshInfo->NumIndices, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * MeshInfo->IndexOffset), MeshInfo->VertexOffset);
+            }
+        }*/
+
+        DrawStaticMesh(Platform, Cntx, &Frame);
         DrawSkeletalMesh(Platform, Cntx, &Frame);
     }
 }
