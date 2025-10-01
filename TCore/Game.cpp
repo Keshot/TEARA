@@ -854,12 +854,20 @@ const MeshLoaderNode SceneObjectsName[] = {
     }
 };
 
-const char *DynamicSceneObjectsName[] = {
-    // "data/obj/AnotherBonesTest.gltf",
-    // "data/obj/SimpleTest2Bones.gltf",
-    // "data/obj/SimpleTest2.gltf",
-    "data/obj/Idle.gltf",
+struct DynamicSceneObjectLoader {
+    const char* Mesh;
+    const char* Animations[MAX_CHARACTER_ANIMATIONS];
+    i32         Amount;
+};
 
+DynamicSceneObjectLoader DynamicSceneObjectsName[] = {
+    {
+        "data/obj/Idle.gltf",
+        {
+            "data/obj/Walk.gltf",
+        },
+        1
+    },
 };
 
 void SetupDirectionalLight(DirectionalLight* Light, ShaderProgramsType ShaderType)
@@ -1103,6 +1111,158 @@ void ReadJointNode(Skinning* Skin, cgltf_node* Joint, JointsInfo* ParentJoint, i
 
 #define DEFAULT_BUFFER_SIZE 80000
 
+void glTFReadAnimations(cgltf_animation* Animations, i32 AnimationsCount, AnimationsArray& AnimArray, Skinning& Skin)
+{
+    Assert(AnimationsCount == 1); // TODO(ismail): restrictions for now in future we should handle that case
+
+    for (i32 AnimationIndex = 0, AnimationArrayIndex = AnimArray.AnimsAmount; 
+            AnimationIndex < AnimationsCount; 
+            ++AnimationIndex, ++AnimationArrayIndex) {
+            cgltf_animation&    CurrentAnimation    = Animations[AnimationIndex];
+            Animation&          AnimationNode       = AnimArray.Anims[AnimationArrayIndex];
+
+            i32                             ChannelsCount   = (i32)CurrentAnimation.channels_count;
+            cgltf_animation_channel*        Channels        = CurrentAnimation.channels;
+            std::map<std::string, BoneIDs>& Bones           = Skin.Bones;
+
+            real32          AnimationDuration   = 0.0f;
+            i32             BoneIndex           = 0;
+            cgltf_node*     LastTargetNode      = 0;
+            AnimationFrame* Frame               = 0;
+
+            for (i32 ChannelIndex = 0; ChannelIndex < ChannelsCount; ++ChannelIndex) {
+                cgltf_animation_channel*    CurrentChannel  = &Channels[ChannelIndex];
+                cgltf_animation_sampler*    CurrentSampler  = CurrentChannel->sampler;
+                cgltf_node*                 TargetNode      = CurrentChannel->target_node;
+
+                bool32 BoneFind = Bones.find(TargetNode->name) != Bones.end();
+                if (!BoneFind) {
+                    // TODO(Ismail): now we just continue but need to handle that case
+                    Assert(false);
+                }
+
+                if (LastTargetNode != TargetNode) {
+                    Frame           = &AnimationNode.PerBonesFrame[BoneIndex++];
+                    LastTargetNode  = TargetNode;
+
+                    BoneIDs&    Ids = Bones.at(TargetNode->name);
+
+                    Frame->Target           = Ids.BoneID;
+                    Frame->OriginalBoneID   = Ids.OriginalBoneID;
+                }
+
+                cgltf_animation_path_type   ChannelType         = CurrentChannel->target_path;
+                cgltf_interpolation_type    InterpalationType   = CurrentSampler->interpolation;
+
+                Assert(ChannelType != cgltf_animation_path_type::cgltf_animation_path_type_invalid &&
+                       ChannelType != cgltf_animation_path_type::cgltf_animation_path_type_weights);
+
+                Assert(CurrentSampler->input->count == CurrentSampler->output->count);
+
+                AnimationTransformation* Transform;
+                switch(ChannelType) {
+                    case cgltf_animation_path_type::cgltf_animation_path_type_translation: {
+                        Transform = &Frame->Transformations[ATranslation];
+
+                        cgltf_accessor* TransformAccessor   = CurrentSampler->output;
+                        i32             TransformsCount     = TransformAccessor->count;
+                        for (i32 TransformIndex = 0; TransformIndex < TransformsCount; ++TransformIndex) {
+                            Vec3 Elem = {};
+                            cgltf_accessor_read_float(TransformAccessor, TransformIndex, Elem.ValueHolder, sizeof(Elem));
+
+                            Transform->Transforms[TransformIndex].Translation = Elem;
+                        }
+                    } break;
+
+                    case cgltf_animation_path_type::cgltf_animation_path_type_rotation: {
+                        Transform = &Frame->Transformations[ARotation];
+
+                        cgltf_accessor* TransformAccessor   = CurrentSampler->output;
+                        i32             TransformsCount     = TransformAccessor->count;
+                        for (i32 TransformIndex = 0; TransformIndex < TransformsCount; ++TransformIndex) {
+                            real32 Elem[4] = {};
+                            cgltf_accessor_read_float(TransformAccessor, TransformIndex, Elem, sizeof(Elem));
+
+                            Quat *Rot = &Transform->Transforms[TransformIndex].Rotation;
+                            Rot->w = Elem[_w_];
+                            Rot->x = Elem[_x_];
+                            Rot->y = Elem[_y_];
+                            Rot->z = Elem[_z_];
+                        }
+                    } break;
+
+                    case cgltf_animation_path_type::cgltf_animation_path_type_scale: {
+                        Transform = &Frame->Transformations[AScale];
+
+                        cgltf_accessor* TransformAccessor   = CurrentSampler->output;
+                        i32             TransformsCount     = TransformAccessor->count;
+                        for (i32 TransformIndex = 0; TransformIndex < TransformsCount; ++TransformIndex) {
+                            Vec3 Elem = {};
+                            cgltf_accessor_read_float(TransformAccessor, TransformIndex, Elem.ValueHolder, sizeof(Elem));
+
+                            Transform->Transforms[TransformIndex].Scale = Elem;
+                        }
+                    } break;
+                }
+
+                i32 KeyframesAmount = (i32)CurrentSampler->input->count;
+
+                Assert(KeyframesAmount <= MAX_KEYFRAMES);
+
+                for (i32 KeyframeIndex = 0; KeyframeIndex < KeyframesAmount; ++KeyframeIndex) {
+                    real32 Keyframe = 0.0f;
+                    cgltf_accessor_read_float(CurrentSampler->input, KeyframeIndex, &Keyframe, sizeof(Keyframe));
+
+                    Transform->Keyframes[KeyframeIndex] = Keyframe;
+
+                    if (Keyframe > AnimationDuration) {
+                        AnimationDuration = Keyframe;
+                    }
+                }
+                
+                Transform->Amount   = KeyframesAmount;
+                Transform->IType    = InterpalationType == cgltf_interpolation_type::cgltf_interpolation_type_linear ? ILinear : IStep;
+                Transform->Valid    = 1;
+            }
+
+            AnimationNode.MaxDuration  = AnimationDuration;
+            AnimationNode.FramesAmount = BoneIndex;
+        }
+
+        AnimArray.AnimsAmount += AnimationsCount;
+}
+
+void glTFLoadFile(const char *Path, cgltf_data** Mesh)
+{
+    cgltf_options   LoadOptions = {};
+
+    cgltf_result CallResult = cgltf_parse_file(&LoadOptions, Path, Mesh);
+
+    if (CallResult != cgltf_result::cgltf_result_success) {
+        Assert(false);
+    }
+
+    CallResult = cgltf_load_buffers(&LoadOptions, *Mesh, Path);
+
+    if (CallResult != cgltf_result::cgltf_result_success) {
+        Assert(false);
+    }
+}
+
+void glTFReadAnimations(const char* Path, AnimationsArray* AnimArray, Skinning& Skin)
+{
+    cgltf_data* Mesh = 0;
+
+    glTFLoadFile(Path, &Mesh);
+
+    cgltf_animation*    Animations      = Mesh->animations;
+    i32                 AnimationsCount = Mesh->animations_count;
+
+    glTFReadAnimations(Animations, AnimationsCount, *AnimArray, Skin);
+
+    cgltf_free(Mesh);
+}
+
 void glTFRead(const char *Path, Platform* Platform, glTF2File *FileOut)
 {
     u32             IndicesRead;
@@ -1121,17 +1281,7 @@ void glTFRead(const char *Path, Platform* Platform, glTF2File *FileOut)
     cgltf_options   LoadOptions = {};
     cgltf_data*     Mesh        = NULL;
 
-    cgltf_result CallResult = cgltf_parse_file(&LoadOptions, Path, &Mesh);
-
-    if (CallResult != cgltf_result::cgltf_result_success) {
-        Assert(false);
-    }
-
-    CallResult = cgltf_load_buffers(&LoadOptions, Mesh, Path);
-
-    if (CallResult != cgltf_result::cgltf_result_success) {
-        Assert(false);
-    }
+    glTFLoadFile(Path, &Mesh);
 
     i32         MeshesCount = (i32)Mesh->meshes_count;
     glTF2Mesh*  MeshesOut   = FileOut->Meshes;
@@ -1278,119 +1428,8 @@ void glTFRead(const char *Path, Platform* Platform, glTF2File *FileOut)
 
         cgltf_animation*    Animations  = Mesh->animations;
         AnimationsArray*    AnimArray   = FileOut->Animations;
-        for (i32 AnimationIndex = 0; AnimationIndex < AnimationsCount; ++AnimationIndex) {
-            cgltf_animation*    CurrentAnimation    = &Animations[AnimationIndex];
-            Animation*          AnimationNode       = &AnimArray->Anims[AnimationIndex];
 
-            i32                             ChannelsCount   = (i32)CurrentAnimation->channels_count;
-            cgltf_animation_channel*        Channels        = CurrentAnimation->channels;
-            std::map<std::string, BoneIDs>& Bones           = Skelet->Bones;
-
-            real32          AnimationDuration   = 0.0f;
-            i32             BoneIndex           = 0;
-            cgltf_node*     LastTargetNode      = 0;
-            AnimationFrame* Frame               = 0;
-
-            for (i32 ChannelIndex = 0; ChannelIndex < ChannelsCount; ++ChannelIndex) {
-                cgltf_animation_channel*    CurrentChannel  = &Channels[ChannelIndex];
-                cgltf_animation_sampler*    CurrentSampler  = CurrentChannel->sampler;
-                cgltf_node*                 TargetNode      = CurrentChannel->target_node;
-
-                bool32 BoneFind = Bones.find(TargetNode->name) != Bones.end();
-                if (!BoneFind) {
-                    // TODO(Ismail): now we just continue but need to handle that case
-                    continue;
-                }
-
-                if (LastTargetNode != TargetNode) {
-                    Frame           = &AnimationNode->PerBonesFrame[BoneIndex++];
-                    LastTargetNode  = TargetNode;
-
-                    BoneIDs&    Ids = Bones.at(TargetNode->name);
-
-                    Frame->Target           = Ids.BoneID;
-                    Frame->OriginalBoneID   = Ids.OriginalBoneID;
-                }
-
-                cgltf_animation_path_type   ChannelType         = CurrentChannel->target_path;
-                cgltf_interpolation_type    InterpalationType   = CurrentSampler->interpolation;
-
-                Assert(ChannelType != cgltf_animation_path_type::cgltf_animation_path_type_invalid &&
-                       ChannelType != cgltf_animation_path_type::cgltf_animation_path_type_weights);
-
-                Assert(CurrentSampler->input->count == CurrentSampler->output->count);
-
-                AnimationTransformation* Transform;
-                switch(ChannelType) {
-                    case cgltf_animation_path_type::cgltf_animation_path_type_translation: {
-                        Transform = &Frame->Transformations[ATranslation];
-
-                        cgltf_accessor* TransformAccessor   = CurrentSampler->output;
-                        i32             TransformsCount     = TransformAccessor->count;
-                        for (i32 TransformIndex = 0; TransformIndex < TransformsCount; ++TransformIndex) {
-                            Vec3 Elem = {};
-                            cgltf_accessor_read_float(TransformAccessor, TransformIndex, Elem.ValueHolder, sizeof(Elem));
-
-                            Transform->Transforms[TransformIndex].Translation = Elem;
-                        }
-                    } break;
-
-                    case cgltf_animation_path_type::cgltf_animation_path_type_rotation: {
-                        Transform = &Frame->Transformations[ARotation];
-
-                        cgltf_accessor* TransformAccessor   = CurrentSampler->output;
-                        i32             TransformsCount     = TransformAccessor->count;
-                        for (i32 TransformIndex = 0; TransformIndex < TransformsCount; ++TransformIndex) {
-                            real32 Elem[4] = {};
-                            cgltf_accessor_read_float(TransformAccessor, TransformIndex, Elem, sizeof(Elem));
-
-                            Quat *Rot = &Transform->Transforms[TransformIndex].Rotation;
-                            Rot->w = Elem[_w_];
-                            Rot->x = Elem[_x_];
-                            Rot->y = Elem[_y_];
-                            Rot->z = Elem[_z_];
-                        }
-                    } break;
-
-                    case cgltf_animation_path_type::cgltf_animation_path_type_scale: {
-                        Transform = &Frame->Transformations[AScale];
-
-                        cgltf_accessor* TransformAccessor   = CurrentSampler->output;
-                        i32             TransformsCount     = TransformAccessor->count;
-                        for (i32 TransformIndex = 0; TransformIndex < TransformsCount; ++TransformIndex) {
-                            Vec3 Elem = {};
-                            cgltf_accessor_read_float(TransformAccessor, TransformIndex, Elem.ValueHolder, sizeof(Elem));
-
-                            Transform->Transforms[TransformIndex].Scale = Elem;
-                        }
-                    } break;
-                }
-
-                i32 KeyframesAmount = (i32)CurrentSampler->input->count;
-
-                Assert(KeyframesAmount <= MAX_KEYFRAMES);
-
-                for (i32 KeyframeIndex = 0; KeyframeIndex < KeyframesAmount; ++KeyframeIndex) {
-                    real32 Keyframe = 0.0f;
-                    cgltf_accessor_read_float(CurrentSampler->input, KeyframeIndex, &Keyframe, sizeof(Keyframe));
-
-                    Transform->Keyframes[KeyframeIndex] = Keyframe;
-
-                    if (Keyframe > AnimationDuration) {
-                        AnimationDuration = Keyframe;
-                    }
-                }
-                
-                Transform->Amount   = KeyframesAmount;
-                Transform->IType    = InterpalationType == cgltf_interpolation_type::cgltf_interpolation_type_linear ? ILinear : IStep;
-                Transform->Valid    = 1;
-            }
-
-            AnimationNode->MaxDuration  = AnimationDuration;
-            AnimationNode->FramesAmount = BoneIndex;
-        }
-
-        AnimArray->AnimsAmount = AnimationsCount;
+        glTFReadAnimations(Animations, AnimationsCount, *AnimArray, *Skelet);
     }
 
     cgltf_free(Mesh);
@@ -1398,7 +1437,7 @@ void glTFRead(const char *Path, Platform* Platform, glTF2File *FileOut)
 
 const char *ResourceFolderLocation = "data/obj/";
 
-void InitSkeletalMeshComponent(Platform *Platform, SkeletalMeshComponent *SkeletalMesh)
+void InitSkeletalMeshComponent(Platform *Platform, SkeletalMeshComponent *SkeletalMesh, DynamicSceneObjectLoader& Loader)
 {
     char                FullFileName[500]   = {};
     glTF2File           LoadFile            = {};
@@ -1407,6 +1446,13 @@ void InitSkeletalMeshComponent(Platform *Platform, SkeletalMeshComponent *Skelet
     LoadFile.Animations = (AnimationsArray*)Platform->AllocMem(sizeof(*LoadFile.Animations));
 
     glTFRead(SkeletalMesh->ObjectPath, Platform, &LoadFile);
+
+    i32 AnimCount = Loader.Amount;
+    for (i32 AnimIndex = 0; AnimIndex < AnimCount; ++AnimIndex) {
+        const char* AnimPath = Loader.Animations[AnimIndex];
+
+        glTFReadAnimations(AnimPath, LoadFile.Animations, LoadFile.Skelet);
+    }
 
     i32         MeshesAmount    = LoadFile.MeshesAmount;
     glTF2Mesh*  Meshes          = LoadFile.Meshes;
@@ -1824,17 +1870,17 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     }
 
     for (i32 Index = 0; Index < DYNAMIC_SCENE_OBJECTS_MAX; ++Index) {
-        DynamicSceneObject* Object          = &Cntx->TestDynamocSceneObjects[Index];
-        const char*         CurrentMeshName = DynamicSceneObjectsName[Index];
+        DynamicSceneObject&         Object          = Cntx->TestDynamocSceneObjects[Index];
+        DynamicSceneObjectLoader&   CurrentObject   = DynamicSceneObjectsName[Index];
 
-        Object->ObjMesh.ObjectPath  = CurrentMeshName;
+        Object.ObjMesh.ObjectPath  = CurrentObject.Mesh;
 
-        Object->Transform.Rotation = { 0.0f, 0.0f, 0.0f };
-        Object->Transform.Position = { 0.0f, 0.0f, Position };
-        Object->Transform.Scale = { 0.04f, 0.04f, 0.04f };
+        InitSkeletalMeshComponent(Platform, &Object.ObjMesh, CurrentObject);
 
-        InitSkeletalMeshComponent(Platform, &Object->ObjMesh);
-
+        Object.Transform.Rotation = { 0.0f, 0.0f, 0.0f };
+        Object.Transform.Position = { 0.0f, 0.0f, Position };
+        Object.Transform.Scale = { 0.04f, 0.04f, 0.04f };
+        
         Position += 10.0f;
     }
 
@@ -2060,11 +2106,13 @@ static void RenderPrepareFrame(GameContext *Cntx, FrameData *Data)
 {
     SkinningMatricesStorage *Storage = &Data->SkinMatrix;
 
+    i32 AnimationToPlay = Cntx->ArrowUpWasTriggered;
+
     for (i32 Index = 0; Index < DYNAMIC_SCENE_OBJECTS_MAX; ++Index) {
         DynamicSceneObject*     CurrentSceneObject  = &Cntx->TestDynamocSceneObjects[Index];
         SkeletalComponent*      Skin                = &CurrentSceneObject->ObjMesh.Skelet;
 
-        FillSkinMatrix(Storage, Skin, Cntx->AnimationDuration, 0, 1);
+        FillSkinMatrix(Storage, Skin, Cntx->AnimationDuration, AnimationToPlay, 1);
     }
 }
 
@@ -2139,7 +2187,7 @@ static void DrawSkeletalMesh(Platform *Platform, GameContext *Cntx, FrameData *D
 
     SetupDirectionalLight(&Cntx->LightSource, ShaderProgramsType::SkeletalMeshShader);
 
-    // Cntx->AnimationDuration += Cntx->DeltaTimeSec;
+    Cntx->AnimationDuration += Cntx->DeltaTimeSec;
     for (i32 Index = 0; Index < DYNAMIC_SCENE_OBJECTS_MAX; ++Index) {
         DynamicSceneObject*     CurrentSceneObject  = &Cntx->TestDynamocSceneObjects[Index];
         SkeletalMeshComponent*  Comp                = &CurrentSceneObject->ObjMesh;
