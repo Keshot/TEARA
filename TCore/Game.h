@@ -609,11 +609,14 @@ struct GameContext {
     bool32  EditorModeOn;
 
     bool32  ArrowUpWasTriggered;
+    bool32  AnimationBlending;
 
     real32  TranslationDelta;
     real32  RotationDelta;
+    real32  AnimationBlendingFactor;
 
-    real32  AnimationDuration;
+    real32  FrAnimationDuration;
+    real32  ScAnimationDuration;
     i32     CurrentStep;
 
     i32     BoneID;

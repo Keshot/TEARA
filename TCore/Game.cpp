@@ -1910,141 +1910,237 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
 
     Cntx->TranslationDelta = 0.1f;
     Cntx->RotationDelta = 0.1f;
+    Cntx->AnimationBlending = 1;
+    Cntx->AnimationBlendingFactor = 0.0f;
+}
+
+struct KeyframePair {
+    i32 StartKeyframe;
+    i32 EndKeyframe;
+};
+
+struct AnimationFrameTransform {
+    Vec3 Scale;
+    Quat Rotation;
+    Vec3 Translation;
+};
+
+static AnimationFrame* FindFrame(AnimationFrame* Frames, i32 FramesAmount, i32 BoneID)
+{
+    AnimationFrame* Result = 0;
+
+    for (i32 FrameIndex = 0; FrameIndex < FramesAmount; ++FrameIndex) {
+        AnimationFrame* Tmp = &Frames[FrameIndex];
+
+        if (Tmp->Target == BoneID) {
+            Result = Tmp;
+
+            break;
+        }
+    }
+
+    return Result;
+}
+
+static KeyframePair FindKeyframe(real32* Keyframes, i32 KeyframesAmount, real32 CurrentTime)
+{
+    KeyframePair Result = { };
+
+    real32 ZeroKeyframe = Keyframes[0];
+    if (ZeroKeyframe > CurrentTime) {
+        Result.StartKeyframe = 0;
+        Result.EndKeyframe = 1;
+
+        return Result;
+    }
+
+    for (i32 KeyframeIndex = 0; KeyframeIndex < KeyframesAmount; ++KeyframeIndex) {
+        Assert(KeyframeIndex < (KeyframesAmount - 1));
+
+        real32 FrKeyframe = Keyframes[KeyframeIndex];
+        real32 ScKeyframe = Keyframes[KeyframeIndex + 1];
+        if (FrKeyframe <= CurrentTime && CurrentTime <= ScKeyframe) {
+            Result.StartKeyframe    = KeyframeIndex;
+            Result.EndKeyframe      = KeyframeIndex + 1;
+
+            return Result;
+        }
+    }
+
+    Assert(false);
+}
+
+static inline void HandleTranslationInterpolation(AnimationTransformation& Transform, real32 CurrentTime, Vec3& FinalTranslation)
+{
+    Assert(Transform.Valid);
+
+    real32* Keyframes = Transform.Keyframes;
+
+    KeyframePair FoundKeyframes = FindKeyframe(Keyframes, Transform.Amount, CurrentTime);
+
+    i32                     StartKeyframe               = FoundKeyframes.StartKeyframe;
+    i32                     EndKeyframe                 = FoundKeyframes.EndKeyframe;
+    TransformationStorage&  StartKeyframeTramsformation = Transform.Transforms[StartKeyframe];
+    TransformationStorage&  EndKeyframeTramsformation   = Transform.Transforms[EndKeyframe];
+    Vec3&                   StartTranslation            = StartKeyframeTramsformation.Translation;
+    Vec3&                   EndTranslation              = EndKeyframeTramsformation.Translation;
+
+    if (Transform.IType == InterpolationType::IStep) {
+        FinalTranslation = StartTranslation;
+
+        return;
+    }
+
+    real32 T = CalcT(CurrentTime, Keyframes[StartKeyframe], Keyframes[EndKeyframe]);
+
+    Vec3 DeltaTranslation = Lerp(StartTranslation, EndTranslation, T);
+
+    FinalTranslation = StartTranslation + DeltaTranslation;
+}
+
+static inline void HandleRotationInterpolation(AnimationTransformation& Transform, real32 CurrentTime, Quat& FinalRotation)
+{
+    Assert(Transform.Valid);
+
+    real32* Keyframes = Transform.Keyframes;
+
+    KeyframePair FoundKeyframes = FindKeyframe(Keyframes, Transform.Amount, CurrentTime);
+
+    i32                     StartKeyframe               = FoundKeyframes.StartKeyframe;
+    i32                     EndKeyframe                 = FoundKeyframes.EndKeyframe;
+    TransformationStorage&  StartKeyframeTramsformation = Transform.Transforms[StartKeyframe];
+    TransformationStorage&  EndKeyframeTramsformation   = Transform.Transforms[EndKeyframe];
+
+    if (Transform.IType == InterpolationType::IStep) {
+        FinalRotation = StartKeyframeTramsformation.Rotation;
+
+        return;
+    }
+
+    real32 T = CalcT(CurrentTime, Keyframes[StartKeyframe], Keyframes[EndKeyframe]);
+
+    FinalRotation = Quat::Slerp(StartKeyframeTramsformation.Rotation, EndKeyframeTramsformation.Rotation, T);
+}
+
+static inline void HandleScaleInterpolation(AnimationTransformation& Transform, real32 CurrentTime, Vec3& FinalScale)
+{
+    Assert(Transform.Valid);
+
+    real32* Keyframes = Transform.Keyframes;
+
+    KeyframePair FoundKeyframes = FindKeyframe(Keyframes, Transform.Amount, CurrentTime);
+
+    i32                     StartKeyframe               = FoundKeyframes.StartKeyframe;
+    i32                     EndKeyframe                 = FoundKeyframes.EndKeyframe;
+    TransformationStorage&  StartKeyframeTramsformation = Transform.Transforms[StartKeyframe];
+    TransformationStorage&  EndKeyframeTramsformation   = Transform.Transforms[EndKeyframe];
+    Vec3&                   StartScale                  = StartKeyframeTramsformation.Scale;
+    Vec3&                   EndScale                    = EndKeyframeTramsformation.Scale;
+
+    if (Transform.IType == InterpolationType::IStep) {
+        FinalScale = StartKeyframeTramsformation.Scale;
+
+        return;
+    }
+
+    real32 T = CalcT(CurrentTime, Keyframes[StartKeyframe], Keyframes[EndKeyframe]);
+
+    Vec3 DeltaScale = Lerp(StartScale, EndScale, T);
+
+    FinalScale = StartScale + DeltaScale;
+}
+
+static inline void CalculateAnimationTransform(AnimationTransformation* FrameTransform, real32 CurrentTime, AnimationFrameTransform& FinalTransform)
+{
+    AnimationTransformation& ScaleTransform = FrameTransform[AnimationType::AScale];
+    HandleScaleInterpolation(ScaleTransform, CurrentTime, FinalTransform.Scale);
+
+    AnimationTransformation& RotationTransform = FrameTransform[AnimationType::ARotation];
+    HandleRotationInterpolation(RotationTransform, CurrentTime, FinalTransform.Rotation);
+
+    AnimationTransformation& TranslationTransform = FrameTransform[AnimationType::ATranslation];
+    HandleTranslationInterpolation(TranslationTransform, CurrentTime, FinalTransform.Translation);
+}
+
+void ReadAndCalculateAnimationMatricesWithBlending(Skinning* Skin, SkinningMatricesStorage* Matrices, Animation* FrAnim, Animation* ScAnim, JointsInfo* Joint, Mat4x4* Parent, real32 FrAnimTime, real32 ScAnimTime, real32 BlendingFactor)
+{
+    BoneIDs& Ids = Skin->Bones[Joint->BoneName];
+
+    AnimationFrame* FrAnimFrame = FindFrame(FrAnim->PerBonesFrame, FrAnim->FramesAmount, Ids.BoneID);
+    AnimationFrame* ScAnimFrame = FindFrame(ScAnim->PerBonesFrame, ScAnim->FramesAmount, Ids.BoneID);
+
+    Mat4x4 ParentMat  = Parent ? *Parent : Identity4x4;
+    Mat4x4 CurrentJointMat  = Identity4x4;
+
+    if (FrAnimFrame && ScAnimFrame) {
+        AnimationFrameTransform FrAnimCurrentFrameTransform;
+        CalculateAnimationTransform(FrAnimFrame->Transformations, FrAnimTime, FrAnimCurrentFrameTransform);
+
+        AnimationFrameTransform ScAnimCurrentFrameTransform;
+        CalculateAnimationTransform(ScAnimFrame->Transformations, ScAnimTime, ScAnimCurrentFrameTransform);
+
+        Vec3& FirstAnimScale    = FrAnimCurrentFrameTransform.Scale;
+        Vec3& SecondAnimScale   = ScAnimCurrentFrameTransform.Scale;
+
+        Vec3 DeltaScale     = Lerp(FirstAnimScale, SecondAnimScale, BlendingFactor);
+        Vec3 BlendedScale   = FirstAnimScale + DeltaScale;
+
+        Quat& FirstAnimRotation     = FrAnimCurrentFrameTransform.Rotation;
+        Quat& SecondAnimRotation    = ScAnimCurrentFrameTransform.Rotation;
+
+        Quat BlendedRotation = Quat::Slerp(FirstAnimRotation, SecondAnimRotation, BlendingFactor);
+
+        Vec3& FirstAnimTranslation  = FrAnimCurrentFrameTransform.Translation;
+        Vec3& SecondAnimTranslation = ScAnimCurrentFrameTransform.Translation;
+
+        Vec3 DeltaTranslation   = Lerp(FirstAnimTranslation, SecondAnimTranslation, BlendingFactor);
+        Vec3 BlendedTranslation = FirstAnimTranslation + DeltaTranslation;
+
+        Mat4x4 ScaleMat         = {};
+        Mat4x4 RotationMat      = {};
+        Mat4x4 TranslationMat   = {};
+
+        MakeScaleFromVector(&BlendedScale, &ScaleMat);
+        BlendedRotation.ToMat4(&RotationMat);
+        MakeTranslationFromVec(&BlendedTranslation, &TranslationMat);
+
+        CurrentJointMat = TranslationMat * RotationMat * ScaleMat;
+    }
+    else {
+        Assert(false);
+    }
+
+    Mat4x4 ExportMat = ParentMat * CurrentJointMat;
+    Matrices->Matrices[Ids.OriginalBoneID] = ExportMat;
+
+    i32 ChildrenAmount = Joint->ChildrenAmount;
+    for (i32 ChildrenIndex = 0; ChildrenIndex < ChildrenAmount; ++ChildrenIndex) {
+        ReadAndCalculateAnimationMatricesWithBlending(Skin, Matrices, FrAnim, ScAnim, Joint->Children[ChildrenIndex], &ExportMat, FrAnimTime, ScAnimTime, BlendingFactor);
+    }
 }
 
 void ReadAndCalculateAnimationMatrices(Skinning* Skin, SkinningMatricesStorage* Matrices, Animation* Anim, JointsInfo* Joint, Mat4x4* ParentMat, real32 CurrentTime)
 {
     BoneIDs& Ids = Skin->Bones[Joint->BoneName];
 
-    i32             FramesAmount    = Anim->FramesAmount;
-    AnimationFrame* Frames          = Anim->PerBonesFrame;
-    AnimationFrame* CurrentFrame    = 0;
-
-    for (i32 FrameIndex = 0; FrameIndex < FramesAmount; ++FrameIndex) {
-        AnimationFrame* Tmp = &Frames[FrameIndex];
-
-        if (Tmp->Target == Ids.BoneID) {
-            CurrentFrame = Tmp;
-
-            break;
-        }
-    }
+    AnimationFrame* CurrentFrame = FindFrame(Anim->PerBonesFrame, Anim->FramesAmount, Ids.BoneID);
 
     Mat4x4 Parent           = ParentMat ? *ParentMat : Identity4x4;
     Mat4x4 CurrentJointMat  = Identity4x4;
 
     if (CurrentFrame) {
-        for (i32 TransformIndex = AScale; TransformIndex >= ATranslation; --TransformIndex) {
-            AnimationTransformation*    Transform           = &CurrentFrame->Transformations[TransformIndex];
-            Mat4x4                      CurrentIterationMat = {};
-            bool32                      KeyframesFound      = 0;
+        AnimationFrameTransform CurrentFrameTransform;
+        CalculateAnimationTransform(CurrentFrame->Transformations, CurrentTime, CurrentFrameTransform);
 
-            Assert(Transform->Valid);
+        Mat4x4 ScaleMat         = {};
+        Mat4x4 RotationMat      = {};
+        Mat4x4 TranslationMat   = {};
 
-            i32 KeyframesAmount     = Transform->Amount;
-            i32 FirstKeyframeIndex  = 0;
-            i32 SecondKeyframeIndex = 0;
+        MakeScaleFromVector(&CurrentFrameTransform.Scale, &ScaleMat);
+        CurrentFrameTransform.Rotation.ToMat4(&RotationMat);
+        MakeTranslationFromVec(&CurrentFrameTransform.Translation, &TranslationMat);
 
-            real32* Keyframes = Transform->Keyframes;
-            for (i32 KeyframeIndex = 0; KeyframeIndex < KeyframesAmount; ++KeyframeIndex) {
-                Assert(KeyframeIndex < (KeyframesAmount - 1));
-
-                real32 FrKeyframe = Keyframes[KeyframeIndex];
-                real32 ScKeyframe = Keyframes[KeyframeIndex + 1];
-                if (FrKeyframe <= CurrentTime && CurrentTime <= ScKeyframe) {
-                    FirstKeyframeIndex  = KeyframeIndex;
-                    SecondKeyframeIndex = KeyframeIndex + 1;
-
-                    KeyframesFound = 1;
-
-                    break;
-                }
-                else if (FrKeyframe > CurrentTime) {
-                    switch (TransformIndex) {
-
-                        case ATranslation: {
-                            MakeTranslationFromVec(&Joint->DefaultTranslation, &CurrentIterationMat); 
-                        } break;
-
-                        case ARotation: {
-                            Joint->DefaultRotation.ToMat4(&CurrentIterationMat);
-                        } break;
-
-                        case AScale: {
-                            MakeScaleFromVector(&Joint->DefaultScale, &CurrentIterationMat);
-                        } break;
-                    }
-
-                    break;
-                }
-            }
-
-            if (KeyframesFound) {
-                TransformationStorage* FrAnimTransform = &Transform->Transforms[FirstKeyframeIndex];
-                TransformationStorage* ScAnimTransform = &Transform->Transforms[SecondKeyframeIndex];
-
-                if (Transform->IType == ILinear) {
-                    real32 T = CalcT(CurrentTime, Keyframes[FirstKeyframeIndex], Keyframes[SecondKeyframeIndex]);
-
-                    switch (TransformIndex) {
-
-                        case ATranslation: {
-                            Vec3 DeltaTranslation = Lerp(FrAnimTransform->Translation, ScAnimTransform->Translation, T);
-
-                            Vec3 FinalTranslation = FrAnimTransform->Translation + DeltaTranslation;
-
-                            MakeTranslationFromVec(&FinalTranslation, &CurrentIterationMat); 
-                        } break;
-
-                        case ARotation: {
-                            Quat DeltaRotation = Quat::Slerp(FrAnimTransform->Rotation, ScAnimTransform->Rotation, T);
-                        
-                            Quat    FinalRotationQuat = DeltaRotation;
-                            Mat4x4  FinalRotation = {};
-
-                            FinalRotationQuat.ToMat4(&CurrentIterationMat);
-                        } break;
-
-                        case AScale: {
-                            real32 X1 = FrAnimTransform->Scale[_x_];
-                            real32 Y1 = FrAnimTransform->Scale[_y_];
-                            real32 Z1 = FrAnimTransform->Scale[_z_];
-
-                            real32 X2 = ScAnimTransform->Scale[_x_];
-                            real32 Y2 = ScAnimTransform->Scale[_y_];
-                            real32 Z2 = ScAnimTransform->Scale[_z_];
-
-                            real32 FX = ((X2 - X1) * T) + X1;
-                            real32 FY = ((Y2 - Y1) * T) + Y1;
-                            real32 FZ = ((Z2 - Z1) * T) + Z1;
-
-                            Vec3 FinalScale = { FX, FY, FZ };
-
-                            MakeScaleFromVector(&FinalScale, &CurrentIterationMat);
-                        } break;
-
-                    }
-                }
-                else {
-                    switch (TransformIndex) {
-
-                        case ATranslation: {
-                            MakeTranslationFromVec(&FrAnimTransform->Translation, &CurrentIterationMat); 
-                        } break;
-
-                        case ARotation: {
-                            FrAnimTransform->Rotation.ToMat4(&CurrentIterationMat);
-                        } break;
-
-                        case AScale: {
-                            MakeScaleFromVector(&FrAnimTransform->Scale, &CurrentIterationMat);
-                        } break;
-                    }
-                }
-            }
-
-            CurrentJointMat = CurrentIterationMat * CurrentJointMat;
-        }
+        CurrentJointMat = TranslationMat * RotationMat * ScaleMat;
     }
     else {
         Assert(false);
@@ -2102,6 +2198,32 @@ void FillSkinMatrix(SkinningMatricesStorage* Matrices, SkeletalComponent* Skelet
     Matrices->Amount = Skelet->Skin.JointsAmount;
 }
 
+void FillSkinMatrixWithBlending(SkinningMatricesStorage* Matrices, SkeletalComponent* Skelet, real32& FrAnimationDuration,  real32& ScAnimationDuration, i32 FrAnimationToPlay, i32 ScAnimationToPlay, bool32 Loop, real32 AnimationBlending)
+{
+    AnimationsArray*    AnimArray = Skelet->Animations;
+    Skinning*           Skin = &Skelet->Skin;
+
+    Assert(AnimArray->AnimsAmount >= FrAnimationToPlay && AnimArray->AnimsAmount >= ScAnimationToPlay);
+
+    Animation* FrAnimToPlay = &AnimArray->Anims[FrAnimationToPlay];
+    Animation* ScAnimToPlay = &AnimArray->Anims[ScAnimationToPlay];
+
+    if (Loop) {
+        FrAnimationDuration = fmodf(FrAnimationDuration, FrAnimToPlay->MaxDuration);
+        ScAnimationDuration = fmodf(ScAnimationDuration, ScAnimToPlay->MaxDuration);
+    }
+    else {
+        Assert(false);
+    }
+
+    JointsInfo* RootJoint = &Skin->Joints[0];
+
+    ReadAndCalculateAnimationMatricesWithBlending(Skin, Matrices, FrAnimToPlay, ScAnimToPlay, RootJoint, 0, 
+                                                  FrAnimationDuration, ScAnimationDuration, AnimationBlending);
+
+    Matrices->Amount = Skelet->Skin.JointsAmount;
+}
+
 static void RenderPrepareFrame(GameContext *Cntx, FrameData *Data)
 {
     SkinningMatricesStorage *Storage = &Data->SkinMatrix;
@@ -2112,7 +2234,12 @@ static void RenderPrepareFrame(GameContext *Cntx, FrameData *Data)
         DynamicSceneObject*     CurrentSceneObject  = &Cntx->TestDynamocSceneObjects[Index];
         SkeletalComponent*      Skin                = &CurrentSceneObject->ObjMesh.Skelet;
 
-        FillSkinMatrix(Storage, Skin, Cntx->AnimationDuration, AnimationToPlay, 1);
+        if (Cntx->AnimationBlending) {
+            FillSkinMatrixWithBlending(Storage, Skin, Cntx->FrAnimationDuration, Cntx->ScAnimationDuration, 0, 1, 1, Cntx->AnimationBlendingFactor);
+        }
+        else {
+            FillSkinMatrix(Storage, Skin, Cntx->FrAnimationDuration, AnimationToPlay, 1);
+        }
     }
 }
 
@@ -2187,7 +2314,8 @@ static void DrawSkeletalMesh(Platform *Platform, GameContext *Cntx, FrameData *D
 
     SetupDirectionalLight(&Cntx->LightSource, ShaderProgramsType::SkeletalMeshShader);
 
-    Cntx->AnimationDuration += Cntx->DeltaTimeSec;
+    Cntx->FrAnimationDuration += Cntx->DeltaTimeSec;
+    Cntx->ScAnimationDuration += Cntx->DeltaTimeSec;
     for (i32 Index = 0; Index < DYNAMIC_SCENE_OBJECTS_MAX; ++Index) {
         DynamicSceneObject*     CurrentSceneObject  = &Cntx->TestDynamocSceneObjects[Index];
         SkeletalMeshComponent*  Comp                = &CurrentSceneObject->ObjMesh;
@@ -2195,7 +2323,8 @@ static void DrawSkeletalMesh(Platform *Platform, GameContext *Cntx, FrameData *D
         SkeletalComponent*      Skin                = &CurrentSceneObject->ObjMesh.Skelet;
 
         if (Platform->Input.EButton.State == KeyState::Pressed && !Cntx->EWasPressed) {
-            Cntx->AnimationDuration += 0.01;
+            Cntx->FrAnimationDuration += 0.01;
+            Cntx->ScAnimationDuration += 0.01;
             Cntx->EWasPressed = 1;
         }
         else if (Platform->Input.EButton.State == KeyState::Released) {
@@ -2321,6 +2450,18 @@ void Frame(Platform *Platform, GameContext *Cntx)
     }
     else if (Platform->Input.QButton.State == KeyState::Released) {
         Cntx->QWasTriggered = 0;
+    }
+    
+    if (Platform->Input.ArrowUp.State == KeyState::Pressed) {
+        if (Cntx->AnimationBlendingFactor <= 0.95f) {
+            Cntx->AnimationBlendingFactor += 0.001f;
+        }
+        else {
+            Cntx->AnimationBlendingFactor = 1.0f;
+        }
+    }
+    else {
+        Cntx->AnimationBlendingFactor = 0.0f;
     }
 
     if (Platform->Input.ArrowUp.State == KeyState::Pressed && !Cntx->ArrowUpWasTriggered) {

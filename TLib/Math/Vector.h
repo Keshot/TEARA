@@ -115,6 +115,14 @@ struct Vec3 {
         return Result;
     }
 
+    inline const real32& operator[](int indx) const {
+        // TODO(ismail): may be some assert for check overflow?
+
+        const real32& Result = ValueHolder[indx];
+
+        return Result;
+    }
+
     inline Vec3 operator-() {
         Vec3 Result = { -x, -y, -z };
 
