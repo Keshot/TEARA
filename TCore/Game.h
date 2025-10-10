@@ -4,6 +4,7 @@
 // NOTE(ismail): remove this shit
 #include <string>
 #include <map>
+#include <list>
 
 #include "TLib/Utils/Types.h"
 #include "TLib/Utils/AssetsLoader.h"
@@ -327,6 +328,11 @@ union TransformationStorage {
     Vec3    Scale;
 };
 
+enum PLayerAnimationSlots {
+    IdleDynamic = 0,
+    WalkDefault = 1,
+};
+
 struct AnimationTransformation {
     bool32                  Valid;
     InterpolationType       IType;
@@ -495,9 +501,83 @@ struct MeshComponentObjects {
     u32             VertexOffset;
 };
 
+#define MAX_CHARACTERS_ANIMATION_TASKS  (MAX_CHARACTER_ANIMATIONS)
+#define ANIMATION_STACK_LENGTH          (8)
+
 struct SkeletalComponent {
-    AnimationsArray*    Animations;
-    Skinning            Skin;
+    AnimationsArray Animations;
+    Skinning        Skin;
+};
+
+struct SkinningMatricesStorage {
+    Mat4x4  Matrices[MAX_BONES];
+    i32     Amount;
+};
+
+enum TaskMode {
+    Clip,
+    _1D,
+    _2D
+};
+
+struct AnimationStack {
+    real32      Speed;
+    real32      CurrentTime;
+    real32      MaxDuration;
+    real32      StackPositionX;
+    real32      StackPositionY;
+    Animation*  Animation;
+};
+
+struct AnimationTask {
+    TaskMode        Mode;
+    real32          x;
+    real32          y;
+    real32          MaxX;
+    real32          MaxY;
+    bool32          Loop;
+    AnimationStack  Stack[ANIMATION_STACK_LENGTH];
+};
+
+enum SkeletalCharacters {
+    CharacterPlayer,
+    Max,
+};
+
+struct AnimationTrack {
+    i32                     Id;
+    SkeletalCharacters      SkinId;
+    AnimationTask           AnimationTasks[MAX_CHARACTERS_ANIMATION_TASKS];
+    i32                     AnimationTasksAmount;
+    SkinningMatricesStorage Matrices;
+};
+
+class AnimationSystem {
+public:
+    AnimationSystem() = default;
+    ~AnimationSystem() = default;
+    
+    AnimationSystem(const AnimationSystem&) = delete;
+    AnimationSystem(AnimationSystem&&) = delete;
+    
+    AnimationSystem& operator=(const AnimationSystem&) = delete;
+    AnimationSystem& operator=(AnimationSystem&&) = delete;
+
+    SkeletalComponent& RegisterNewSkin(SkeletalCharacters Id) {
+        return SkinningData[Id];
+    }
+
+    AnimationTrack& RegisterNewAnimationTrack() {
+        return CharactersAnimationTrack.emplace_back();
+    }
+
+    void Play(i32 CharId, i32 AnimTaskId, real32 x, real32 y, real32 dt);
+
+private:
+    void PrepareSkinMatrices(AnimationTrack& Track, i32 TaskId, real32 x, real32 y, real32 dt);
+
+    std::list<AnimationTrack>   CharactersAnimationTrack;
+    SkeletalComponent           SkinningData[SkeletalCharacters::Max];
 };
 
 struct MeshComponent {
@@ -557,11 +637,6 @@ struct Terrain {
     WorldTransform  Transform;
 };
 
-struct SkinningMatricesStorage {
-    Mat4x4  Matrices[MAX_BONES];
-    i32     Amount;
-};
-
 #define PARTICLES_MAX 1
 
 struct ParticleSystem {
@@ -609,14 +684,10 @@ struct GameContext {
     bool32  EditorModeOn;
 
     bool32  ArrowUpWasTriggered;
-    bool32  AnimationBlending;
 
     real32  TranslationDelta;
     real32  RotationDelta;
-    real32  AnimationBlendingFactor;
-
-    real32  FrAnimationDuration;
-    real32  ScAnimationDuration;
+    
     i32     CurrentStep;
 
     i32     BoneID;

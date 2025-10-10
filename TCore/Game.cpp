@@ -1910,8 +1910,6 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
 
     Cntx->TranslationDelta = 0.1f;
     Cntx->RotationDelta = 0.1f;
-    Cntx->AnimationBlending = 1;
-    Cntx->AnimationBlendingFactor = 0.0f;
 }
 
 struct KeyframePair {
@@ -2062,12 +2060,12 @@ static inline void CalculateAnimationTransform(AnimationTransformation* FrameTra
     HandleTranslationInterpolation(TranslationTransform, CurrentTime, FinalTransform.Translation);
 }
 
-void ReadAndCalculateAnimationMatricesWithBlending(Skinning* Skin, SkinningMatricesStorage* Matrices, Animation* FrAnim, Animation* ScAnim, JointsInfo* Joint, Mat4x4* Parent, real32 FrAnimTime, real32 ScAnimTime, real32 BlendingFactor)
+static void Calc1DTask(std::map<std::string, BoneIDs>& Bones, Mat4x4* Matrices, Animation& FrAnim, Animation& ScAnim, JointsInfo* Joint, Mat4x4* Parent, real32 FrAnimTime, real32 ScAnimTime, real32 BlendingFactor)
 {
-    BoneIDs& Ids = Skin->Bones[Joint->BoneName];
+    BoneIDs& Ids = Bones[Joint->BoneName];
 
-    AnimationFrame* FrAnimFrame = FindFrame(FrAnim->PerBonesFrame, FrAnim->FramesAmount, Ids.BoneID);
-    AnimationFrame* ScAnimFrame = FindFrame(ScAnim->PerBonesFrame, ScAnim->FramesAmount, Ids.BoneID);
+    AnimationFrame* FrAnimFrame = FindFrame(FrAnim.PerBonesFrame, FrAnim.FramesAmount, Ids.BoneID);
+    AnimationFrame* ScAnimFrame = FindFrame(ScAnim.PerBonesFrame, ScAnim.FramesAmount, Ids.BoneID);
 
     Mat4x4 ParentMat  = Parent ? *Parent : Identity4x4;
     Mat4x4 CurrentJointMat  = Identity4x4;
@@ -2111,19 +2109,19 @@ void ReadAndCalculateAnimationMatricesWithBlending(Skinning* Skin, SkinningMatri
     }
 
     Mat4x4 ExportMat = ParentMat * CurrentJointMat;
-    Matrices->Matrices[Ids.OriginalBoneID] = ExportMat;
+    Matrices[Ids.OriginalBoneID] = ExportMat;
 
     i32 ChildrenAmount = Joint->ChildrenAmount;
     for (i32 ChildrenIndex = 0; ChildrenIndex < ChildrenAmount; ++ChildrenIndex) {
-        ReadAndCalculateAnimationMatricesWithBlending(Skin, Matrices, FrAnim, ScAnim, Joint->Children[ChildrenIndex], &ExportMat, FrAnimTime, ScAnimTime, BlendingFactor);
+        Calc1DTask(Bones, Matrices, FrAnim, ScAnim, Joint->Children[ChildrenIndex], &ExportMat, FrAnimTime, ScAnimTime, BlendingFactor);
     }
 }
 
-void ReadAndCalculateAnimationMatrices(Skinning* Skin, SkinningMatricesStorage* Matrices, Animation* Anim, JointsInfo* Joint, Mat4x4* ParentMat, real32 CurrentTime)
+static void CalcClipTask(std::map<std::string, BoneIDs>& Bones, Mat4x4* Matrices, Animation& Anim, JointsInfo* Joint, Mat4x4* ParentMat, real32 CurrentTime)
 {
-    BoneIDs& Ids = Skin->Bones[Joint->BoneName];
+    BoneIDs& Ids = Bones[Joint->BoneName];
 
-    AnimationFrame* CurrentFrame = FindFrame(Anim->PerBonesFrame, Anim->FramesAmount, Ids.BoneID);
+    AnimationFrame* CurrentFrame = FindFrame(Anim.PerBonesFrame, Anim.FramesAmount, Ids.BoneID);
 
     Mat4x4 Parent           = ParentMat ? *ParentMat : Identity4x4;
     Mat4x4 CurrentJointMat  = Identity4x4;
@@ -2147,11 +2145,11 @@ void ReadAndCalculateAnimationMatrices(Skinning* Skin, SkinningMatricesStorage* 
     }
 
     Mat4x4 ExportMat = Parent * CurrentJointMat;
-    Matrices->Matrices[Ids.OriginalBoneID] = ExportMat;
+    Matrices[Ids.OriginalBoneID] = ExportMat;
 
     i32 ChildrenAmount = Joint->ChildrenAmount;
     for (i32 ChildrenIndex = 0; ChildrenIndex < ChildrenAmount; ++ChildrenIndex) {
-        ReadAndCalculateAnimationMatrices(Skin, Matrices, Anim, Joint->Children[ChildrenIndex], &ExportMat, CurrentTime);
+        CalcClipTask(Bones, Matrices, Anim, Joint->Children[ChildrenIndex], &ExportMat, CurrentTime);
     }
 }
 
@@ -2173,55 +2171,115 @@ void CalculateFrameSkinningMatrices(Skinning* Skin, SkinningMatricesStorage* Fra
     }
 }
 
-void FillSkinMatrix(SkinningMatricesStorage* Matrices, SkeletalComponent* Skelet, real32& AnimationDuration, i32 AnimationToPlay, bool32 Loop)
+void AnimationSystem::PrepareSkinMatrices(AnimationTrack& Track, i32 TaskId, real32 x, real32 y, real32 dt)
 {
-    AnimationsArray*    AnimArray = Skelet->Animations;
-    Skinning*           Skin = &Skelet->Skin;
+    Assert(Track.AnimationTasksAmount > TaskId);
 
-    Assert(AnimArray->AnimsAmount >= AnimationToPlay);
+    SkeletalComponent& SkinData = SkinningData[Track.SkinId];
 
-    Animation* AnimToPlay = &AnimArray->Anims[AnimationToPlay];
+    AnimationTask& Task = Track.AnimationTasks[TaskId];
 
-    if (Loop) {
-        AnimationDuration = fmodf(AnimationDuration, AnimToPlay->MaxDuration);
+    Skinning& Skin = SkinData.Skin;
+
+    TaskMode Mode = Task.Mode;
+
+    switch(Mode) {
+        
+        case TaskMode::Clip: {
+            AnimationStack& Stack       = Task.Stack[0];
+
+            real32 AdvancedTime   = Stack.CurrentTime + dt;
+            real32 MaxDuration    = Stack.MaxDuration;
+
+            if (Task.Loop) {
+                Stack.CurrentTime = fmodf(AdvancedTime, MaxDuration);
+            }
+            else {
+                Stack.CurrentTime = AdvancedTime > MaxDuration ? MaxDuration : AdvancedTime;
+            }
+
+            Animation& AnimToPlay = *Stack.Animation;
+
+            real32 CurrentTime = Stack.CurrentTime;
+
+            SkinningMatricesStorage& MatStorage = Track.Matrices;
+
+            JointsInfo* RootJoint = &Skin.Joints[0];
+
+            CalcClipTask(Skin.Bones, MatStorage.Matrices, AnimToPlay, RootJoint, 0, CurrentTime);
+
+            MatStorage.Amount = Skin.JointsAmount;
+
+        } break;
+
+        case TaskMode::_1D: {
+            AnimationStack* Stack       = Task.Stack;
+            AnimationStack* FrStackNode = 0;
+            AnimationStack* ScStackNode = 0;
+            
+            for (i32 FirstEntry = 0, SecondEntry = 0;;) {
+                FrStackNode = &Stack[FirstEntry];
+                ScStackNode = &Stack[SecondEntry];
+
+                if (FrStackNode->StackPositionX <= x) {
+                    Assert(ScStackNode->StackPositionX >= x);
+
+                    break;
+                }
+
+                FirstEntry = SecondEntry;
+                SecondEntry = FirstEntry + 1;
+            }
+
+            real32 FrAdvancedTime   = FrStackNode->CurrentTime + dt;
+            real32 ScAdvancedTime   = ScStackNode->CurrentTime + dt;
+            real32 FrMaxDuration    = FrStackNode->MaxDuration;
+            real32 ScMaxDuration    = ScStackNode->MaxDuration;
+
+            if (Task.Loop) {
+                FrStackNode->CurrentTime = fmodf(FrAdvancedTime, FrMaxDuration);
+                ScStackNode->CurrentTime = fmodf(ScAdvancedTime, ScMaxDuration);
+            }
+            else {
+                FrStackNode->CurrentTime = FrAdvancedTime > FrMaxDuration ? FrMaxDuration : FrAdvancedTime;
+                ScStackNode->CurrentTime = ScAdvancedTime > ScMaxDuration ? ScMaxDuration : ScAdvancedTime;
+            }
+
+            real32 FrPos = FrStackNode->StackPositionX;
+            real32 ScPos = ScStackNode->StackPositionX;
+
+            real32 BlendingFactor = x - FrPos / ScPos - FrPos;
+
+            Animation& FrAnim = *FrStackNode->Animation;
+            Animation& ScAnim = *ScStackNode->Animation;
+
+            real32 FrCurrentTime = FrStackNode->CurrentTime;
+            real32 ScCurrentTime = ScStackNode->CurrentTime;
+
+            SkinningMatricesStorage& MatStorage = Track.Matrices;
+
+            JointsInfo* RootJoint = &Skin.Joints[0];
+
+            Calc1DTask(Skin.Bones, MatStorage.Matrices, FrAnim, ScAnim, RootJoint, 0, FrCurrentTime, ScCurrentTime, BlendingFactor);
+
+            MatStorage.Amount = Skin.JointsAmount;
+        } break;
+
+        case TaskMode::_2D: {
+            Assert(false); // TODO(ismail): implement 2D blending
+        } break;
     }
-    else {
-        if (AnimationDuration > AnimToPlay->MaxDuration) {
-            return;
-        }
-    }
-
-    JointsInfo* RootJoint = &Skin->Joints[0];
-
-    ReadAndCalculateAnimationMatrices(Skin, Matrices, AnimToPlay, RootJoint, 0, AnimationDuration);
-
-    Matrices->Amount = Skelet->Skin.JointsAmount;
 }
 
-void FillSkinMatrixWithBlending(SkinningMatricesStorage* Matrices, SkeletalComponent* Skelet, real32& FrAnimationDuration,  real32& ScAnimationDuration, i32 FrAnimationToPlay, i32 ScAnimationToPlay, bool32 Loop, real32 AnimationBlending)
+void AnimationSystem::Play(i32 CharId, i32 AnimTaskId, real32 x, real32 y, real32 dt)
 {
-    AnimationsArray*    AnimArray = Skelet->Animations;
-    Skinning*           Skin = &Skelet->Skin;
+    for (AnimationTrack& AnimTrack : CharactersAnimationTrack) {
+        if (CharId == AnimTrack.Id) {
+            PrepareSkinMatrices(AnimTrack, AnimTaskId, x, y, dt);
 
-    Assert(AnimArray->AnimsAmount >= FrAnimationToPlay && AnimArray->AnimsAmount >= ScAnimationToPlay);
-
-    Animation* FrAnimToPlay = &AnimArray->Anims[FrAnimationToPlay];
-    Animation* ScAnimToPlay = &AnimArray->Anims[ScAnimationToPlay];
-
-    if (Loop) {
-        FrAnimationDuration = fmodf(FrAnimationDuration, FrAnimToPlay->MaxDuration);
-        ScAnimationDuration = fmodf(ScAnimationDuration, ScAnimToPlay->MaxDuration);
+            break;
+        }
     }
-    else {
-        Assert(false);
-    }
-
-    JointsInfo* RootJoint = &Skin->Joints[0];
-
-    ReadAndCalculateAnimationMatricesWithBlending(Skin, Matrices, FrAnimToPlay, ScAnimToPlay, RootJoint, 0, 
-                                                  FrAnimationDuration, ScAnimationDuration, AnimationBlending);
-
-    Matrices->Amount = Skelet->Skin.JointsAmount;
 }
 
 static void RenderPrepareFrame(GameContext *Cntx, FrameData *Data)
