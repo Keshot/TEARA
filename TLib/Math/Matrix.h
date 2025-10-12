@@ -330,6 +330,7 @@ inline void Mat3x3::Transpose()
 struct Mat4x4 {
     real32 Matrix[4][4];
 
+    const real32* operator[](i32 Index) const;
     real32 *operator[](i32 Index);
     Mat4x4 operator-() const;
     Mat4x4 operator-(const Mat4x4 &Other) const;
@@ -345,6 +346,14 @@ struct Mat4x4 {
 
 real32 *Mat4x4::operator[](i32 Index)
 {
+    // TODO (ismail): add here an assert?
+    real32 *Result = (real32*)(&Matrix[Index]);
+
+    return Result;
+}
+
+const real32* Mat4x4::operator[](i32 Index) const
+{    
     // TODO (ismail): add here an assert?
     real32 *Result = (real32*)(&Matrix[Index]);
 

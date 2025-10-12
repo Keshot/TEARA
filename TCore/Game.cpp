@@ -854,19 +854,36 @@ const MeshLoaderNode SceneObjectsName[] = {
     }
 };
 
+struct SerialaizedAnimations {
+    i32         AnimId;
+    const char* Path;
+};
+
 struct DynamicSceneObjectLoader {
-    const char* Mesh;
-    const char* Animations[MAX_CHARACTER_ANIMATIONS];
-    i32         Amount;
+    SkeletalCharacters      SkeletCharId;
+    SerialaizedAnimations   Mesh;
+    SerialaizedAnimations   Animations[MAX_CHARACTER_ANIMATIONS];
+    i32                     Amount;
 };
 
 DynamicSceneObjectLoader DynamicSceneObjectsName[] = {
     {
-        "data/obj/Idle.gltf",
+        SkeletalCharacters::CharacterPlayer,
         {
-            "data/obj/Walk.gltf",
+            PLayerAnimations::IdleDynamic,
+            "data/obj/Idle.gltf"
         },
-        1
+        {
+            {
+                PLayerAnimations::WalkDefault,
+                "data/obj/Walk.gltf"
+            },
+            {
+                PLayerAnimations::RunDefault,
+                "data/obj/Run.gltf"
+            }
+        },
+        2
     },
 };
 
@@ -985,7 +1002,7 @@ struct glTF2Mesh {
 };
 
 struct glTF2File {
-    Skinning            Skelet;
+    Skinning*           Skelet;
     AnimationsArray*    Animations;
     glTF2Mesh           Meshes[MAX_MESHES];
     i32                 MeshesAmount;
@@ -1249,7 +1266,7 @@ void glTFLoadFile(const char *Path, cgltf_data** Mesh)
     }
 }
 
-void glTFReadAnimations(const char* Path, AnimationsArray* AnimArray, Skinning& Skin)
+void glTFReadAnimations(const char* Path, AnimationsArray* AnimArray, Skinning* Skin)
 {
     cgltf_data* Mesh = 0;
 
@@ -1258,7 +1275,7 @@ void glTFReadAnimations(const char* Path, AnimationsArray* AnimArray, Skinning& 
     cgltf_animation*    Animations      = Mesh->animations;
     i32                 AnimationsCount = Mesh->animations_count;
 
-    glTFReadAnimations(Animations, AnimationsCount, *AnimArray, Skin);
+    glTFReadAnimations(Animations, AnimationsCount, *AnimArray, *Skin);
 
     cgltf_free(Mesh);
 }
@@ -1408,7 +1425,7 @@ void glTFRead(const char *Path, Platform* Platform, glTF2File *FileOut)
 
         // TODO(Ismail): use already created inverse_bind_matrix in CurrentSkin
         cgltf_skin* CurrentSkin = &Mesh->skins[0];
-        Skinning*   Skelet      = &FileOut->Skelet;
+        Skinning*   Skelet      = FileOut->Skelet;
 
         u32             JointsCount = (u32)CurrentSkin->joints_count;
         cgltf_node**    Joints      = CurrentSkin->joints;
@@ -1420,7 +1437,7 @@ void glTFRead(const char *Path, Platform* Platform, glTF2File *FileOut)
 
         ReadJointNode(Skelet, *Joints, NULL, IndexCounter, Joints, (i32)JointsCount);
 
-        FileOut->Skelet.JointsAmount = JointsCount;
+        FileOut->Skelet->JointsAmount = JointsCount;
 
         i32 AnimationsCount = (i32)Mesh->animations_count;
 
@@ -1437,21 +1454,25 @@ void glTFRead(const char *Path, Platform* Platform, glTF2File *FileOut)
 
 const char *ResourceFolderLocation = "data/obj/";
 
-void InitSkeletalMeshComponent(Platform *Platform, SkeletalMeshComponent *SkeletalMesh, DynamicSceneObjectLoader& Loader)
+void InitSkeletalMeshComponent(Platform *Platform, GameContext* Cntx, SkeletalMeshComponent *SkeletalMesh,  DynamicSceneObjectLoader& Loader)
 {
     char                FullFileName[500]   = {};
     glTF2File           LoadFile            = {};
-    SkeletalComponent*  Skelet              = &SkeletalMesh->Skelet;
 
-    LoadFile.Animations = (AnimationsArray*)Platform->AllocMem(sizeof(*LoadFile.Animations));
+    AnimationSystem& AnimSys = Cntx->AnimSystem;
 
-    glTFRead(SkeletalMesh->ObjectPath, Platform, &LoadFile);
+    SkeletalComponent& NewComponent = AnimSys.RegisterNewSkin(SkeletalCharacters::CharacterPlayer);
+
+    LoadFile.Animations = &NewComponent.Animations;
+    LoadFile.Skelet     = &NewComponent.Skin;
+
+    glTFRead(Loader.Mesh.Path, Platform, &LoadFile);
 
     i32 AnimCount = Loader.Amount;
     for (i32 AnimIndex = 0; AnimIndex < AnimCount; ++AnimIndex) {
-        const char* AnimPath = Loader.Animations[AnimIndex];
+        SerialaizedAnimations& SerialaizedAnims = Loader.Animations[AnimIndex];
 
-        glTFReadAnimations(AnimPath, LoadFile.Animations, LoadFile.Skelet);
+        glTFReadAnimations(SerialaizedAnims.Path, LoadFile.Animations, LoadFile.Skelet);
     }
 
     i32         MeshesAmount    = LoadFile.MeshesAmount;
@@ -1567,9 +1588,6 @@ void InitSkeletalMeshComponent(Platform *Platform, SkeletalMeshComponent *Skelet
 
         SkeletalMesh->PrimitivesAmount = PrimitivesAmount;
     }
-
-    Skelet->Skin        = LoadFile.Skelet;
-    Skelet->Animations  = LoadFile.Animations;
 }
 
 /*
@@ -1873,9 +1891,9 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         DynamicSceneObject&         Object          = Cntx->TestDynamocSceneObjects[Index];
         DynamicSceneObjectLoader&   CurrentObject   = DynamicSceneObjectsName[Index];
 
-        Object.ObjMesh.ObjectPath  = CurrentObject.Mesh;
+        Object.ObjMesh.ObjectPath  = CurrentObject.Mesh.Path;
 
-        InitSkeletalMeshComponent(Platform, &Object.ObjMesh, CurrentObject);
+        InitSkeletalMeshComponent(Platform, Cntx, &Object.ObjMesh, CurrentObject);
 
         Object.Transform.Rotation = { 0.0f, 0.0f, 0.0f };
         Object.Transform.Position = { 0.0f, 0.0f, Position };
@@ -1883,6 +1901,45 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         
         Position += 10.0f;
     }
+
+    AnimationSystem& AnimSys = Cntx->AnimSystem;
+
+    AnimationTrack& PlayerTrack = AnimSys.RegisterNewAnimationTrack();
+
+    PlayerTrack.Id      = 0;
+    PlayerTrack.SkinId  = SkeletalCharacters::CharacterPlayer;
+
+    AnimationTask& PlayerWalkTask = PlayerTrack.AnimationTasks[0];
+    PlayerWalkTask.MaxX         = 1.5f;
+    PlayerWalkTask.Mode         = TaskMode::_1D;
+    PlayerWalkTask.Loop         = 1;
+    PlayerWalkTask.StackAmount  = 3;
+
+    Animation* IdleAnim = AnimSys.GetAnimationById(SkeletalCharacters::CharacterPlayer, PLayerAnimations::IdleDynamic);
+    AnimationStack& IdleStack = PlayerWalkTask.Stack[PLayerAnimations::IdleDynamic];
+    IdleStack                   = {};
+    IdleStack.Speed             = 1.0f;
+    IdleStack.StackPositionX    = 0.0f;
+    IdleStack.MaxDuration       = IdleAnim->MaxDuration;
+    IdleStack.Animation         = IdleAnim;
+
+    Animation* WalkAnim = AnimSys.GetAnimationById(SkeletalCharacters::CharacterPlayer, PLayerAnimations::WalkDefault);    
+    AnimationStack& WalkStack = PlayerWalkTask.Stack[PLayerAnimations::WalkDefault];
+    WalkStack                   = {};
+    WalkStack.Speed             = 1.0f;
+    WalkStack.StackPositionX    = 0.75f;
+    WalkStack.MaxDuration       = WalkAnim->MaxDuration;
+    WalkStack.Animation         = WalkAnim;
+
+    Animation* RunAnim = AnimSys.GetAnimationById(SkeletalCharacters::CharacterPlayer, PLayerAnimations::RunDefault);    
+    AnimationStack& RunStack = PlayerWalkTask.Stack[PLayerAnimations::RunDefault];
+    RunStack                   = {};
+    RunStack.Speed             = 1.0f;
+    RunStack.StackPositionX    = 1.5f;
+    RunStack.MaxDuration       = RunAnim->MaxDuration;
+    RunStack.Animation         = RunAnim;
+
+    PlayerTrack.AnimationTasksAmount = 1;
 
     Cntx->TestSceneObjects[1].Nesting.Parent            = &Cntx->TestDynamocSceneObjects[0];
     Cntx->TestSceneObjects[1].Nesting.AttachedToBone    = "mixamorig5:LeftHand";
@@ -2153,24 +2210,6 @@ static void CalcClipTask(std::map<std::string, BoneIDs>& Bones, Mat4x4* Matrices
     }
 }
 
-void CalculateFrameSkinningMatrices(Skinning* Skin, SkinningMatricesStorage* FrameMatrixStorage)
-{
-    i32                             JointsAmount    = Skin->JointsAmount;
-    std::map<std::string, BoneIDs>  Bones           = Skin->Bones;
-
-    Mat4x4 (&Matrices)[200] = FrameMatrixStorage->Matrices;
-
-    for (i32 i = 0; i < JointsAmount; ++i) {
-        JointsInfo *JointInfo = &Skin->Joints[i];
-
-        BoneIDs& Ids = Bones[JointInfo->BoneName];
-
-        Mat4x4& CurrentMat = Matrices[Ids.OriginalBoneID];
-
-        CurrentMat = CurrentMat * JointInfo->InverseBindMatrix;
-    }
-}
-
 void AnimationSystem::PrepareSkinMatrices(AnimationTrack& Track, i32 TaskId, real32 x, real32 y, real32 dt)
 {
     Assert(Track.AnimationTasksAmount > TaskId);
@@ -2187,6 +2226,8 @@ void AnimationSystem::PrepareSkinMatrices(AnimationTrack& Track, i32 TaskId, rea
         
         case TaskMode::Clip: {
             AnimationStack& Stack       = Task.Stack[0];
+
+            Assert(Task.StackAmount == 1); // NOTE(ismail): ok chel
 
             real32 AdvancedTime   = Stack.CurrentTime + dt;
             real32 MaxDuration    = Stack.MaxDuration;
@@ -2216,19 +2257,20 @@ void AnimationSystem::PrepareSkinMatrices(AnimationTrack& Track, i32 TaskId, rea
             AnimationStack* Stack       = Task.Stack;
             AnimationStack* FrStackNode = 0;
             AnimationStack* ScStackNode = 0;
+
+            Assert(Task.StackAmount > 1); // NOTE(ismail): If you need to play less than one animation use TaskMode::Clip
             
-            for (i32 FirstEntry = 0, SecondEntry = 0;;) {
+            for (i32 FirstEntry = 0, SecondEntry = 1;;) {
                 FrStackNode = &Stack[FirstEntry];
                 ScStackNode = &Stack[SecondEntry];
 
-                if (FrStackNode->StackPositionX <= x) {
-                    Assert(ScStackNode->StackPositionX >= x);
-
+                if (FrStackNode->StackPositionX <= x && ScStackNode->StackPositionX >= x) {
                     break;
                 }
-
-                FirstEntry = SecondEntry;
-                SecondEntry = FirstEntry + 1;
+                else {
+                    FirstEntry = SecondEntry;
+                    SecondEntry = FirstEntry + 1;
+                }
             }
 
             real32 FrAdvancedTime   = FrStackNode->CurrentTime + dt;
@@ -2248,7 +2290,7 @@ void AnimationSystem::PrepareSkinMatrices(AnimationTrack& Track, i32 TaskId, rea
             real32 FrPos = FrStackNode->StackPositionX;
             real32 ScPos = ScStackNode->StackPositionX;
 
-            real32 BlendingFactor = x - FrPos / ScPos - FrPos;
+            real32 BlendingFactor = (x - FrPos) / (ScPos - FrPos);
 
             Animation& FrAnim = *FrStackNode->Animation;
             Animation& ScAnim = *ScStackNode->Animation;
@@ -2282,23 +2324,59 @@ void AnimationSystem::Play(i32 CharId, i32 AnimTaskId, real32 x, real32 y, real3
     }
 }
 
-static void RenderPrepareFrame(GameContext *Cntx, FrameData *Data)
+const SkinningMatricesStorage& AnimationSystem::ExportToRender(i32 CharId)
 {
-    SkinningMatricesStorage *Storage = &Data->SkinMatrix;
+    for (AnimationTrack& CharAnimTrack : CharactersAnimationTrack) {
+        if (CharAnimTrack.Id == CharId) {
+            Skinning&                       Skin            = SkinningData[CharAnimTrack.SkinId].Skin;
+            i32                             JointsAmount    = Skin.JointsAmount;
+            std::map<std::string, BoneIDs>& Bones           = Skin.Bones;
 
-    i32 AnimationToPlay = Cntx->ArrowUpWasTriggered;
+            Mat4x4* Matrices = CharAnimTrack.Matrices.Matrices;
 
-    for (i32 Index = 0; Index < DYNAMIC_SCENE_OBJECTS_MAX; ++Index) {
-        DynamicSceneObject*     CurrentSceneObject  = &Cntx->TestDynamocSceneObjects[Index];
-        SkeletalComponent*      Skin                = &CurrentSceneObject->ObjMesh.Skelet;
+            for (i32 i = 0; i < JointsAmount; ++i) {
+                JointsInfo *JointInfo = &Skin.Joints[i];
+            
+                BoneIDs& Ids = Bones[JointInfo->BoneName];
+            
+                Mat4x4& CurrentMat = Matrices[Ids.OriginalBoneID];
+            
+                CurrentMat = CurrentMat * JointInfo->InverseBindMatrix;
+            }
 
-        if (Cntx->AnimationBlending) {
-            FillSkinMatrixWithBlending(Storage, Skin, Cntx->FrAnimationDuration, Cntx->ScAnimationDuration, 0, 1, 1, Cntx->AnimationBlendingFactor);
-        }
-        else {
-            FillSkinMatrix(Storage, Skin, Cntx->FrAnimationDuration, AnimationToPlay, 1);
+            return CharAnimTrack.Matrices;
         }
     }
+
+    Assert(false); // NOTE(ismail): we must not reache this line
+
+}
+
+Mat4x4& AnimationSystem::GetBoneLocation(i32 CharId, const std::string& BoneName)
+{
+    for (AnimationTrack& Track : CharactersAnimationTrack) {
+        if (Track.Id == CharId) {
+            SkeletalComponent& SkinData = SkinningData[Track.SkinId];
+
+            BoneIDs& IDs = SkinData.Skin.Bones[BoneName];
+
+            return Track.Matrices.Matrices[IDs.OriginalBoneID];
+        }
+    }
+
+    Assert(false); // NOTE(ismail): we must not reache this line
+}
+
+Mat4x4& AnimationSystem::GetBoneLocation(i32 CharId, i32 BoneId)
+{
+    for (AnimationTrack& Track : CharactersAnimationTrack) {
+        if (Track.Id == CharId) {
+            Assert(Track.Matrices.Amount > BoneId);
+            return Track.Matrices.Matrices[BoneId];
+        }
+    }
+
+    Assert(false); // NOTE(ismail): we must not reache this line
 }
 
 static void SetupObjectRendering(GameContext* Ctx, FrameData* Data, WorldTransform& ObjectTransform,
@@ -2332,9 +2410,7 @@ static void SetupObjectRendering(GameContext* Ctx, FrameData* Data, WorldTransfo
 
         MakeScaleFromVectorRelative(&ObjectTransform.Scale, &ParentTransform.Scale, &ObjectScale);
 
-        BoneIDs& Ids = Bones[Nesting.AttachedToBone];
-        
-        Mat4x4& AttachedBoneMat = Data->SkinMatrix.Matrices[Ids.OriginalBoneID];
+        Mat4x4& AttachedBoneMat = Ctx->AnimSystem.GetBoneLocation(0, Nesting.AttachedToBone);
 
         ObjectToCameraSpaceTransformation   = Data->CameraTransformation * RootToWorldTranslation;
         ObjectGeneralTransformation         = RootToWorldRotation * RootToWorldScale * AttachedBoneMat * 
@@ -2368,33 +2444,27 @@ static void DrawSkeletalMesh(Platform *Platform, GameContext *Cntx, FrameData *D
     
     tglUseProgram(Shader->Program);
 
-    SkinningMatricesStorage* MatrixStorage = &Data->SkinMatrix;
-
     SetupDirectionalLight(&Cntx->LightSource, ShaderProgramsType::SkeletalMeshShader);
 
-    Cntx->FrAnimationDuration += Cntx->DeltaTimeSec;
-    Cntx->ScAnimationDuration += Cntx->DeltaTimeSec;
     for (i32 Index = 0; Index < DYNAMIC_SCENE_OBJECTS_MAX; ++Index) {
         DynamicSceneObject*     CurrentSceneObject  = &Cntx->TestDynamocSceneObjects[Index];
         SkeletalMeshComponent*  Comp                = &CurrentSceneObject->ObjMesh;
         WorldTransform*         Transform           = &CurrentSceneObject->Transform;
         SkeletalComponent*      Skin                = &CurrentSceneObject->ObjMesh.Skelet;
 
-        if (Platform->Input.EButton.State == KeyState::Pressed && !Cntx->EWasPressed) {
-            Cntx->FrAnimationDuration += 0.01;
-            Cntx->ScAnimationDuration += 0.01;
+        if (Platform->Input.EButton.State == KeyState::Pressed && !Cntx->EWasPressed) {;
             Cntx->EWasPressed = 1;
         }
         else if (Platform->Input.EButton.State == KeyState::Released) {
             Cntx->EWasPressed = 0;
         }
-        CalculateFrameSkinningMatrices(&Skin->Skin, MatrixStorage);
 
-        ShaderProgramVariablesStorage::AnimationInfo* AnimVar = &VarStorage->Animation;
-        for (i32 MatrixIndex = 0; MatrixIndex < MatrixStorage->Amount; ++MatrixIndex) {
-            Mat4x4* Mat = &MatrixStorage->Matrices[MatrixIndex];
+        const SkinningMatricesStorage&                  Matrices    = Cntx->AnimSystem.ExportToRender(Index);
+        ShaderProgramVariablesStorage::AnimationInfo&   AnimVar     = VarStorage->Animation;
+        for (i32 MatrixIndex = 0; MatrixIndex < Matrices.Amount; ++MatrixIndex) {
+            const Mat4x4* Mat = &Matrices.Matrices[MatrixIndex];
 
-            tglUniformMatrix4fv(AnimVar->AnimationMatricesLocation[MatrixIndex], 1, GL_TRUE, (*Mat)[0]);
+            tglUniformMatrix4fv(AnimVar.AnimationMatricesLocation[MatrixIndex], 1, GL_TRUE, (*Mat)[0]);
         }
 
         SetupObjectRendering(Cntx, Data, *Transform, VarStorage, CurrentSceneObject->Nesting, ShaderProgramsType::SkeletalMeshShader);
@@ -2511,15 +2581,20 @@ void Frame(Platform *Platform, GameContext *Cntx)
     }
     
     if (Platform->Input.ArrowUp.State == KeyState::Pressed) {
-        if (Cntx->AnimationBlendingFactor <= 0.95f) {
-            Cntx->AnimationBlendingFactor += 0.001f;
+        if (Cntx->BlendingX <= 1.496f) {
+            Cntx->BlendingX += 0.001f;
         }
         else {
-            Cntx->AnimationBlendingFactor = 1.0f;
+            Cntx->BlendingX = 1.5f;
         }
     }
     else {
-        Cntx->AnimationBlendingFactor = 0.0f;
+        if (Cntx->BlendingX > 0.005f) {
+            Cntx->BlendingX -= 0.001f;
+        }
+        else {
+            Cntx->BlendingX = 0.0f;
+        }
     }
 
     if (Platform->Input.ArrowUp.State == KeyState::Pressed && !Cntx->ArrowUpWasTriggered) {
@@ -2550,7 +2625,7 @@ void Frame(Platform *Platform, GameContext *Cntx)
         
     }
 
-    RenderPrepareFrame(Cntx, &Frame);
+    Cntx->AnimSystem.Play(0, 0, Cntx->BlendingX, 0.0f, Cntx->DeltaTimeSec);
 
     Mat4x4 PerspProjection = MakePerspProjection(60.0f, Platform->ScreenOpt.AspectRatio, 0.1f, 1500.0f);
 

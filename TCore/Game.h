@@ -322,15 +322,22 @@ enum InterpolationType {
     IMax,
 };
 
+// ?????
 union TransformationStorage {
+    TransformationStorage() {
+
+    }
+
     Vec3    Translation;
     Quat    Rotation;
     Vec3    Scale;
 };
 
-enum PLayerAnimationSlots {
+enum PLayerAnimations {
     IdleDynamic = 0,
     WalkDefault = 1,
+    RunDefault  = 2,
+    Max
 };
 
 struct AnimationTransformation {
@@ -537,11 +544,12 @@ struct AnimationTask {
     real32          MaxY;
     bool32          Loop;
     AnimationStack  Stack[ANIMATION_STACK_LENGTH];
+    i32             StackAmount;
 };
 
 enum SkeletalCharacters {
     CharacterPlayer,
-    Max,
+    SkeletalMax,
 };
 
 struct AnimationTrack {
@@ -568,16 +576,24 @@ public:
     }
 
     AnimationTrack& RegisterNewAnimationTrack() {
-        return CharactersAnimationTrack.emplace_back();
+        CharactersAnimationTrack.emplace_back();
+        return CharactersAnimationTrack.back();
+    }
+
+    Animation* GetAnimationById(SkeletalCharacters SkeletId, i32 AnimationId) {
+        return &SkinningData[SkeletId].Animations.Anims[AnimationId];
     }
 
     void Play(i32 CharId, i32 AnimTaskId, real32 x, real32 y, real32 dt);
+    Mat4x4& GetBoneLocation(i32 CharId, i32 BoneId);
+    Mat4x4& GetBoneLocation(i32 CharId, const std::string& BoneName);
+    const SkinningMatricesStorage& ExportToRender(i32 CharId);
 
 private:
     void PrepareSkinMatrices(AnimationTrack& Track, i32 TaskId, real32 x, real32 y, real32 dt);
 
     std::list<AnimationTrack>   CharactersAnimationTrack;
-    SkeletalComponent           SkinningData[SkeletalCharacters::Max];
+    SkeletalComponent           SkinningData[SkeletalCharacters::SkeletalMax];
 };
 
 struct MeshComponent {
@@ -671,8 +687,7 @@ struct Particle {
 };
 
 struct FrameData {
-    Mat4x4                  CameraTransformation;
-    SkinningMatricesStorage SkinMatrix;
+    Mat4x4 CameraTransformation;
 };
 
 struct GameContext {
@@ -691,6 +706,7 @@ struct GameContext {
     i32     CurrentStep;
 
     i32     BoneID;
+    real32  BlendingX;
 
     Camera              PlayerCamera;
     SceneObject         TestSceneObjects[SCENE_OBJECTS_MAX];
@@ -702,6 +718,8 @@ struct GameContext {
     DirectionalLight    LightSource;
     PointLight          PointLights[MAX_POINTS_LIGHTS];
     SpotLight           SpotLights[MAX_SPOT_LIGHTS];
+
+    AnimationSystem AnimSystem;
 
     bool32 EWasPressed;
 };

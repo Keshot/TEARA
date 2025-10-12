@@ -1452,9 +1452,9 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
     QueryPerformanceCounter(&LastCounter);
     u64 LastCycleCount = __rdtsc();
 
-    GameContext Context = {};
+    GameContext* Context = new GameContext;
 
-    PrepareFrame(&Win32App.EnginePlatformDetails, &Context);
+    PrepareFrame(&Win32App.EnginePlatformDetails, Context);
 
     bool ShowDemoWindow = true;
 
@@ -1493,7 +1493,7 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
 
         ImGui::Render();
 
-        Frame(&Win32App.EnginePlatformDetails, &Context);
+        Frame(&Win32App.EnginePlatformDetails, Context);
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -1517,7 +1517,7 @@ i32 APIENTRY WinMain( HINSTANCE Instance, HINSTANCE PrevInstance,
 
         OutputDebugStringA(Buffer);
 
-        Context.DeltaTimeSec = (real32)DeltaTimeSec;
+        Context->DeltaTimeSec = (real32)DeltaTimeSec;
 
         LastCycleCount = EndCycleCount;
         LastCounter = EndCounter;
