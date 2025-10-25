@@ -16,7 +16,7 @@ struct Rotation {
     real32 Bank;
 };
 
-#define BATTLE_AREA_GRID_VERT_AMOUNT    3
+#define BATTLE_AREA_GRID_VERT_AMOUNT    100
 #define ONE_SQUARE_INDEX_AMOUNT         6
 #define TERRAIN_INDEX_AMOUNT            SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT - 1) * ONE_SQUARE_INDEX_AMOUNT
 #define SCENE_OBJECTS_MAX               3
@@ -29,6 +29,8 @@ struct Rotation {
 #define MAX_JOINT_CHILDREN_AMOUNT       10
 #define MAX_MESH_PRIMITIVES             5
 #define MAX_MESHES                      1
+#define SHADOW_MAP_W                    (2048)
+#define SHADOW_MAP_H                    (2048)
 
 enum OpenGLBuffersLocation {
     // STATIC MESH
@@ -379,11 +381,18 @@ enum ShaderProgramsType {
     MeshShader,
     SkeletalMeshShader,
     ParticlesShader,
-    DebugDraw,
+    DebugDrawShader,
+    DepthTestShader,
     ShaderProgramsTypeMax,
 };
 
 struct ShaderProgramVariablesStorage {
+
+    struct ShaderTextureInfo {
+        i32 Location;
+        i32 Unit;
+        i32 UnitNum;
+    };
 
     struct ObjectTransform {
         i32 ObjectToCameraSpaceTransformationLocation;
@@ -391,13 +400,6 @@ struct ShaderProgramVariablesStorage {
     } Transform;
 
     struct ObjectMaterial {
-
-        struct ShaderTextureInfo {
-            i32 Location;
-            i32 Unit;
-            i32 UnitNum;
-        };
-
         i32 MaterialAmbientColorLocation;
         i32 MaterialDiffuseColorLocation;
         i32 MaterialSpecularColorLocation;
@@ -405,6 +407,11 @@ struct ShaderProgramVariablesStorage {
         ShaderTextureInfo   DiffuseTexture;
         ShaderTextureInfo   SpecularExpMap;
     } MaterialInfo;
+
+    struct ShadowMapping {
+        i32                 ObjectToLightSpaceTransformationLocation;
+        ShaderTextureInfo   ShadowMapTexture;
+    } Shadow;
 
     struct LightWork {
 
@@ -449,7 +456,7 @@ struct ShaderProgramVariablesStorage {
 
     struct AnimationInfo {
         i32 AnimationMatricesLocation[MAX_BONES];
-        i32 BoneIDLocation;
+        i32 HaveSkinMatricesLocation;
     } Animation;
 
 };
@@ -475,7 +482,7 @@ struct LightAttenuation {
 
 struct DirectionalLight {
     LightSpec   Specification;
-    Vec3        Direction;
+    Rotation    Rotation;
 };
 
 struct PointLight {
@@ -486,7 +493,7 @@ struct PointLight {
 struct SpotLight {
     LightSpec           Specification;
     LightAttenuation    Attenuation;
-    Vec3                Direction;
+    Rotation            Rotation;
     real32              CosCutoffAngle;
     real32              CutoffAttenuationFactor;
 };
@@ -587,7 +594,7 @@ public:
     void Play(i32 CharId, i32 AnimTaskId, real32 x, real32 y, real32 dt);
     Mat4x4& GetBoneLocation(i32 CharId, i32 BoneId);
     Mat4x4& GetBoneLocation(i32 CharId, const std::string& BoneName);
-    const SkinningMatricesStorage& ExportToRender(i32 CharId);
+    void ExportToRender(SkinningMatricesStorage& Result, i32 CharId);
 
 private:
     void PrepareSkinMatrices(AnimationTrack& Track, i32 TaskId, real32 x, real32 y, real32 dt);
@@ -647,6 +654,9 @@ struct TerrainLoadFile {
 };
 
 struct Terrain {
+    Vec3            AmbientColor;
+    Vec3            DiffuseColor;
+    Vec3            SpecularColor;
     u32             BuffersHandler[GLLocationMax];
     u32             TextureHandle;
     u32             IndicesAmount;
@@ -686,11 +696,29 @@ struct Particle {
     }
 };
 
+struct FrameDataStorage {
+    SkinningMatricesStorage SkinFrameStorage;
+    Mat4x4                  ObjectToWorldTranslation;
+    Mat4x4                  ObjectGeneralTransformation;
+    Mat4x4                  ShadowPassObjectMatrices;
+    Vec3                    ObjectPosition;
+};
+
 struct FrameData {
-    Mat4x4 CameraTransformation;
+    FrameDataStorage    TerrainFrameDataStorage;
+    FrameDataStorage    TestSceneObjectsFrameStorage[SCENE_OBJECTS_MAX];
+    i32                 TestSceneObjectsAmount;
+    FrameDataStorage    TestDynamocSceneObjectsFrameStorage[DYNAMIC_SCENE_OBJECTS_MAX];
+    i32                 TestDynamocSceneObjectsAmount;
+    Mat4x4              ShadowPassCameraTransformation;
+    Mat4x4              CameraTransformation;
+    Vec3                CameraPosition;
 };
 
 struct GameContext {
+    u32 DepthFbo;
+    u32 DepthTexture;
+
     real32  DeltaTimeSec;
 
     bool32  PolygonModeActive;
@@ -720,6 +748,8 @@ struct GameContext {
     SpotLight           SpotLights[MAX_SPOT_LIGHTS];
 
     AnimationSystem AnimSystem;
+
+    FrameData FrameDt;
 
     bool32 EWasPressed;
 };

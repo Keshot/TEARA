@@ -55,11 +55,13 @@ struct LightCalculationResult {
 in vec2 FragmentTextureCoordinate;
 in vec3 FragmentNormal;
 in vec3 FragmentPosition;
+in vec4 FragmentPositionInLightSpace;
 
 out vec4 FragmentColor;
 
 uniform sampler2D   DiffuseTexture;
 uniform sampler2D   SpecularExponentMap;
+uniform sampler2D   ShadowMapTexture;
 uniform Material    MeshMaterial;
 
 uniform vec3            ViewerPosition;
@@ -73,6 +75,19 @@ uniform int             SpotLightsAmount;
 uniform SpotLight       SpotLights[MaxSpotLights];
 
 MeshFragmentInfo Info;
+
+float CalculateLightShadow()
+{
+    vec3 PosInLightSpaceProjected   = FragmentPositionInLightSpace.xyz / FragmentPositionInLightSpace.w;
+    PosInLightSpaceProjected        = PosInLightSpaceProjected * 0.5 + 0.5;
+
+    float CurrentDepth  = PosInLightSpaceProjected.z;
+    float MapDepth      = texture(SpecularExponentMap, PosInLightSpaceProjected.xy).r;
+
+    float ShadowFactor = CurrentDepth > MapDepth ? 0.1 : 1.0;
+
+    return ShadowFactor;
+}
 
 LightCalculationResult MakeLightsCalculationResult()
 {
@@ -185,11 +200,12 @@ void main()
         SpotLightsResult.SpecularColor += CurrentSpotLightResult.SpecularColor;
     }
 
+    float ShadowFactor = CalculateLightShadow();
     vec3 Albedo = texture(DiffuseTexture, FragmentTextureCoordinate).rgb;
 
     vec3 AmbientColor   = DirectionalLightResult.AmbientColor  + PointLightsResult.AmbientColor  + SpotLightsResult.AmbientColor;
-    vec3 DiffuseColor   = DirectionalLightResult.DiffuseColor  + PointLightsResult.DiffuseColor  + SpotLightsResult.DiffuseColor;
-    vec3 SpecularColor  = DirectionalLightResult.SpecularColor + PointLightsResult.SpecularColor + SpotLightsResult.SpecularColor;
+    vec3 DiffuseColor   = (DirectionalLightResult.DiffuseColor  * ShadowFactor) + PointLightsResult.DiffuseColor  + SpotLightsResult.DiffuseColor;
+    vec3 SpecularColor  = (DirectionalLightResult.SpecularColor * ShadowFactor) + PointLightsResult.SpecularColor + SpotLightsResult.SpecularColor;
 
     vec3 FinalColor = (Albedo * (AmbientColor + DiffuseColor)) + SpecularColor;
 

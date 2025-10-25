@@ -20,6 +20,7 @@
 #define GL_TEXTURE_UNIT0 (0x00)
 #define GL_TEXTURE_UNIT1 (GL_TEXTURE_UNIT0 + 1)
 #define GL_TEXTURE_UNIT2 (GL_TEXTURE_UNIT1 + 1)
+#define GL_TEXTURE_UNIT3 (GL_TEXTURE_UNIT2 + 1)
 
 #define EXTERN_FUNCTION(name) extern TEARA_##name t##name
 #define DEF_GL_FUNCTION(return_type, conv, name,...) return_type (conv TEARA_##name)(__VA_ARGS__)
@@ -55,6 +56,10 @@ typedef DEF_GL_FUNCTION(void, GLAPIENTRY, glDeleteShader, GLuint shader);
 typedef DEF_GL_FUNCTION(void, GLAPIENTRY, glDrawElements, GLenum mode, GLsizei count, GLenum type, const void *indices);
 typedef DEF_GL_FUNCTION(void, GLAPIENTRY, glGenerateMipmap,GLenum target);
 typedef DEF_GL_FUNCTION(void, GLAPIENTRY, glVertexAttribIPointer, GLuint index, GLint size, GLenum type, GLsizei stride, const void* pointer);
+typedef DEF_GL_FUNCTION(void, GLAPIENTRY, glGenFramebuffers, GLsizei n, GLuint *ids);
+typedef DEF_GL_FUNCTION(void, GLAPIENTRY, glBindFramebuffer, GLenum target, GLuint framebuffer);
+typedef DEF_GL_FUNCTION(void, GLAPIENTRY, glFramebufferTexture2D, GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
+typedef DEF_GL_FUNCTION(GLenum, GLAPIENTRY, glCheckFramebufferStatus, GLenum target);
 
 EXTERN_FUNCTION(glGenBuffers);
 EXTERN_FUNCTION(glBindBuffer);
@@ -87,6 +92,10 @@ EXTERN_FUNCTION(glDeleteShader);
 EXTERN_FUNCTION(glDrawElements);
 EXTERN_FUNCTION(glGenerateMipmap);
 EXTERN_FUNCTION(glVertexAttribIPointer);
+EXTERN_FUNCTION(glGenFramebuffers);
+EXTERN_FUNCTION(glBindFramebuffer);
+EXTERN_FUNCTION(glFramebufferTexture2D);
+EXTERN_FUNCTION(glCheckFramebufferStatus);
 
 Statuses LoadGLFunctions();
 

@@ -8,13 +8,15 @@ layout (location = 2) in vec3   VertexNormals;
 layout (location = 3) in ivec4  VertexBoneIDs;
 layout (location = 4) in vec4   VertexBoneWeights;
 
-out vec2 FragmentTextureCoordinate;
-out vec3 FragmentNormal;
-out vec3 FragmentPosition;
+out vec2    FragmentTextureCoordinate;
+out vec3    FragmentNormal;
+out vec3    FragmentPosition;
+out vec4    FragmentPositionInLightSpace;
 
 uniform mat4x4  AnimationBonesMatrices[MaxBones];
 uniform mat4x4  ObjectToCameraSpaceTransformation;  // root to world translation, camera space transformation and perspective projection.
 uniform mat4x4  ObjectGeneralTransformation;        // object to world/root scale, rotation, translation, attach matrix transformation, and root to world rotation and scale.
+uniform mat4x4  ObjectToLightSpaceTransformation;   // for shadows
 
 void main()
 {
@@ -28,8 +30,9 @@ void main()
 
     vec4 FragmentPositionTmp = ObjectGeneralTransformation * SkinningMatrix * Pos;
 
-    FragmentPosition    = FragmentPositionTmp.xyz;
-    gl_Position         = ObjectToCameraSpaceTransformation * FragmentPositionTmp;
+    FragmentPositionInLightSpace    = ObjectToLightSpaceTransformation * SkinningMatrix * Pos;
+    FragmentPosition                = FragmentPositionTmp.xyz;
+    gl_Position                     = ObjectToCameraSpaceTransformation * FragmentPositionTmp;
     // position calculation end
 
     //normal calculation

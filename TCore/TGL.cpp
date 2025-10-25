@@ -32,6 +32,10 @@ TEARA_glDeleteShader                tglDeleteShader;
 TEARA_glDrawElements                tglDrawElements;
 TEARA_glGenerateMipmap              tglGenerateMipmap;
 TEARA_glVertexAttribIPointer        tglVertexAttribIPointer;
+TEARA_glGenFramebuffers             tglGenFramebuffers;
+TEARA_glBindFramebuffer             tglBindFramebuffer;
+TEARA_glFramebufferTexture2D        tglFramebufferTexture2D;
+TEARA_glCheckFramebufferStatus      tglCheckFramebufferStatus;
 
 #ifndef TEARA_DEBUG
 
@@ -70,6 +74,10 @@ TEARA_glDeleteShader                tglDeleteShaderOrigin;
 TEARA_glDrawElements                tglDrawElementsOrigin;
 TEARA_glGenerateMipmap              tglGenerateMipmapOrigin;
 TEARA_glVertexAttribIPointer        tglVertexAttribIPointerOrigin;
+TEARA_glGenFramebuffers             tglGenFramebuffersOrigin;
+TEARA_glBindFramebuffer             tglBindFramebufferOrigin;
+TEARA_glFramebufferTexture2D        tglFramebufferTexture2DOrigin;
+TEARA_glCheckFramebufferStatus      tglCheckFramebufferStatusOrigin;
 
 #define DECLARE_DEBUG_GL_FUNCTION(return_type, name, args_func, args_to_call) \
     return_type t##name##DEBUG args_func                                      \
@@ -123,6 +131,10 @@ DECLARE_DEBUG_GL_FUNCTION_NO_RET(glDeleteShader, (GLuint shader), (shader))
 DECLARE_DEBUG_GL_FUNCTION_NO_RET(glDrawElements, (GLenum mode, GLsizei count, GLenum type, const void* indices), (mode, count, type, indices))
 DECLARE_DEBUG_GL_FUNCTION_NO_RET(glGenerateMipmap, (GLenum target), (target));
 DECLARE_DEBUG_GL_FUNCTION_NO_RET(glVertexAttribIPointer, (GLuint index, GLint size, GLenum type, GLsizei stride, const void* pointer), (index, size, type, stride, pointer));
+DECLARE_DEBUG_GL_FUNCTION_NO_RET(glGenFramebuffers, (GLsizei n, GLuint *ids), (n, ids));
+DECLARE_DEBUG_GL_FUNCTION_NO_RET(glBindFramebuffer, (GLenum target, GLuint framebuffer), (target, framebuffer));
+DECLARE_DEBUG_GL_FUNCTION_NO_RET(glFramebufferTexture2D, (GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level), (target, attachment, textarget, texture, level));
+DECLARE_DEBUG_GL_FUNCTION(GLenum, glCheckFramebufferStatus, (GLenum target), (target))
 
 void LinkDebugFunction()
 {
@@ -157,6 +169,10 @@ void LinkDebugFunction()
     tglDrawElements             = tglDrawElementsDEBUG;
     tglGenerateMipmap           = tglGenerateMipmapDEBUG;
     tglVertexAttribIPointer     = tglVertexAttribIPointerDEBUG;
+    tglGenFramebuffers          = tglGenFramebuffersDEBUG;
+    tglBindFramebuffer          = tglBindFramebufferDEBUG;
+    tglFramebufferTexture2D     = tglFramebufferTexture2DDEBUG;
+    tglCheckFramebufferStatus   = tglCheckFramebufferStatusDEBUG;
 }
 
 #define tglGenBuffers               tglGenBuffersOrigin 
@@ -190,6 +206,10 @@ void LinkDebugFunction()
 #define tglDrawElements             tglDrawElementsOrigin 
 #define tglGenerateMipmap           tglGenerateMipmapOrigin 
 #define tglVertexAttribIPointer     tglVertexAttribIPointerOrigin
+#define tglGenFramebuffers          tglGenFramebuffersOrigin
+#define tglBindFramebuffer          tglBindFramebufferOrigin
+#define tglFramebufferTexture2D     tglFramebufferTexture2DOrigin
+#define tglCheckFramebufferStatus   tglCheckFramebufferStatusOrigin
 
 #endif
 
@@ -378,7 +398,31 @@ Statuses LoadGLFunctions()
     }
 
     tglVertexAttribIPointer = (TEARA_glVertexAttribIPointer) tglGetProcAddress ("glVertexAttribIPointer");
-    if (!tglGenerateMipmap) {
+    if (!tglVertexAttribIPointer) {
+        // TODO (ismail): diagnostic?
+        return Statuses::Failed;
+    }
+
+    tglGenFramebuffers = (TEARA_glGenFramebuffers) tglGetProcAddress ("glGenFramebuffers");
+    if (!tglGenFramebuffers) {
+        // TODO (ismail): diagnostic?
+        return Statuses::Failed;
+    }
+    
+    tglBindFramebuffer = (TEARA_glBindFramebuffer) tglGetProcAddress ("glBindFramebuffer");
+    if (!tglBindFramebuffer) {
+        // TODO (ismail): diagnostic?
+        return Statuses::Failed;
+    }
+
+    tglFramebufferTexture2D = (TEARA_glFramebufferTexture2D) tglGetProcAddress ("glFramebufferTexture2D");
+    if (!tglFramebufferTexture2D) {
+        // TODO (ismail): diagnostic?
+        return Statuses::Failed;
+    }
+
+    tglCheckFramebufferStatus = (TEARA_glCheckFramebufferStatus) tglGetProcAddress ("glCheckFramebufferStatus");;
+    if (!tglCheckFramebufferStatus) {
         // TODO (ismail): diagnostic?
         return Statuses::Failed;
     }
