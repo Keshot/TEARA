@@ -2740,14 +2740,14 @@ static void ShadowPass(GameContext* Cntx)
 
     glClear(GL_DEPTH_BUFFER_BIT);
     glViewport(0, 0, SHADOW_MAP_W, SHADOW_MAP_H);
-
-    glCullFace(GL_FRONT);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(1.0f, 2.0f);
 
     tglUseProgram(Shader->Program);
 
     DirectionalLight& DirLight = Cntx->LightSource;
 
-    Mat4x4 CameraOrthoProjection = MakeOrthoProjection(25.0f, 0.0f, 25.0f, 0.0f, 25.0f, 0.0f);
+    Mat4x4 CameraOrthoProjection = MakeOrthoProjection(40.0f, -40.0f, 40.0f, -40.0f, 40.0f, -40.0f);
 
     Mat4x4 CameraSpaceRotation, CameraSpaceTranslation;
     MakeUprightToObjectRotation(&CameraSpaceRotation, &DirLight.Rotation);
@@ -2830,9 +2830,9 @@ static void ShadowPass(GameContext* Cntx)
 
     tglDrawElements(GL_TRIANGLES, Terra.IndicesAmount, GL_UNSIGNED_INT, 0);
 
-    tglBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDisable(GL_POLYGON_OFFSET_FILL);
 
-    glCullFace(GL_BACK);
+    tglBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 static void DrawPass(Platform* Platform, GameContext* Cntx)

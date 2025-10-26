@@ -1,7 +1,8 @@
 #version 460 core
 
-const int MaxPointLights    = 2;
-const int MaxSpotLights     = 1;
+const int   MaxPointLights  = 2;
+const int   MaxSpotLights   = 1;
+const float ConstantBias    = 0.0001;
 
 struct Material {
     vec3 AmbientColor;
@@ -81,10 +82,17 @@ float CalculateLightShadow()
     vec3 PosInLightSpaceProjected   = FragmentPositionInLightSpace.xyz / FragmentPositionInLightSpace.w;
     PosInLightSpaceProjected        = PosInLightSpaceProjected * 0.5 + 0.5;
 
-    float CurrentDepth  = PosInLightSpaceProjected.z;
-    float MapDepth      = texture(SpecularExponentMap, PosInLightSpaceProjected.xy).r;
+    if (PosInLightSpaceProjected.z > 1.0) {
+        return 1.0;
+    }
 
-    float ShadowFactor = CurrentDepth > MapDepth ? 0.1 : 1.0;
+    float CurrentDepth  = PosInLightSpaceProjected.z;
+    float MapDepth      = texture(ShadowMapTexture, PosInLightSpaceProjected.xy).r;
+
+    vec3 LD = normalize(-SceneDirectionalLight.Direction);
+    float Bias = max(0.01 * (1.0 - dot(LD, Info.FragmentNormal)), ConstantBias);
+
+    float ShadowFactor = CurrentDepth - Bias > MapDepth ? 0.0 : 1.0;
 
     return ShadowFactor;
 }
