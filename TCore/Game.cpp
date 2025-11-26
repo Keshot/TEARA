@@ -11,131 +11,6 @@
 
 ShaderProgram ShadersProgramsCache[ShaderProgramsTypeMax];
 
-struct Translation {
-    mat4 Trans;
-};
-
-struct UniformScale {
-    mat4 Scale;
-};
-
-struct NonUniformScale {
-    mat4 Scale;
-};
-
-// TODO(Ismail): correct for Gimbal Lock
-void MakeObjectToUprightRotation(Rotation *Rot, mat4 *Mat)
-{
-    real32 Cosh, Sinh;
-    real32 Cosp, Sinp;
-    real32 Cosb, Sinb;
-
-    real32 Heading = DEGREE_TO_RAD(Rot->Heading);
-    real32 Pitch = DEGREE_TO_RAD(Rot->Pitch);
-    real32 Bank = DEGREE_TO_RAD(Rot->Bank);
-
-    Sinh = sinf(Heading);
-    Cosh = cosf(Heading);
-
-    Sinp = sinf(Pitch);
-    Cosp = cosf(Pitch);
-
-    Sinb = sinf(Bank);
-    Cosb = cosf(Bank);
-
-    *Mat = {
-        Cosh * Cosb + Sinh * Sinp * Sinb, -Cosh * Sinb + Sinh * Sinp * Cosb, Sinh * Cosp, 0.0f,
-                             Cosp * Sinb,                       Cosp * Cosb,       -Sinp, 0.0f,
-       -Sinh * Cosb + Cosh * Sinp * Sinb,  Sinh * Sinb + Cosh * Sinp * Cosb, Cosh * Cosp, 0.0f,
-                                    0.0f,                              0.0f,        0.0f, 1.0f
-    };
-}
-
-void MakeUprightToObjectRotation(mat4* Mat, Rotation *Rot)
-{
-    real32 Cosh, Sinh;
-    real32 Cosp, Sinp;
-    real32 Cosb, Sinb;
-
-    real32 Heading = DEGREE_TO_RAD(Rot->Heading);
-    real32 Pitch = DEGREE_TO_RAD(Rot->Pitch);
-    real32 Bank = DEGREE_TO_RAD(Rot->Bank);
-
-    Sinh = sinf(Heading);
-    Cosh = cosf(Heading);
-
-    Sinp = sinf(Pitch);
-    Cosp = cosf(Pitch);
-
-    Sinb = sinf(Bank);
-    Cosb = cosf(Bank);
-
-    *Mat = {
-         Cosh * Cosb + Sinh * Sinp * Sinb,  Cosp * Sinb,  -Sinh * Cosb + Cosh * Sinp * Sinb, 0.0f,
-        -Cosh * Sinb + Sinh * Sinp * Cosb,  Cosp * Cosb,   Sinh * Sinb + Cosh * Sinp * Cosb, 0.0f,
-                              Sinh * Cosp,        -Sinp,                        Cosh * Cosp, 0.0f,
-                                     0.0f,         0.0f,                               0.0f, 1.0f,
-    };
-}
-
-void RotationToDirectionVecotrs(Rotation& Rot, vec3& Target, vec3& Right, vec3& Up)
-{
-    real32 Cosh, Sinh;
-    real32 Cosp, Sinp;
-    real32 Cosb, Sinb;
-
-    real32 Heading = DEGREE_TO_RAD(Rot.Heading);
-    real32 Pitch = DEGREE_TO_RAD(Rot.Pitch);
-    real32 Bank = DEGREE_TO_RAD(Rot.Bank);
-
-    Sinh = sinf(Heading);
-    Cosh = cosf(Heading);
-
-    Sinp = sinf(Pitch);
-    Cosp = cosf(Pitch);
-
-    Sinb = sinf(Bank);
-    Cosb = cosf(Bank);
-
-    Target = {
-        Sinh * Cosp,
-              -Sinp,
-        Cosh * Cosp,
-    };
-
-    Right = {
-        Cosh * Cosb + Sinh * Sinp * Sinb,
-                             Cosp * Sinb,
-       -Sinh * Cosb + Cosh * Sinp * Sinb
-    };
-
-    Up = {
-       -Cosh * Sinb + Sinh * Sinp * Cosb,
-                             Cosp * Cosb,
-        Sinh * Sinb + Cosh * Sinp * Cosb
-    };
-}
-
-void CreateUniformScale(real32 ScaleFactor, UniformScale *Result)
-{
-    Result->Scale = {
-           ScaleFactor,           0.0f,          0.0f, 0.0f,
-                  0.0f,    ScaleFactor,          0.0f, 0.0f,
-                  0.0f,          0.0f,    ScaleFactor, 0.0f,
-                  0.0f,          0.0f,           0.0f, 1.0f,
-    };
-}
-
-void CreateNonUniformScale(vec3 *ScaleFactor, NonUniformScale *Result)
-{
-    Result->Scale = {
-        ScaleFactor->x,           0.0f,          0.0f, 0.0f,
-                  0.0f, ScaleFactor->y,          0.0f, 0.0f,
-                  0.0f,          0.0f, ScaleFactor->z, 0.0f,
-                  0.0f,          0.0f,           0.0f, 1.0f,
-    };
-}
-
 void MakeScaleFromVector(vec3* ScaleFactor, mat4* Result)
 {
     *Result = {
@@ -897,7 +772,7 @@ void SetupDirectionalLight(DirectionalLight* Light, ShaderProgramsType ShaderTyp
     Rotation LightRotation = Light->Rotation;
 
     vec3 Target, Right, Up;
-    RotationToDirectionVecotrs(LightRotation, Target, Right, Up);
+    LightRotation.ToVec(Target, Up, Right);
 
     tglUniform3fv(VarStorage->Light.DirectionalLightDirectionLocation, 1, &Target[0]);
     tglUniform3fv(VarStorage->Light.DirectionalLightSpecLocations.ColorLocation, 1, &Light->Specification.Color[0]);
@@ -954,7 +829,7 @@ void SetupSpotLights(SpotLight* Lights, u32 LightAmount, ShaderProgramsType Shad
         Rotation LightRotation = Lights->Rotation;
 
         vec3 Target, Right, Up;
-        RotationToDirectionVecotrs(LightRotation, Target, Right, Up);
+        LightRotation.ToVec(Target, Up, Right);
 
         tglUniform3fv(SpotLightsVarLocations->DirectionLocation, 1, &Target[0]);
         tglUniform1f(SpotLightsVarLocations->CosCutoffAngleLocation, CurrentSpotLight->CosCutoffAngle);
@@ -2448,7 +2323,7 @@ static void SetupObjectRendering(GameContext* Ctx, FrameData* Data, WorldTransfo
     vec3    ObjectPosition;
 
     MakeTranslationFromVec(&ObjectTransform.Position, &ObjectTranslation);
-    MakeObjectToUprightRotation(&ObjectTransform.Rotation, &ObjectRotation);
+    ObjectTransform.Rotation.ObjectToUpright(ObjectRotation);
 
     if (Nesting.Parent) {
         DynamicSceneObject*             ParentObject    = Nesting.Parent;
@@ -2460,7 +2335,7 @@ static void SetupObjectRendering(GameContext* Ctx, FrameData* Data, WorldTransfo
         mat4 RootToWorldScale         = {};
 
         MakeTranslationFromVec(&ParentTransform.Position, &RootToWorldTranslation);
-        MakeObjectToUprightRotation(&ParentTransform.Rotation, &RootToWorldRotation);
+        ParentTransform.Rotation.ObjectToUpright(RootToWorldRotation);
         MakeScaleFromVector(&ParentTransform.Scale, &RootToWorldScale);
 
         MakeScaleFromVectorRelative(&ObjectTransform.Scale, &ParentTransform.Scale, &ObjectScale);
@@ -2500,7 +2375,7 @@ static void SetupObjects(AnimationSystem& AnimSys, WorldTransform& ObjectTransfo
     mat4  ObjectScale                         = {};
 
     MakeTranslationFromVec(&ObjectTransform.Position, &ObjectTranslation);
-    MakeObjectToUprightRotation(&ObjectTransform.Rotation, &ObjectRotation);
+    ObjectTransform.Rotation.ObjectToUpright(ObjectRotation);
 
     if (Nesting.Parent) {
         DynamicSceneObject*             ParentObject    = Nesting.Parent;
@@ -2512,7 +2387,7 @@ static void SetupObjects(AnimationSystem& AnimSys, WorldTransform& ObjectTransfo
         mat4 RootToWorldScale         = {};
 
         MakeTranslationFromVec(&ParentTransform.Position, &RootToWorldTranslation);
-        MakeObjectToUprightRotation(&ParentTransform.Rotation, &RootToWorldRotation);
+        ParentTransform.Rotation.ObjectToUpright(RootToWorldRotation);
         MakeScaleFromVector(&ParentTransform.Scale, &RootToWorldScale);
 
         MakeScaleFromVectorRelative(&ObjectTransform.Scale, &ParentTransform.Scale, &ObjectScale);
@@ -2620,7 +2495,7 @@ static void DrawStaticMesh(Platform *Platform, GameContext *Cntx, FrameData *Dat
         MeshComponent*  Comp                = &CurrentSceneObject->ObjMesh;
         WorldTransform* Transform           = &CurrentSceneObject->Transform;
 
-        Transform->Rotation.Heading += Cntx->RotationDelta;
+        Transform->Rotation.h += Cntx->RotationDelta;
 
         SetupObjectRendering(Cntx, Data, *Transform, VarStorage, CurrentSceneObject->Nesting, ShaderProgramsType::MeshShader);
 
@@ -2684,7 +2559,7 @@ static void PrecalculateObjects(GameContext* Cntx)
         WorldTransform& Transform   = CurrentSceneObject.Transform;
         ObjectNesting&  Nesting     = CurrentSceneObject.Nesting;
 
-        Transform.Rotation.Heading += Cntx->RotationDelta;
+        Transform.Rotation.h += Cntx->RotationDelta;
 
         SetupObjects(AnimSystem, Transform, Nesting, CurrentObjectTransforms);
     }
@@ -2695,7 +2570,7 @@ static void PrecalculateObjects(GameContext* Cntx)
 
     mat4 TerrainWorldTranslation, TerrainWorldRotation, TerrainWorldScale;
     MakeTranslationFromVec(&Terra.Transform.Position, &TerrainWorldTranslation);
-    MakeObjectToUprightRotation(&Terra.Transform.Rotation, &TerrainWorldRotation);
+    Terra.Transform.Rotation.ObjectToUpright(TerrainWorldRotation);
     MakeScaleFromVector(&Terra.Transform.Scale, &TerrainWorldScale);
 
     TerrainDataStorage.ObjectToWorldTranslation     = TerrainWorldTranslation;
@@ -2724,7 +2599,7 @@ static void ShadowPass(GameContext* Cntx)
     mat4 CameraOrthoProjection = MakeOrthoProjection(40.0f, -40.0f, 40.0f, -40.0f, 40.0f, -40.0f);
 
     mat4 CameraSpaceRotation, CameraSpaceTranslation;
-    MakeUprightToObjectRotation(&CameraSpaceRotation, &DirLight.Rotation);
+    DirLight.Rotation.UprightToObject(CameraSpaceRotation);
 
     vec3 CameraSpaceTranslationVector = { -15.0f, 0.0f, 25.0f };
     MakeInverseTranslation(&CameraSpaceTranslation, CameraSpaceTranslationVector.vec);
@@ -3095,23 +2970,23 @@ void Frame(Platform *Platform, GameContext *Cntx)
 
     mat4 PerspProjection = MakePerspProjection(60.0f, Platform->ScreenOpt.AspectRatio, 0.1f, 1500.0f);
 
-    Cntx->PlayerCamera.Transform.Rotation.Bank      = 0.0f;
-    Cntx->PlayerCamera.Transform.Rotation.Pitch     += RAD_TO_DEGREE(Platform->Input.MouseInput.Moution.y) * 0.5f;
-    Cntx->PlayerCamera.Transform.Rotation.Heading   += RAD_TO_DEGREE(Platform->Input.MouseInput.Moution.x) * 0.5f;
+    Cntx->PlayerCamera.Transform.Rotation.b = 0.0f;
+    Cntx->PlayerCamera.Transform.Rotation.p += RAD_TO_DEGREE(Platform->Input.MouseInput.Moution.y) * 0.5f;
+    Cntx->PlayerCamera.Transform.Rotation.h += RAD_TO_DEGREE(Platform->Input.MouseInput.Moution.x) * 0.5f;
 
     real32 ZTranslationMultiplyer = (real32)(Platform->Input.WButton.State + (-1 * Platform->Input.SButton.State)); // 1.0 if W Button -1.0 if S Button and 0 if W and S Button pressed together
     real32 XTranslationMultiplyer = (real32)(Platform->Input.DButton.State + (-1 * Platform->Input.AButton.State));
 
     vec3 Target, Right, Up;
     Rotation& PlayerCameraRotation = Cntx->PlayerCamera.Transform.Rotation;
-    RotationToDirectionVecotrs(PlayerCameraRotation, Target, Right, Up);
+    PlayerCameraRotation.ToVec(Target, Up, Right);
 
     Cntx->PlayerCamera.Transform.Position += (Target * ZTranslationMultiplyer * 0.1f) + (Right * XTranslationMultiplyer * 0.1f);
 
     mat4 CameraTranslation = MakeInverseTranslation(&Cntx->PlayerCamera.Transform.Position);
 
     mat4 CameraUprightToObjectRotation = {};
-    MakeUprightToObjectRotation(&CameraUprightToObjectRotation, &PlayerCameraRotation);
+    PlayerCameraRotation.UprightToObject(CameraUprightToObjectRotation);
 
     mat4 CameraTransformation = PerspProjection * CameraUprightToObjectRotation * CameraTranslation;
 
