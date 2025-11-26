@@ -43,14 +43,14 @@ inline void Rotation::ObjectToUpright(mat4& Result)
     real32 Pitch = DEGREE_TO_RAD(p);
     real32 Bank = DEGREE_TO_RAD(b);
 
-    Sinh = Sine(Heading);
-    Cosh = Cosine(Heading);
+    Sinh = Sin(Heading);
+    Cosh = Cos(Heading);
 
-    Sinp = Sine(Pitch);
-    Cosp = Cosine(Pitch);
+    Sinp = Sin(Pitch);
+    Cosp = Cos(Pitch);
 
-    Sinb = Sine(Bank);
-    Cosb = Cosine(Bank);
+    Sinb = Sin(Bank);
+    Cosb = Cos(Bank);
 
     Result = {
         Cosh * Cosb + Sinh * Sinp * Sinb, -Cosh * Sinb + Sinh * Sinp * Cosb, Sinh * Cosp, 0.0f,
@@ -70,14 +70,14 @@ inline void Rotation::UprightToObject(mat4& Result)
     real32 Pitch = DEGREE_TO_RAD(p);
     real32 Bank = DEGREE_TO_RAD(b);
 
-    Sinh = Sine(Heading);
-    Cosh = Cosine(Heading);
+    Sinh = Sin(Heading);
+    Cosh = Cos(Heading);
 
-    Sinp = Sine(Pitch);
-    Cosp = Cosine(Pitch);
+    Sinp = Sin(Pitch);
+    Cosp = Cos(Pitch);
 
-    Sinb = Sine(Bank);
-    Cosb = Cosine(Bank);
+    Sinb = Sin(Bank);
+    Cosb = Cos(Bank);
 
     Result = {
          Cosh * Cosb + Sinh * Sinp * Sinb,  Cosp * Sinb,  -Sinh * Cosb + Cosh * Sinp * Sinb, 0.0f,
@@ -97,14 +97,14 @@ inline void Rotation::ObjectToUpright(mat3& Result)
     real32 Pitch = DEGREE_TO_RAD(p);
     real32 Bank = DEGREE_TO_RAD(b);
 
-    Sinh = Sine(Heading);
-    Cosh = Cosine(Heading);
+    Sinh = Sin(Heading);
+    Cosh = Cos(Heading);
 
-    Sinp = Sine(Pitch);
-    Cosp = Cosine(Pitch);
+    Sinp = Sin(Pitch);
+    Cosp = Cos(Pitch);
 
-    Sinb = Sine(Bank);
-    Cosb = Cosine(Bank);
+    Sinb = Sin(Bank);
+    Cosb = Cos(Bank);
 
     Result = {
         Cosh * Cosb + Sinh * Sinp * Sinb, -Cosh * Sinb + Sinh * Sinp * Cosb, Sinh * Cosp,
@@ -123,14 +123,14 @@ inline void Rotation::UprightToObject(mat3& Result)
     real32 Pitch = DEGREE_TO_RAD(p);
     real32 Bank = DEGREE_TO_RAD(b);
 
-    Sinh = Sine(Heading);
-    Cosh = Cosine(Heading);
+    Sinh = Sin(Heading);
+    Cosh = Cos(Heading);
 
-    Sinp = Sine(Pitch);
-    Cosp = Cosine(Pitch);
+    Sinp = Sin(Pitch);
+    Cosp = Cos(Pitch);
 
-    Sinb = Sine(Bank);
-    Cosb = Cosine(Bank);
+    Sinb = Sin(Bank);
+    Cosb = Cos(Bank);
 
     Result = {
          Cosh * Cosb + Sinh * Sinp * Sinb,  Cosp * Sinb,  -Sinh * Cosb + Cosh * Sinp * Sinb,
@@ -149,14 +149,14 @@ inline void Rotation::ToVec(vec3& Target, vec3& Up, vec3& Right)
     real32 Pitch = DEGREE_TO_RAD(p);
     real32 Bank = DEGREE_TO_RAD(b);
 
-    Sinh = Sine(Heading);
-    Cosh = Cosine(Heading);
+    Sinh = Sin(Heading);
+    Cosh = Cos(Heading);
 
-    Sinp = Sine(Pitch);
-    Cosp = Cosine(Pitch);
+    Sinp = Sin(Pitch);
+    Cosp = Cos(Pitch);
 
-    Sinb = Sine(Bank);
-    Cosb = Cosine(Bank);
+    Sinb = Sin(Bank);
+    Cosb = Cos(Bank);
 
     Target = {
         Sinh * Cosp,

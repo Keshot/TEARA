@@ -22,59 +22,22 @@
 #define         SMALLEST_FLOAT         (1.1754944e-038f)
 #define                 SQUARE(Val)    ((Val) * (Val))
 
-inline real32 Tangens(real32 Rad)
-{
-    real32 Result = tanf(Rad);
-    return Result;
-}
+#define Tan(Rad)    tanf((Rad))
+#define Atan2(x, y) atan2f((x), (y))
+#define Sqrt(x)     sqrtf((x))
+#define Sin(Rad)    sinf((Rad))
+#define Cos(Rad)    cosf((Rad))
+#define Fabs(x)     fabsf((x))
+#define Atof(Str)   atof((Str))
+#define Atoi(Str)   atoi((Str))
+#define Floor(x)    floorf((x))
 
-inline real32 Sqrt(real32 Scalar) 
-{
-    real32 Result = Scalar > SMALLEST_FLOAT ? sqrtf(Scalar) : INFINITY;
-    return Result;
-}
-
-inline real32 Sine(real32 Rad)
-{
-    real32 Result = sinf(Rad);
-    return Result;
-}
-
-inline real32 Cosine(real32 Rad)
-{
-    real32 Result = cosf(Rad);
-    return Result;
-}
-
-inline void SineCosine(real32 Rad, real32 *SineVal, real32 *CosineVal)
-{
-    *SineVal = sinf(Rad);
-    *CosineVal = cosf(Rad);
-}
-
-inline real32 Fabs(real32 Scalar)
-{
-    real32 Result = fabsf(Scalar);
-    return Result;
-}
-
-inline real32 Atof(const char *String)
-{
-    real32 Result = atof(String);
-    return Result;
-}
-
-inline real32 Atoi(const char *String)
-{
-    real32 Result = atoi(String);
-    return Result;
-}
-
-inline real32 Floor(real32 Scalar)
-{
-    real32 Result = floorf(Scalar);
-    return Result;
-}
+enum Coordinates {
+    _x_ = 0,
+    _y_ = 1,
+    _z_ = 2,
+    _w_ = 3,
+};
 
 inline real32 Clampf(real32 Scalar, real32 Min, real32 Max)
 {

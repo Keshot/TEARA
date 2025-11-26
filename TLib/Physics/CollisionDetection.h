@@ -14,19 +14,19 @@ enum BoundingVolumeType {
 };
 
 struct AABB {
-    Vec3 Center;
-    Vec3 Extens; // Rx, Ry, Rz radius of halfwidth
+    vec3 Center;
+    vec3 Extens; // Rx, Ry, Rz radius of halfwidth
 };
 
 struct Sphere {
-    Vec3    Center;
+    vec3    Center;
     real32  Radius;
 };
 
 struct OBB {
-    Vec3 Center;
-    Vec3 Extens;
-    Vec3 Axis[3];
+    vec3 Center;
+    vec3 Extens;
+    vec3 Axis[3];
 };
 
 union BoundingVolumes {
@@ -40,7 +40,7 @@ struct BoundingVolume {
     BoundingVolumes     VolumeData;
 };
 
-void AABBRecalculate(Mat4x4 *Rotation, Vec3 *Translation, AABB *Original, AABB *Result)
+void AABBRecalculate(mat4 *Rotation, vec3 *Translation, AABB *Original, AABB *Result)
 {
     // NOTE (ismail): for now aabb center is always x = 0, y = 0, z = 0, fix it in future
     Result->Center.x = Translation->x;
@@ -76,8 +76,8 @@ bool32 AABBToAABBTestOverlap(AABB *A, AABB *B)
 
 bool32 SphereToAABBTestOverlap(AABB *A, Sphere *B)
 {
-    Vec3 DistanceVector = A->Center - B->Center;
-    real32 DistanceSquare = DotProduct(DistanceVector, DistanceVector);
+    vec3 DistanceVector = A->Center - B->Center;
+    real32 DistanceSquare = vec3::DotProduct(DistanceVector, DistanceVector);
 
     real32 RadiusSumX = A->Extens.x + B->Radius;
     real32 RadiusSumY = A->Extens.y + B->Radius;
@@ -98,8 +98,8 @@ bool32 SphereToAABBTestOverlap(AABB *A, Sphere *B)
 
 bool32 SphereToSphereTestOverlap(Sphere *A, Sphere *B)
 {
-    Vec3 DistanceVector = A->Center - B->Center;
-    real32 DistanceSquare = DotProduct(DistanceVector, DistanceVector);
+    vec3 DistanceVector = A->Center - B->Center;
+    real32 DistanceSquare = vec3::DotProduct(DistanceVector, DistanceVector);
 
     real32 RadiusSum = A->Radius + B->Radius;
     real32 RadiusSquare = SQUARE(RadiusSum);
@@ -116,17 +116,17 @@ bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
     // TODO (ismail): refactoring
     // TODO (ismail): optimization when we aligned any other three axis
 
-    Mat3x3 R, AbsR;
+    mat3 R, AbsR;
     real32 ProjT, MaxA, MaxB;
-    Vec3 EdgesCrossProduct;
-    Vec3 T = B->Center - A->Center;
+    vec3 EdgesCrossProduct;
+    vec3 T = B->Center - A->Center;
 
     // NOTE (ismail): compute Ax * Bx, Ax * By, Ax * Bz 
     //                        Ay * Bx, Ay * By, Ay * Bz => AT * B
     //                        Az * Bx, Az * By, Az * Bz
     for (i32 i = 0; i < 3; ++i) {
         for (i32 j = 0; j < 3; ++j) {
-            R[i][j] = DotProduct(A->Axis[i], B->Axis[j]);
+            R[i][j] = vec3::DotProduct(A->Axis[i], B->Axis[j]);
             AbsR[i][j] = Fabs(R[i][j]) + OBB_EPSILON;
         }
     }
@@ -139,7 +139,7 @@ bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
     //  L = Az
     // |T * Az| > Eaz + |Ebx * Bx * Az| + |Eby * By * Az| + |Ebz * Bz * Az|
     for (i32 i = 0; i < 3; ++i) {
-        ProjT = Fabs(DotProduct(T, A->Axis[i]));
+        ProjT = Fabs(vec3::DotProduct(T, A->Axis[i]));
         MaxA = A->Extens[i];
         MaxB = B->Extens[0] * AbsR[i][0] + B->Extens[1] * AbsR[i][1] + B->Extens[2] * AbsR[i][2];
 
@@ -156,7 +156,7 @@ bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
     //  L = Bz
     // |T * Bz| > Ebz + |Eax * Ax * Bz| + |Eay * Ay * Bz| + |Eaz * Az * Bz|
     for (i32 i = 0; i < 3; ++i) {
-        ProjT = Fabs(DotProduct(T, B->Axis[i]));
+        ProjT = Fabs(vec3::DotProduct(T, B->Axis[i]));
         MaxA = A->Extens[0] * AbsR[0][i] + A->Extens[1] * AbsR[1][i] + A->Extens[2] * AbsR[2][i];
         MaxB = B->Extens[i];
 
@@ -169,7 +169,7 @@ bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
 
     //  L = Ax X Bx
     // |T * (Ax X Bx)| > |-Eay * Bx * Az| + |Eaz * Bx * Ay| + |Eby * Ax * Bz| + |-Ebz * Ax * By|
-    ProjT = DotProduct(T, A->Axis[0].Cross(B->Axis[0]));
+    ProjT = vec3::DotProduct(T, A->Axis[0].Cross(B->Axis[0]));
     MaxA = A->Extens[1] * AbsR[2][0] + A->Extens[2] * AbsR[1][0];
     MaxB = B->Extens[1] * AbsR[0][2] + B->Extens[2] * AbsR[0][1];
     
@@ -179,7 +179,7 @@ bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
 
     //  L = Ax X By
     // |T * (Ax X By)| > |-Eay * By * Az| + |Eaz * By * Ay| + |-Ebx * Ax * Bz| + |Ebz * Ax * Bx|
-    ProjT = DotProduct(T, A->Axis[x].Cross(B->Axis[y]));
+    ProjT = vec3::DotProduct(T, A->Axis[x].Cross(B->Axis[y]));
     MaxA = A->Extens[y] * AbsR[z][y] + A->Extens[z] * AbsR[y][y];
     MaxB = B->Extens[x] * AbsR[x][z] + B->Extens[z] * AbsR[x][x];
     
@@ -189,7 +189,7 @@ bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
 
     //  L = Ax X Bz
     // |T * (Ax X Bz)| > |-Eay * Bz * Az| + |Eaz * Bz * Ay| + |Ebx * Ax * By| + |-Eby * Ax * Bx|
-    ProjT = DotProduct(T, A->Axis[x].Cross(B->Axis[z]));
+    ProjT = vec3::DotProduct(T, A->Axis[x].Cross(B->Axis[z]));
     MaxA = A->Extens[y] * AbsR[z][z] + A->Extens[z] * AbsR[y][z];
     MaxB = B->Extens[x] * AbsR[x][y] + B->Extens[y] * AbsR[x][x];
     
@@ -199,7 +199,7 @@ bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
 
     //  L = Ay X Bx
     // |T * (Ay X Bx)| > |Eax * Bx * Az| + |-Eaz * Bx * Ax| + |Eby * Ay * Bz| + |-Ebz * Ay * By|
-    ProjT = DotProduct(T, A->Axis[y].Cross(B->Axis[x]));
+    ProjT = vec3::DotProduct(T, A->Axis[y].Cross(B->Axis[x]));
     MaxA = A->Extens[x] * AbsR[z][x] + A->Extens[z] * AbsR[x][x];
     MaxB = B->Extens[y] * AbsR[y][z] + B->Extens[z] * AbsR[y][y];
     
@@ -209,7 +209,7 @@ bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
 
     // L = Ay X By
     // |T * (Ay X By)| > |Eax * By * Az| + |-Eaz * By * Ax| + |-Ebx * Ay * Bz| + |Ebz * Ay * Bx|
-    ProjT = DotProduct(T, A->Axis[y].Cross(B->Axis[y]));
+    ProjT = vec3::DotProduct(T, A->Axis[y].Cross(B->Axis[y]));
     MaxA = A->Extens[x] * AbsR[z][y] + A->Extens[z] * AbsR[x][y];
     MaxB = B->Extens[x] * AbsR[y][z] + B->Extens[z] * AbsR[y][y];
     
@@ -219,7 +219,7 @@ bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
 
     // L = Ay X Bz
     // |T * (Ay X Bz)| > |Eax * Bz * Az| + |-Eaz * Bz * Ax| + |Ebx * Ay * By| + |-Eby * Ay * Bx|
-    ProjT = DotProduct(T, A->Axis[y].Cross(B->Axis[z]));
+    ProjT = vec3::DotProduct(T, A->Axis[y].Cross(B->Axis[z]));
     MaxA = A->Extens[x] * AbsR[z][z] + A->Extens[z] * AbsR[x][z];
     MaxB = B->Extens[x] * AbsR[y][y] + B->Extens[y] * AbsR[y][x];
     
@@ -229,7 +229,7 @@ bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
 
     //  L = Az X Bx
     // |T * (Az X Bx)| > |-Eax * Bx * Ay| + |Eay * Bx * Ax| + |Eby * Az * Bz| + |-Ebz * Az * By|
-    ProjT = DotProduct(T, A->Axis[z].Cross(B->Axis[x]));
+    ProjT = vec3::DotProduct(T, A->Axis[z].Cross(B->Axis[x]));
     MaxA = A->Extens[x] * AbsR[y][x] + A->Extens[y] * AbsR[x][x];
     MaxB = B->Extens[y] * AbsR[z][z] + B->Extens[z] * AbsR[z][y];
     
@@ -239,7 +239,7 @@ bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
 
     //  L = Az X By
     // |T * (Az X By)| > |-Eax * By * Ay| + |Eay * By * Ax| + |-Ebx * Az * Bz| + |Ebz * Az * Bx|
-    ProjT = DotProduct(T, A->Axis[z].Cross(B->Axis[y]));
+    ProjT = vec3::DotProduct(T, A->Axis[z].Cross(B->Axis[y]));
     MaxA = A->Extens[x] * AbsR[y][y] + A->Extens[y] * AbsR[x][y];
     MaxB = B->Extens[x] * AbsR[z][z] + B->Extens[z] * AbsR[z][x];
     
@@ -249,7 +249,7 @@ bool32 OBBToOBBTestOverlap(OBB *A, OBB *B)
 
     //  L = Az X Bz
     // |T * (Az X Bz)| > |-Eax * Bz * Ay| + |Eay * Bz * Ax| + |Ebx * Az * By| + |-Eby * Az * Bx|
-    ProjT = DotProduct(T, A->Axis[z].Cross(B->Axis[z]));
+    ProjT = vec3::DotProduct(T, A->Axis[z].Cross(B->Axis[z]));
     MaxA = A->Extens[x] * AbsR[y][z] + A->Extens[y] * AbsR[x][z];
     MaxB = B->Extens[x] * AbsR[z][y] + B->Extens[y] * AbsR[z][x];
     

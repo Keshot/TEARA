@@ -933,19 +933,6 @@ void MakeInverseScalemat3(mat3 *Result, real32 *Scale)
     };
 }
 
-// NOTE(ismail): here rotation represented as quaternion
-void MakeInverseRotation(mat4 *Result, real32 *Rotation)
-{
-    Quat Rot = {
-        Rotation[_w_],
-        Rotation[_x_],
-        Rotation[_y_],
-        Rotation[_z_],
-    };
-
-    Rot.ToUprightToObjectMat4(Result);
-}
-
 void ReadJointNode(Skinning* Skin, cgltf_node* Joint, JointsInfo* ParentJoint, i32& Index, cgltf_node** RootJoints, i32 Len)
 {
     if (!Joint) {
@@ -957,7 +944,7 @@ void ReadJointNode(Skinning* Skin, cgltf_node* Joint, JointsInfo* ParentJoint, i
 
     cgltf_float*    Translation = Joint->translation;
     cgltf_float*    Scale       = Joint->scale;
-    cgltf_float*    Rotation    = Joint->rotation;
+    quat            Rotation    = Joint->rotation;
 
     mat4 InverseTranslationMatrix = {};
     mat4 InverseScaleMatrix       = {};
@@ -966,7 +953,7 @@ void ReadJointNode(Skinning* Skin, cgltf_node* Joint, JointsInfo* ParentJoint, i
 
     MakeInverseTranslation(&InverseTranslationMatrix, Translation);
     MakeInverseScale(&InverseScaleMatrix, Scale);
-    MakeInverseRotation(&InverseRotationMatrix, Rotation);
+    Rotation.UprightToObject(InverseRotationMatrix);
 
     i32 ChildreJointsAmount = (i32)Joint->children_count;
 
@@ -1088,7 +1075,7 @@ void glTFReadAnimations(cgltf_animation* Animations, i32 AnimationsCount, Animat
                             real32 Elem[4] = {};
                             cgltf_accessor_read_float(TransformAccessor, TransformIndex, Elem, sizeof(Elem));
 
-                            Quat *Rot = &Transform->Transforms[TransformIndex].Rotation;
+                            quat *Rot = &Transform->Transforms[TransformIndex].Rotation;
                             Rot->w = Elem[_w_];
                             Rot->x = Elem[_x_];
                             Rot->y = Elem[_y_];
@@ -1903,7 +1890,7 @@ struct KeyframePair {
 
 struct AnimationFrameTransform {
     vec3 Scale;
-    Quat Rotation;
+    quat Rotation;
     vec3 Translation;
 };
 
@@ -1975,12 +1962,12 @@ static inline void HandleTranslationInterpolation(AnimationTransformation& Trans
 
     real32 T = CalcT(CurrentTime, Keyframes[StartKeyframe], Keyframes[EndKeyframe]);
 
-    vec3 DeltaTranslation = Lerp(StartTranslation, EndTranslation, T);
+    vec3 DeltaTranslation = vec3::Lerp(StartTranslation, EndTranslation, T);
 
     FinalTranslation = StartTranslation + DeltaTranslation;
 }
 
-static inline void HandleRotationInterpolation(AnimationTransformation& Transform, real32 CurrentTime, Quat& FinalRotation)
+static inline void HandleRotationInterpolation(AnimationTransformation& Transform, real32 CurrentTime, quat& FinalRotation)
 {
     Assert(Transform.Valid);
 
@@ -2001,7 +1988,7 @@ static inline void HandleRotationInterpolation(AnimationTransformation& Transfor
 
     real32 T = CalcT(CurrentTime, Keyframes[StartKeyframe], Keyframes[EndKeyframe]);
 
-    FinalRotation = Quat::Slerp(StartKeyframeTramsformation.Rotation, EndKeyframeTramsformation.Rotation, T);
+    FinalRotation = quat::Slerp(StartKeyframeTramsformation.Rotation, EndKeyframeTramsformation.Rotation, T);
 }
 
 static inline void HandleScaleInterpolation(AnimationTransformation& Transform, real32 CurrentTime, vec3& FinalScale)
@@ -2027,7 +2014,7 @@ static inline void HandleScaleInterpolation(AnimationTransformation& Transform, 
 
     real32 T = CalcT(CurrentTime, Keyframes[StartKeyframe], Keyframes[EndKeyframe]);
 
-    vec3 DeltaScale = Lerp(StartScale, EndScale, T);
+    vec3 DeltaScale = vec3::Lerp(StartScale, EndScale, T);
 
     FinalScale = StartScale + DeltaScale;
 }
@@ -2064,18 +2051,18 @@ static void Calc1DTask(std::map<std::string, BoneIDs>& Bones, mat4* Matrices, An
         vec3& FirstAnimScale    = FrAnimCurrentFrameTransform.Scale;
         vec3& SecondAnimScale   = ScAnimCurrentFrameTransform.Scale;
 
-        vec3 DeltaScale     = Lerp(FirstAnimScale, SecondAnimScale, BlendingFactor);
+        vec3 DeltaScale     = vec3::Lerp(FirstAnimScale, SecondAnimScale, BlendingFactor);
         vec3 BlendedScale   = FirstAnimScale + DeltaScale;
 
-        Quat& FirstAnimRotation     = FrAnimCurrentFrameTransform.Rotation;
-        Quat& SecondAnimRotation    = ScAnimCurrentFrameTransform.Rotation;
+        quat& FirstAnimRotation     = FrAnimCurrentFrameTransform.Rotation;
+        quat& SecondAnimRotation    = ScAnimCurrentFrameTransform.Rotation;
 
-        Quat BlendedRotation = Quat::Slerp(FirstAnimRotation, SecondAnimRotation, BlendingFactor);
+        quat BlendedRotation = quat::Slerp(FirstAnimRotation, SecondAnimRotation, BlendingFactor);
 
         vec3& FirstAnimTranslation  = FrAnimCurrentFrameTransform.Translation;
         vec3& SecondAnimTranslation = ScAnimCurrentFrameTransform.Translation;
 
-        vec3 DeltaTranslation   = Lerp(FirstAnimTranslation, SecondAnimTranslation, BlendingFactor);
+        vec3 DeltaTranslation   = vec3::Lerp(FirstAnimTranslation, SecondAnimTranslation, BlendingFactor);
         vec3 BlendedTranslation = FirstAnimTranslation + DeltaTranslation;
 
         mat4 ScaleMat         = {};
@@ -2083,7 +2070,7 @@ static void Calc1DTask(std::map<std::string, BoneIDs>& Bones, mat4* Matrices, An
         mat4 TranslationMat   = {};
 
         MakeScaleFromVector(&BlendedScale, &ScaleMat);
-        BlendedRotation.ToMat4(&RotationMat);
+        BlendedRotation.Mat4(RotationMat);
         MakeTranslationFromVec(&BlendedTranslation, &TranslationMat);
 
         CurrentJointMat = TranslationMat * RotationMat * ScaleMat;
@@ -2119,7 +2106,7 @@ static void CalcClipTask(std::map<std::string, BoneIDs>& Bones, mat4* Matrices, 
         mat4 TranslationMat   = {};
 
         MakeScaleFromVector(&CurrentFrameTransform.Scale, &ScaleMat);
-        CurrentFrameTransform.Rotation.ToMat4(&RotationMat);
+        CurrentFrameTransform.Rotation.Mat4(RotationMat);
         MakeTranslationFromVec(&CurrentFrameTransform.Translation, &TranslationMat);
 
         CurrentJointMat = TranslationMat * RotationMat * ScaleMat;
