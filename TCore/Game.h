@@ -9,12 +9,7 @@
 #include "TLib/Utils/Types.h"
 #include "TLib/Utils/AssetsLoader.h"
 #include "TLib/Math/Vector.h"
-
-struct Rotation {
-    real32 Heading;
-    real32 Pitch;
-    real32 Bank;
-};
+#include "TLib/Math/Rotation.h"
 
 #define BATTLE_AREA_GRID_VERT_AMOUNT    100
 #define ONE_SQUARE_INDEX_AMOUNT         6
@@ -47,7 +42,7 @@ enum OpenGLBuffersLocation {
     GLLocationMax,
 };
 
-const Vec3 GRAVITY = { 0.0f, -10.0f, 0.0f };
+const vec3 GRAVITY = { 0.0f, -10.0f, 0.0f };
 
 enum _Local_Constants_ {
     _x_ = 0,
@@ -63,7 +58,7 @@ struct Quat {
         };
         struct {
             real32 w;
-            Vec3 n;
+            vec3 n;
         };
         real32 ValueHolder[4];   
     };
@@ -84,7 +79,7 @@ struct Quat {
     {
     }
 
-    Quat(real32 angle, const Vec3& n) {
+    Quat(real32 angle, const vec3& n) {
         real32 alpha = angle / 2.0f;
 
         w = cosf(alpha); 
@@ -122,7 +117,7 @@ struct Quat {
         return Result;
     }
 
-    Vec3 operator*(const Vec3 &b) const 
+    vec3 operator*(const vec3 &b) const 
     {
         // x = b.x(w^2 + x^2 - z^2 - y^2) + b.z(2*y*w + 2*z*x) + b.y(2*y*x - 2*z*w);
         // y = b.y(y^2 + w^2 - z^2 - x^2) + b.x(2*x*y + 2*w*z) + b.z(2*z*y - 2*x*w);
@@ -143,7 +138,7 @@ struct Quat {
         real32 zy2 = z * y * 2.0f;
         real32 xw2 = x * w * 2.0f;
 
-        Vec3 Result = {
+        vec3 Result = {
             b.x * (wwyy + xxzz)         + b.z * (yw2 + zx2)     + b.y * (yx2 - zw2),
             b.y * (yy + ww - zz - xx)   + b.x * (yx2 + zw2)     + b.z * (zy2 - xw2),
             b.z * (wwyy - xxzz)         + b.y * (zy2 + xw2)     + b.x * (zx2 - yw2)
@@ -152,7 +147,7 @@ struct Quat {
         return Result;
     }
 
-    void ToMat3(Mat3x3 *Result) const
+    void ToMat3(mat3 *Result) const
     {
         real32 x2 = x * 2.0f;
         real32 y2 = y * 2.0f;
@@ -178,7 +173,7 @@ struct Quat {
         };
     }
 
-    void ToMat4(Mat4x4 *Result) const
+    void ToMat4(mat4 *Result) const
     {
         real32 x2 = x * 2.0f;
         real32 y2 = y * 2.0f;
@@ -205,7 +200,7 @@ struct Quat {
         };
     }
 
-    void ToUprightToObjectMat4(Mat4x4 *Result) const
+    void ToUprightToObjectMat4(mat4 *Result) const
     {
         real32 x2 = x * 2.0f;
         real32 y2 = y * 2.0f;
@@ -283,9 +278,9 @@ struct Quat {
 };
 
 // From a to b with factor of t
-Vec3 Lerp(const Vec3 &a, const Vec3 &b, real32 t)
+vec3 Lerp(const vec3 &a, const vec3 &b, real32 t)
 {
-    Vec3 To = b - a;
+    vec3 To = b - a;
     return To * t;
 }
 
@@ -294,10 +289,10 @@ struct JointsInfo {
     JointsInfo* Parent;
     JointsInfo* Children[MAX_JOINT_CHILDREN_AMOUNT];
     i32         ChildrenAmount;
-    Vec3        DefaultTranslation;
-    Vec3        DefaultScale;
+    vec3        DefaultTranslation;
+    vec3        DefaultScale;
     Quat        DefaultRotation;
-    Mat4x4      InverseBindMatrix;
+    mat4      InverseBindMatrix;
 };
 
 struct BoneIDs {
@@ -330,9 +325,9 @@ union TransformationStorage {
 
     }
 
-    Vec3    Translation;
+    vec3    Translation;
     Quat    Rotation;
-    Vec3    Scale;
+    vec3    Scale;
 };
 
 enum PLayerAnimations {
@@ -368,9 +363,9 @@ struct AnimationsArray {
 };
 
 struct WorldTransform {
-    Vec3        Position;
+    vec3        Position;
     Rotation    Rotation;
-    Vec3        Scale;
+    vec3        Scale;
 };
 
 struct Camera {
@@ -467,14 +462,14 @@ struct ShaderProgram {
 };
 
 struct LightSpec {
-    Vec3    Color;
+    vec3    Color;
     real32  Intensity;
     real32  AmbientIntensity;
     real32  SpecularIntensity;
 };
 
 struct LightAttenuation {
-    Vec3        Position;
+    vec3        Position;
     real32      DisctanceMax;
     real32      DisctanceMin;
     real32      AttenuationFactor;
@@ -503,9 +498,9 @@ struct MeshMaterial {
     u32     TextureHandle;
     bool32  HaveSpecularExponent;
     u32     SpecularExponentMapTextureHandle;
-    Vec3    AmbientColor;
-    Vec3    DiffuseColor;
-    Vec3    SpecularColor;
+    vec3    AmbientColor;
+    vec3    DiffuseColor;
+    vec3    SpecularColor;
 };
 
 struct MeshComponentObjects {
@@ -524,7 +519,7 @@ struct SkeletalComponent {
 };
 
 struct SkinningMatricesStorage {
-    Mat4x4  Matrices[MAX_BONES];
+    mat4    Matrices[MAX_BONES];
     i32     Amount;
 };
 
@@ -592,8 +587,8 @@ public:
     }
 
     void Play(i32 CharId, i32 AnimTaskId, real32 x, real32 y, real32 dt);
-    Mat4x4& GetBoneLocation(i32 CharId, i32 BoneId);
-    Mat4x4& GetBoneLocation(i32 CharId, const std::string& BoneName);
+    mat4& GetBoneLocation(i32 CharId, i32 BoneId);
+    mat4& GetBoneLocation(i32 CharId, const std::string& BoneName);
     void ExportToRender(SkinningMatricesStorage& Result, i32 CharId);
 
 private:
@@ -643,9 +638,9 @@ struct DynamicSceneObject {
 };
 
 struct TerrainLoadFile {
-    Vec3    Vertices[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
-    Vec2    Textures[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
-    Vec3    Normals[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
+    vec3    Vertices[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
+    vec2    Textures[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
+    vec3    Normals[SQUARE(BATTLE_AREA_GRID_VERT_AMOUNT)];
     u32     Indices[TERRAIN_INDEX_AMOUNT];
     u32     VerticesAmount;
     u32     TexturesAmount;
@@ -654,9 +649,9 @@ struct TerrainLoadFile {
 };
 
 struct Terrain {
-    Vec3            AmbientColor;
-    Vec3            DiffuseColor;
-    Vec3            SpecularColor;
+    vec3            AmbientColor;
+    vec3            DiffuseColor;
+    vec3            SpecularColor;
     u32             BuffersHandler[GLLocationMax];
     u32             TextureHandle;
     u32             IndicesAmount;
@@ -672,8 +667,8 @@ struct ParticleSystem {
 
 struct Particle {
     WorldTransform  Transform;
-    Vec3            Velocity;
-    Vec3            Acceleration;
+    vec3            Velocity;
+    vec3            Acceleration;
     real32          Damping;
     real32          InverseMass;
 
@@ -688,7 +683,7 @@ struct Particle {
         // so check it for optimization if it will need
         real32 DampingEffect = powf(Damping, DeltaT);
 
-        Vec3 AccelerationTmp = Acceleration * DeltaT;
+        vec3 AccelerationTmp = Acceleration * DeltaT;
 
         Velocity += AccelerationTmp;
 
@@ -698,10 +693,10 @@ struct Particle {
 
 struct FrameDataStorage {
     SkinningMatricesStorage SkinFrameStorage;
-    Mat4x4                  ObjectToWorldTranslation;
-    Mat4x4                  ObjectGeneralTransformation;
-    Mat4x4                  ShadowPassObjectMatrices;
-    Vec3                    ObjectPosition;
+    mat4                    ObjectToWorldTranslation;
+    mat4                    ObjectGeneralTransformation;
+    mat4                    ShadowPassObjectMatrices;
+    vec3                    ObjectPosition;
 };
 
 struct FrameData {
@@ -710,9 +705,9 @@ struct FrameData {
     i32                 TestSceneObjectsAmount;
     FrameDataStorage    TestDynamocSceneObjectsFrameStorage[DYNAMIC_SCENE_OBJECTS_MAX];
     i32                 TestDynamocSceneObjectsAmount;
-    Mat4x4              ShadowPassCameraTransformation;
-    Mat4x4              CameraTransformation;
-    Vec3                CameraPosition;
+    mat4                ShadowPassCameraTransformation;
+    mat4                CameraTransformation;
+    vec3                CameraPosition;
 };
 
 struct GameContext {

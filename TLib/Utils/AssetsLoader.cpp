@@ -11,7 +11,7 @@ struct MeshCacheData {
     u32     TextureIndex[TEARA_MAXIMUM_NEIGHBOURS];
     u32     NormalIndex[TEARA_MAXIMUM_NEIGHBOURS];
     u32     RealIndex[TEARA_MAXIMUM_NEIGHBOURS];
-    Vec3    SmoothNormals;
+    vec3    SmoothNormals;
     u32     Amount;
 };
 
@@ -92,7 +92,7 @@ static inline void AddInCache(MeshCache *ThreadCache, u32 PosIndex, u32 TextureI
     ++CacheData->Amount;
 }
 
-static inline void AddNormalInCache(MeshCache *ThreadCache, u32 PosIndex, Vec3 *Normal)
+static inline void AddNormalInCache(MeshCache *ThreadCache, u32 PosIndex, vec3 *Normal)
 {
     Assert(ThreadCache->CacheSize > (PosIndex - 1));
 
@@ -126,9 +126,9 @@ Statuses LoadObjFile(const char *Path, ObjFile *File, ObjFileLoaderFlags Flags)
     u32     IndicesCount    = 0;
     u32     MeshIndex       = 0;
 
-    Vec3 *Pos       = File->Positions;
-    Vec3 *Normals   = File->Normals;
-    Vec2 *TexCoord  = File->TextureCoord;
+    vec3 *Pos       = File->Positions;
+    vec3 *Normals   = File->Normals;
+    vec2 *TexCoord  = File->TextureCoord;
     u32  *Indices   = File->Indices;
 
     fastObjMesh *LoadedMesh = fast_obj_read(Path);
@@ -205,22 +205,22 @@ Statuses LoadObjFile(const char *Path, ObjFile *File, ObjFileLoaderFlags Flags)
             }
             else {
                 Indices[IndicesCount]   = ElementsCount;
-                Pos[ElementsCount]      = *((Vec3*)LoadPos + PosIndex);
+                Pos[ElementsCount]      = *((vec3*)LoadPos + PosIndex);
     
                 if (NormalsIndex > 0) { // NOTE (ismail): quick fix but later i need make up something
                     if (Flags.GenerateSmoothNormals) {
                         MeshLoadCache.NormalsCache[ElementsCount] = PosIndex;
     
-                        Vec3 *Normal = ((Vec3*)LoadNormals + NormalsIndex);
+                        vec3 *Normal = ((vec3*)LoadNormals + NormalsIndex);
                         AddNormalInCache(&MeshLoadCache, PosIndex, Normal);
                     }
                     else {
-                        Normals[ElementsCount]  = *((Vec3*)LoadNormals + NormalsIndex);
+                        Normals[ElementsCount]  = *((vec3*)LoadNormals + NormalsIndex);
                     }
                 }
     
                 if (TextIndex > 0) { // NOTE (ismail): quick fix but later i need make up something
-                    TexCoord[ElementsCount] = *((Vec2*)LoadTexCoord + TextIndex);   
+                    TexCoord[ElementsCount] = *((vec2*)LoadTexCoord + TextIndex);   
                 }
     
                 AddInCache(&MeshLoadCache, PosIndex, TextIndex, NormalsIndex, ElementsCount);

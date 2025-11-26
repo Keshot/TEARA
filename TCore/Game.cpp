@@ -12,19 +12,19 @@
 ShaderProgram ShadersProgramsCache[ShaderProgramsTypeMax];
 
 struct Translation {
-    Mat4x4 Trans;
+    mat4 Trans;
 };
 
 struct UniformScale {
-    Mat4x4 Scale;
+    mat4 Scale;
 };
 
 struct NonUniformScale {
-    Mat4x4 Scale;
+    mat4 Scale;
 };
 
 // TODO(Ismail): correct for Gimbal Lock
-void MakeObjectToUprightRotation(Rotation *Rot, Mat4x4 *Mat)
+void MakeObjectToUprightRotation(Rotation *Rot, mat4 *Mat)
 {
     real32 Cosh, Sinh;
     real32 Cosp, Sinp;
@@ -51,7 +51,7 @@ void MakeObjectToUprightRotation(Rotation *Rot, Mat4x4 *Mat)
     };
 }
 
-void MakeUprightToObjectRotation(Mat4x4 *Mat, Rotation *Rot)
+void MakeUprightToObjectRotation(mat4* Mat, Rotation *Rot)
 {
     real32 Cosh, Sinh;
     real32 Cosp, Sinp;
@@ -78,33 +78,7 @@ void MakeUprightToObjectRotation(Mat4x4 *Mat, Rotation *Rot)
     };
 }
 
-void MakeUprightToObjectRotationMat3x3(Mat3x3 *Mat, Rotation *Rot)
-{
-    real32 Cosh, Sinh;
-    real32 Cosp, Sinp;
-    real32 Cosb, Sinb;
-
-    real32 Heading = DEGREE_TO_RAD(Rot->Heading);
-    real32 Pitch = DEGREE_TO_RAD(Rot->Pitch);
-    real32 Bank = DEGREE_TO_RAD(Rot->Bank);
-
-    Sinh = sinf(Heading);
-    Cosh = cosf(Heading);
-
-    Sinp = sinf(Pitch);
-    Cosp = cosf(Pitch);
-
-    Sinb = sinf(Bank);
-    Cosb = cosf(Bank);
-
-    *Mat = {
-         Cosh * Cosb + Sinh * Sinp * Sinb,  Cosp * Sinb,  -Sinh * Cosb + Cosh * Sinp * Sinb,
-        -Cosh * Sinb + Sinh * Sinp * Cosb,  Cosp * Cosb,   Sinh * Sinb + Cosh * Sinp * Cosb,
-                              Sinh * Cosp,        -Sinp,                        Cosh * Cosp,
-    };
-}
-
-void RotationToDirectionVecotrs(Rotation& Rot, Vec3& Target, Vec3& Right, Vec3& Up)
+void RotationToDirectionVecotrs(Rotation& Rot, vec3& Target, vec3& Right, vec3& Up)
 {
     real32 Cosh, Sinh;
     real32 Cosp, Sinp;
@@ -152,7 +126,7 @@ void CreateUniformScale(real32 ScaleFactor, UniformScale *Result)
     };
 }
 
-void CreateNonUniformScale(Vec3 *ScaleFactor, NonUniformScale *Result)
+void CreateNonUniformScale(vec3 *ScaleFactor, NonUniformScale *Result)
 {
     Result->Scale = {
         ScaleFactor->x,           0.0f,          0.0f, 0.0f,
@@ -162,7 +136,7 @@ void CreateNonUniformScale(Vec3 *ScaleFactor, NonUniformScale *Result)
     };
 }
 
-void MakeScaleFromVector(Vec3* ScaleFactor, Mat4x4* Result)
+void MakeScaleFromVector(vec3* ScaleFactor, mat4* Result)
 {
     *Result = {
         ScaleFactor->x,           0.0f,          0.0f, 0.0f,
@@ -172,7 +146,7 @@ void MakeScaleFromVector(Vec3* ScaleFactor, Mat4x4* Result)
     };
 }
 
-void MakeScaleFromVectorRelative(Vec3* ScaleFactor, Vec3* RelativeTo, Mat4x4* Result)
+void MakeScaleFromVectorRelative(vec3* ScaleFactor, vec3* RelativeTo, mat4* Result)
 {
     real32 x = 1.0f / RelativeTo->x;
     real32 y = 1.0f / RelativeTo->y;
@@ -186,7 +160,7 @@ void MakeScaleFromVectorRelative(Vec3* ScaleFactor, Vec3* RelativeTo, Mat4x4* Re
     };
 }
 
-void MakeTranslationFromVec(Vec3 *TranslationVec, Mat4x4 *TranslationMat)
+void MakeTranslationFromVec(vec3 *TranslationVec, mat4 *TranslationMat)
 {
     *TranslationMat = {
         1.0f,   0.0f,   0.0f, TranslationVec->x,
@@ -196,9 +170,9 @@ void MakeTranslationFromVec(Vec3 *TranslationVec, Mat4x4 *TranslationMat)
     };
 }
 
-inline Mat4x4 MakeInverseTranslation(Vec3 *Trans)
+inline mat4 MakeInverseTranslation(vec3 *Trans)
 {
-    Mat4x4 Result = {
+    mat4 Result = {
         1.0f,   0.0f,   0.0f, -Trans->x,
         0.0f,   1.0f,   0.0f, -Trans->y,
         0.0f,   0.0f,   1.0f, -Trans->z,
@@ -208,7 +182,7 @@ inline Mat4x4 MakeInverseTranslation(Vec3 *Trans)
     return Result;
 }
 
-static Mat4x4 MakePerspProjection(real32 FovInDegree, real32 AspectRatio, real32 NearZ, real32 FarZ)
+static mat4 MakePerspProjection(real32 FovInDegree, real32 AspectRatio, real32 NearZ, real32 FarZ)
 {
     real32 d = 1 / tanf(DEGREE_TO_RAD(FovInDegree / 2));
     
@@ -220,7 +194,7 @@ static Mat4x4 MakePerspProjection(real32 FovInDegree, real32 AspectRatio, real32
     real32 a = (-FarZ - NearZ) / ClipDistance;
     real32 b = (2 * NearZ * FarZ) / ClipDistance;
 
-    Mat4x4 Result = {
+    mat4 Result = {
            x, 0.0f, 0.0f, 0.0f,
         0.0f,    y, 0.0f, 0.0f,
         0.0f, 0.0f,    a,    b,
@@ -230,13 +204,13 @@ static Mat4x4 MakePerspProjection(real32 FovInDegree, real32 AspectRatio, real32
     return Result;
 }
 
-static Mat4x4 MakeOrthoProjection(real32 Right, real32 Left, real32 Top, real32 Bot, real32 Far, real32 Near)
+static mat4 MakeOrthoProjection(real32 Right, real32 Left, real32 Top, real32 Bot, real32 Far, real32 Near)
 {
     real32 XDen = Right - Left;
     real32 YDen = Top - Bot;
     real32 ZDen = Far - Near;
 
-    Mat4x4 Result = {
+    mat4 Result = {
         2.0f / XDen,        0.0f,        0.0f, (-Left - Right) / XDen,
                0.0f, 2.0f / YDen,        0.0f,    (-Bot - Top) / YDen,
                0.0f,        0.0f, 2.0f / ZDen,   (-Near - Far) / ZDen,
@@ -248,9 +222,9 @@ static Mat4x4 MakeOrthoProjection(real32 Right, real32 Left, real32 Top, real32 
 
 void GenerateTerrainMesh(TerrainLoadFile *ToLoad, real32 TextureScale, real32 Size, i32 VertexAmount)
 {
-    Vec3 *Vertices              = ToLoad->Vertices;
-    Vec2 *Textures              = ToLoad->Textures;
-    Vec3 *Normals               = ToLoad->Normals;
+    vec3 *Vertices              = ToLoad->Vertices;
+    vec2 *Textures              = ToLoad->Textures;
+    vec3 *Normals               = ToLoad->Normals;
     u32 *Indices                = ToLoad->Indices;
     i32 RowCubeAmount           = VertexAmount - 1;
     i32 TotalCubeAmount         = SQUARE(RowCubeAmount);
@@ -642,9 +616,9 @@ void LoadTerrain(Platform *Platform, Terrain *ToLoad, const char *TerrainTerxtur
 void AllocateDebugObjFile(ObjFile *File)
 {
     File->Meshes        = (Mesh*)   VirtualAlloc(0, sizeof(Mesh) *     10,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    File->Positions     = (Vec3*)   VirtualAlloc(0, sizeof(Vec3) * 140000,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    File->Normals       = (Vec3*)   VirtualAlloc(0, sizeof(Vec3) * 140000,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    File->TextureCoord  = (Vec2*)   VirtualAlloc(0, sizeof(Vec2) * 140000,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    File->Positions     = (vec3*)   VirtualAlloc(0, sizeof(vec3) * 140000,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    File->Normals       = (vec3*)   VirtualAlloc(0, sizeof(vec3) * 140000,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    File->TextureCoord  = (vec2*)   VirtualAlloc(0, sizeof(vec2) * 140000,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     File->Indices       = (u32*)    VirtualAlloc(0, sizeof(u32)  * 140000,   MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
@@ -756,7 +730,7 @@ void InitMeshComponent(Platform *Platform, MeshComponent *ToLoad, ObjFileLoaderF
 
 void InitParticleSystem(ParticleSystem *Sys)
 {
-    Vec3 ParticleSquareAppearance[4] {
+    vec3 ParticleSquareAppearance[4] {
         {  0.5f,  0.5f, 0.0f },
         {  0.5f, -0.5f, 0.0f },
         { -0.5f, -0.5f, 0.0f },
@@ -791,12 +765,12 @@ void InitParticleSystem(ParticleSystem *Sys)
 }
 
 struct AABBCollider {
-    Vec3    Center;
-    Vec3    Extens;
+    vec3    Center;
+    vec3    Extens;
 };
 
 struct ColliderDebugDraw {
-    Vec3    LinesColor;
+    vec3    LinesColor;
     u32     BuffersHandler[GLLocationMax];
 };
 
@@ -811,7 +785,7 @@ bool32 TestAABBIntersection(AABBCollider* A, AABBCollider* B)
 
 void InitColliderDebugDraw(AABBCollider *Collider, ColliderDebugDraw *DebugDraw)
 {
-    Vec3 ColliderDebugSquareAppearance[8] {
+    vec3 ColliderDebugSquareAppearance[8] {
         {  -0.5f,  -0.5f, -0.5f },
         {   0.5f,  -0.5f, -0.5f },
         {   0.5f,  -0.5f, -0.5f },
@@ -841,7 +815,7 @@ void InitColliderDebugDraw(AABBCollider *Collider, ColliderDebugDraw *DebugDraw)
 struct MeshLoaderNode {
     const char*         ObjName;
     ObjFileLoaderFlags  Flags;
-    Vec3                InitialScale;
+    vec3                InitialScale;
 };
 
 const MeshLoaderNode SceneObjectsName[] = {
@@ -922,7 +896,7 @@ void SetupDirectionalLight(DirectionalLight* Light, ShaderProgramsType ShaderTyp
 
     Rotation LightRotation = Light->Rotation;
 
-    Vec3 Target, Right, Up;
+    vec3 Target, Right, Up;
     RotationToDirectionVecotrs(LightRotation, Target, Right, Up);
 
     tglUniform3fv(VarStorage->Light.DirectionalLightDirectionLocation, 1, &Target[0]);
@@ -933,7 +907,7 @@ void SetupDirectionalLight(DirectionalLight* Light, ShaderProgramsType ShaderTyp
     tglUniform1f(VarStorage->Light.DirectionalLightSpecLocations.SpecularIntensityLocation, Light->Specification.SpecularIntensity);
 }
 
-void SetupPointLights(PointLight* Lights, u32 LightAmount, ShaderProgramsType ShaderType, Vec3* ObjectPosition)
+void SetupPointLights(PointLight* Lights, u32 LightAmount, ShaderProgramsType ShaderType, vec3* ObjectPosition)
 {
     ShaderProgramVariablesStorage *VarStorage = &ShadersProgramsCache[ShaderType].ProgramVarsStorage;
 
@@ -941,7 +915,7 @@ void SetupPointLights(PointLight* Lights, u32 LightAmount, ShaderProgramsType Sh
         PointLight* CurrentPointLight = &Lights[Index];
         ShaderProgramVariablesStorage::LightWork::PointLightLocations* PointLightsVarLocations = &VarStorage->Light.PointLightsLocations[Index];
 
-        Vec3 LightInObjectUprightPosition  = CurrentPointLight->Attenuation.Position - *ObjectPosition;
+        vec3 LightInObjectUprightPosition  = CurrentPointLight->Attenuation.Position - *ObjectPosition;
 
         tglUniform3fv(PointLightsVarLocations->AttenuationLocation.PositionLocation, 1, &LightInObjectUprightPosition[0]);
         tglUniform1f(PointLightsVarLocations->AttenuationLocation.DisctanceMaxLocation, CurrentPointLight->Attenuation.DisctanceMax);
@@ -957,7 +931,7 @@ void SetupPointLights(PointLight* Lights, u32 LightAmount, ShaderProgramsType Sh
     tglUniform1i(VarStorage->Light.PointLightsAmountLocation, LightAmount);
 }
 
-void SetupSpotLights(SpotLight* Lights, u32 LightAmount, ShaderProgramsType ShaderType, Vec3* ObjectPosition)
+void SetupSpotLights(SpotLight* Lights, u32 LightAmount, ShaderProgramsType ShaderType, vec3* ObjectPosition)
 {
     ShaderProgramVariablesStorage *VarStorage = &ShadersProgramsCache[ShaderType].ProgramVarsStorage;
 
@@ -965,7 +939,7 @@ void SetupSpotLights(SpotLight* Lights, u32 LightAmount, ShaderProgramsType Shad
         SpotLight* CurrentSpotLight = &Lights[Index];
         ShaderProgramVariablesStorage::LightWork::SpotLightLocations* SpotLightsVarLocations = &VarStorage->Light.SpotLightsLocations[Index];
 
-        Vec3 LightInObjectUprightPosition  = CurrentSpotLight->Attenuation.Position - *ObjectPosition;
+        vec3 LightInObjectUprightPosition  = CurrentSpotLight->Attenuation.Position - *ObjectPosition;
 
         tglUniform3fv(SpotLightsVarLocations->AttenuationLocation.PositionLocation, 1, &LightInObjectUprightPosition[0]);
         tglUniform1f(SpotLightsVarLocations->AttenuationLocation.DisctanceMaxLocation, CurrentSpotLight->Attenuation.DisctanceMax);
@@ -979,7 +953,7 @@ void SetupSpotLights(SpotLight* Lights, u32 LightAmount, ShaderProgramsType Shad
 
         Rotation LightRotation = Lights->Rotation;
 
-        Vec3 Target, Right, Up;
+        vec3 Target, Right, Up;
         RotationToDirectionVecotrs(LightRotation, Target, Right, Up);
 
         tglUniform3fv(SpotLightsVarLocations->DirectionLocation, 1, &Target[0]);
@@ -990,11 +964,11 @@ void SetupSpotLights(SpotLight* Lights, u32 LightAmount, ShaderProgramsType Shad
     tglUniform1i(VarStorage->Light.SpotLightsAmountLocation, LightAmount);
 }
 
-struct iVec4 {
+struct ivec4 {
     i32 x, y, z, w;
 };
 
-struct uVec4 {
+struct uvec4 {
     union {
         struct {
             u32 x, y, z, w;
@@ -1003,7 +977,7 @@ struct uVec4 {
     };
 };
 
-struct u8Vec4 {
+struct u8vec4 {
     union {
         struct {
             u8 x, y, z, w;
@@ -1012,7 +986,7 @@ struct u8Vec4 {
     };
 };
 
-inline void UfbxVec3Convert(ufbx_vec3 *From, Vec3 *To)
+inline void Ufbxvec3Convert(ufbx_vec3 *From, vec3 *To)
 {
     To->x = From->x;
     To->y = From->y;
@@ -1021,11 +995,11 @@ inline void UfbxVec3Convert(ufbx_vec3 *From, Vec3 *To)
 
 struct glTF2Primitives {
     Material    MeshMaterial;
-    Vec3*       Positions;
-    Vec3*       Normals;
-    Vec2*       TextureCoord;
-    Vec4*       BoneWeights;
-    iVec4*      BoneIds;
+    vec3*       Positions;
+    vec3*       Normals;
+    vec2*       TextureCoord;
+    vec4*       BoneWeights;
+    ivec4*      BoneIds;
     u32*        Indices;
     u32         PositionsCount;
     u32         NormalsCount;
@@ -1047,7 +1021,7 @@ struct glTF2File {
     i32                 MeshesAmount;
 };
 
-void MakeInverseTranslation(Mat4x4 *Result, real32 *Translation)
+void MakeInverseTranslation(mat4 *Result, real32 *Translation)
 {
     *Result = {
         1.0f, 0.0f, 0.0f, -Translation[_x_],
@@ -1057,7 +1031,7 @@ void MakeInverseTranslation(Mat4x4 *Result, real32 *Translation)
     };
 }
 
-void MakeInverseScale(Mat4x4 *Result, real32 *Scale)
+void MakeInverseScale(mat4 *Result, real32 *Scale)
 {
     real32 x = 1.0f / Scale[_x_];
     real32 y = 1.0f / Scale[_y_];
@@ -1071,7 +1045,7 @@ void MakeInverseScale(Mat4x4 *Result, real32 *Scale)
     };
 }
 
-void MakeInverseScaleMat3x3(Mat3x3 *Result, real32 *Scale)
+void MakeInverseScalemat3(mat3 *Result, real32 *Scale)
 {
     real32 x = 1.0f / Scale[_x_];
     real32 y = 1.0f / Scale[_y_];
@@ -1085,7 +1059,7 @@ void MakeInverseScaleMat3x3(Mat3x3 *Result, real32 *Scale)
 }
 
 // NOTE(ismail): here rotation represented as quaternion
-void MakeInverseRotation(Mat4x4 *Result, real32 *Rotation)
+void MakeInverseRotation(mat4 *Result, real32 *Rotation)
 {
     Quat Rot = {
         Rotation[_w_],
@@ -1110,10 +1084,10 @@ void ReadJointNode(Skinning* Skin, cgltf_node* Joint, JointsInfo* ParentJoint, i
     cgltf_float*    Scale       = Joint->scale;
     cgltf_float*    Rotation    = Joint->rotation;
 
-    Mat4x4 InverseTranslationMatrix = {};
-    Mat4x4 InverseScaleMatrix       = {};
-    Mat4x4 InverseRotationMatrix    = {};
-    Mat4x4 ParentMatrix             = !ParentJoint ? Identity4x4 : ParentJoint->InverseBindMatrix;
+    mat4 InverseTranslationMatrix = {};
+    mat4 InverseScaleMatrix       = {};
+    mat4 InverseRotationMatrix    = {};
+    mat4 ParentMatrix             = !ParentJoint ? Identity4 : ParentJoint->InverseBindMatrix;
 
     MakeInverseTranslation(&InverseTranslationMatrix, Translation);
     MakeInverseScale(&InverseScaleMatrix, Scale);
@@ -1223,8 +1197,8 @@ void glTFReadAnimations(cgltf_animation* Animations, i32 AnimationsCount, Animat
                         cgltf_accessor* TransformAccessor   = CurrentSampler->output;
                         i32             TransformsCount     = TransformAccessor->count;
                         for (i32 TransformIndex = 0; TransformIndex < TransformsCount; ++TransformIndex) {
-                            Vec3 Elem = {};
-                            cgltf_accessor_read_float(TransformAccessor, TransformIndex, Elem.ValueHolder, sizeof(Elem));
+                            vec3 Elem = {};
+                            cgltf_accessor_read_float(TransformAccessor, TransformIndex, Elem.vec, sizeof(Elem));
 
                             Transform->Transforms[TransformIndex].Translation = Elem;
                         }
@@ -1253,8 +1227,8 @@ void glTFReadAnimations(cgltf_animation* Animations, i32 AnimationsCount, Animat
                         cgltf_accessor* TransformAccessor   = CurrentSampler->output;
                         i32             TransformsCount     = TransformAccessor->count;
                         for (i32 TransformIndex = 0; TransformIndex < TransformsCount; ++TransformIndex) {
-                            Vec3 Elem = {};
-                            cgltf_accessor_read_float(TransformAccessor, TransformIndex, Elem.ValueHolder, sizeof(Elem));
+                            vec3 Elem = {};
+                            cgltf_accessor_read_float(TransformAccessor, TransformIndex, Elem.vec, sizeof(Elem));
 
                             Transform->Transforms[TransformIndex].Scale = Elem;
                         }
@@ -1360,11 +1334,11 @@ void glTFRead(const char *Path, Platform* Platform, glTF2File *FileOut)
             glTF2Primitives*    CurrentPrimitiveOut             = &MeshPrimitivesOut[PrimitiveIndex];
             Material*           CurrentPrimitiveMaterial        = &CurrentPrimitiveOut->MeshMaterial;
 
-            Vec3*    Positions      = (Vec3*)   Platform->AllocMem(sizeof(*CurrentPrimitiveOut->Positions)      * DEFAULT_BUFFER_SIZE);
-            Vec3*    Normals        = (Vec3*)   Platform->AllocMem(sizeof(*CurrentPrimitiveOut->Normals)        * DEFAULT_BUFFER_SIZE);
-            Vec2*    TextureCoords  = (Vec2*)   Platform->AllocMem(sizeof(*CurrentPrimitiveOut->TextureCoord)   * DEFAULT_BUFFER_SIZE);
-            iVec4*   BoneIDs        = (iVec4*)  Platform->AllocMem(sizeof(*CurrentPrimitiveOut->BoneIds)        * DEFAULT_BUFFER_SIZE);
-            Vec4*    BoneWeights    = (Vec4*)   Platform->AllocMem(sizeof(*CurrentPrimitiveOut->BoneWeights)    * DEFAULT_BUFFER_SIZE);
+            vec3*    Positions      = (vec3*)   Platform->AllocMem(sizeof(*CurrentPrimitiveOut->Positions)      * DEFAULT_BUFFER_SIZE);
+            vec3*    Normals        = (vec3*)   Platform->AllocMem(sizeof(*CurrentPrimitiveOut->Normals)        * DEFAULT_BUFFER_SIZE);
+            vec2*    TextureCoords  = (vec2*)   Platform->AllocMem(sizeof(*CurrentPrimitiveOut->TextureCoord)   * DEFAULT_BUFFER_SIZE);
+            ivec4*   BoneIDs        = (ivec4*)  Platform->AllocMem(sizeof(*CurrentPrimitiveOut->BoneIds)        * DEFAULT_BUFFER_SIZE);
+            vec4*    BoneWeights    = (vec4*)   Platform->AllocMem(sizeof(*CurrentPrimitiveOut->BoneWeights)    * DEFAULT_BUFFER_SIZE);
             u32*     Indices        = (u32*)    Platform->AllocMem(sizeof(*CurrentPrimitiveOut->Indices)        * DEFAULT_BUFFER_SIZE * 2);
 
             Assert(CurrentMeshPrimitive->type == cgltf_primitive_type::cgltf_primitive_type_triangles);
@@ -1650,16 +1624,16 @@ void FbxTestRead(Platform *Platform)
     ufbx_scene *FbxScene = ufbx_load_file(PathView, NULL, NULL);
 
     u32*    Indices         = (u32*)Platform->AllocMem(sizeof(*Indices) * MaxIndices);
-    Vec3*   Position        = (Vec3*)Platform->AllocMem(sizeof(*Position) * MaxPositions);
-    Vec3*   Normals         = (Vec3*)Platform->AllocMem(sizeof(*Normals) * MaxNormals);
-    Vec2*   TextureCoords   = (Vec2*)Platform->AllocMem(sizeof(*TextureCoords) * MaxTexures);
+    vec3*   Position        = (vec3*)Platform->AllocMem(sizeof(*Position) * MaxPositions);
+    vec3*   Normals         = (vec3*)Platform->AllocMem(sizeof(*Normals) * MaxNormals);
+    vec2*   TextureCoords   = (vec2*)Platform->AllocMem(sizeof(*TextureCoords) * MaxTexures);
 
     u32*    FlatIndices         = (u32*)Platform->AllocMem(sizeof(*Indices) * MaxIndices);
-    Vec3*   FlatPosition        = (Vec3*)Platform->AllocMem(sizeof(*Position) * MaxPositions);
-    Vec3*   FlatNormals         = (Vec3*)Platform->AllocMem(sizeof(*Normals) * MaxNormals);
-    Vec2*   FlatTextureCoords   = (Vec2*)Platform->AllocMem(sizeof(*TextureCoords) * MaxTexures);
-    iVec4*  FlatBoneIds         = (iVec4*)Platform->AllocMem(sizeof(*FlatBoneIds) * MaxTexures);
-    Vec4*   FlatBoneWeights     = (Vec4*)Platform->AllocMem(sizeof(*FlatBoneWeights) * MaxTexures);
+    vec3*   FlatPosition        = (vec3*)Platform->AllocMem(sizeof(*Position) * MaxPositions);
+    vec3*   FlatNormals         = (vec3*)Platform->AllocMem(sizeof(*Normals) * MaxNormals);
+    vec2*   FlatTextureCoords   = (vec2*)Platform->AllocMem(sizeof(*TextureCoords) * MaxTexures);
+    ivec4*  FlatBoneIds         = (ivec4*)Platform->AllocMem(sizeof(*FlatBoneIds) * MaxTexures);
+    vec4*   FlatBoneWeights     = (vec4*)Platform->AllocMem(sizeof(*FlatBoneWeights) * MaxTexures);
 
     u64 MaxMeshAmount = FbxScene->meshes.count;
 
@@ -1671,12 +1645,12 @@ void FbxTestRead(Platform *Platform)
             ufbx_vertex_vec3*   VertexPositon           = &Mesh->vertex_position;
             u32                 VertexPositionsIndex    = VertexPositon->indices[Index];
 
-            UfbxVec3Convert(&VertexPositon->values[VertexPositionsIndex], &FlatPosition[Index]);
+            Ufbxvec3Convert(&VertexPositon->values[VertexPositionsIndex], &FlatPosition[Index]);
 
             ufbx_vertex_vec3*   VertexNormal        = &Mesh->vertex_normal;
             u32                 VertexNormalIndex   = VertexNormal->indices[Index];
 
-            UfbxVec3Convert(&VertexNormal->values[VertexNormalIndex], &FlatNormals[Index]);
+            Ufbxvec3Convert(&VertexNormal->values[VertexNormalIndex], &FlatNormals[Index]);
 
             FlatIndices[Index] = Index;
         }
@@ -1741,10 +1715,10 @@ void AssimpFbxTestRead(Platform *Platform)
     i32 TotalBones      = 0;
 
     u32*    Indices     = (u32*)Platform->AllocMem(sizeof(*Indices)     * 100000);
-    Vec3*   Position    = (Vec3*)Platform->AllocMem(sizeof(*Position)   * 10000);
-    Vec3*   Normals     = (Vec3*)Platform->AllocMem(sizeof(*Normals)    * 10000);
-    iVec4*  BoneIDs     = (iVec4*)Platform->AllocMem(sizeof(*BoneIDs)   * 10000);
-    Vec4*   Weights     = (Vec4*)Platform->AllocMem(sizeof(*Weights)    * 10000);
+    vec3*   Position    = (vec3*)Platform->AllocMem(sizeof(*Position)   * 10000);
+    vec3*   Normals     = (vec3*)Platform->AllocMem(sizeof(*Normals)    * 10000);
+    ivec4*  BoneIDs     = (ivec4*)Platform->AllocMem(sizeof(*BoneIDs)   * 10000);
+    vec4*   Weights     = (vec4*)Platform->AllocMem(sizeof(*Weights)    * 10000);
 
     for (i32 MeshIndex = 0; MeshIndex < Scene->mNumMeshes; ++MeshIndex) {
         const aiMesh *Mesh = Scene->mMeshes[MeshIndex];
@@ -1820,13 +1794,13 @@ static void PrepareShadowPass(GameContext* Cntx)
 void PrepareFrame(Platform *Platform, GameContext *Cntx)
 {
     /*
-    Vec3 n = {
+    vec3 n = {
         0.0f,
         0.0f,
         1.0f
     };
 
-    Vec3 Pos = {
+    vec3 Pos = {
         1.0f,
         0.0f,
         0.0f
@@ -1835,17 +1809,17 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     Quat a(DEGREE_TO_RAD(45.0f), n);
     Quat b(DEGREE_TO_RAD(135.0f), n);
 
-    Mat3x3 TestMat = {};
+    mat3 TestMat = {};
 
-    Vec3 Test1 = b * Pos;
+    vec3 Test1 = b * Pos;
     b.ToMat3(&TestMat);
-    Vec3 Test2 = TestMat * Pos;
+    vec3 Test2 = TestMat * Pos;
 
     Quat DeltaQuat = Quat::Slerp(a, b, 1.0f);
 
     Quat RotQuat = (DeltaQuat * a);
 
-    Vec3 WooDooMagic = RotQuat * Pos;
+    vec3 WooDooMagic = RotQuat * Pos;
     */
 
     real32 TrianglePosition[] = {
@@ -1912,8 +1886,8 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
     SceneMainLight->Specification.SpecularIntensity     = 1.0f;
     SceneMainLight->Rotation                           = { 90.0f, 45.0f, 0.0f };
 
-    Vec3        PointLightPosition  = { 20.0, 12.0f, 10.0f };
-    Vec3        PointLightColor     = { 1.0f, 0.3f, 0.3f };
+    vec3        PointLightPosition  = { 20.0, 12.0f, 10.0f };
+    vec3        PointLightColor     = { 1.0f, 0.3f, 0.3f };
     PointLight* ScenePointLights    = Cntx->PointLights;
     for (i32 Index = 0; Index < MAX_POINTS_LIGHTS; ++Index) {
         PointLight* CurrentScenePointLight = &ScenePointLights[Index];
@@ -2053,9 +2027,9 @@ struct KeyframePair {
 };
 
 struct AnimationFrameTransform {
-    Vec3 Scale;
+    vec3 Scale;
     Quat Rotation;
-    Vec3 Translation;
+    vec3 Translation;
 };
 
 static AnimationFrame* FindFrame(AnimationFrame* Frames, i32 FramesAmount, i32 BoneID)
@@ -2103,7 +2077,7 @@ static KeyframePair FindKeyframe(real32* Keyframes, i32 KeyframesAmount, real32 
     Assert(false);
 }
 
-static inline void HandleTranslationInterpolation(AnimationTransformation& Transform, real32 CurrentTime, Vec3& FinalTranslation)
+static inline void HandleTranslationInterpolation(AnimationTransformation& Transform, real32 CurrentTime, vec3& FinalTranslation)
 {
     Assert(Transform.Valid);
 
@@ -2115,8 +2089,8 @@ static inline void HandleTranslationInterpolation(AnimationTransformation& Trans
     i32                     EndKeyframe                 = FoundKeyframes.EndKeyframe;
     TransformationStorage&  StartKeyframeTramsformation = Transform.Transforms[StartKeyframe];
     TransformationStorage&  EndKeyframeTramsformation   = Transform.Transforms[EndKeyframe];
-    Vec3&                   StartTranslation            = StartKeyframeTramsformation.Translation;
-    Vec3&                   EndTranslation              = EndKeyframeTramsformation.Translation;
+    vec3&                   StartTranslation            = StartKeyframeTramsformation.Translation;
+    vec3&                   EndTranslation              = EndKeyframeTramsformation.Translation;
 
     if (Transform.IType == InterpolationType::IStep) {
         FinalTranslation = StartTranslation;
@@ -2126,7 +2100,7 @@ static inline void HandleTranslationInterpolation(AnimationTransformation& Trans
 
     real32 T = CalcT(CurrentTime, Keyframes[StartKeyframe], Keyframes[EndKeyframe]);
 
-    Vec3 DeltaTranslation = Lerp(StartTranslation, EndTranslation, T);
+    vec3 DeltaTranslation = Lerp(StartTranslation, EndTranslation, T);
 
     FinalTranslation = StartTranslation + DeltaTranslation;
 }
@@ -2155,7 +2129,7 @@ static inline void HandleRotationInterpolation(AnimationTransformation& Transfor
     FinalRotation = Quat::Slerp(StartKeyframeTramsformation.Rotation, EndKeyframeTramsformation.Rotation, T);
 }
 
-static inline void HandleScaleInterpolation(AnimationTransformation& Transform, real32 CurrentTime, Vec3& FinalScale)
+static inline void HandleScaleInterpolation(AnimationTransformation& Transform, real32 CurrentTime, vec3& FinalScale)
 {
     Assert(Transform.Valid);
 
@@ -2167,8 +2141,8 @@ static inline void HandleScaleInterpolation(AnimationTransformation& Transform, 
     i32                     EndKeyframe                 = FoundKeyframes.EndKeyframe;
     TransformationStorage&  StartKeyframeTramsformation = Transform.Transforms[StartKeyframe];
     TransformationStorage&  EndKeyframeTramsformation   = Transform.Transforms[EndKeyframe];
-    Vec3&                   StartScale                  = StartKeyframeTramsformation.Scale;
-    Vec3&                   EndScale                    = EndKeyframeTramsformation.Scale;
+    vec3&                   StartScale                  = StartKeyframeTramsformation.Scale;
+    vec3&                   EndScale                    = EndKeyframeTramsformation.Scale;
 
     if (Transform.IType == InterpolationType::IStep) {
         FinalScale = StartKeyframeTramsformation.Scale;
@@ -2178,7 +2152,7 @@ static inline void HandleScaleInterpolation(AnimationTransformation& Transform, 
 
     real32 T = CalcT(CurrentTime, Keyframes[StartKeyframe], Keyframes[EndKeyframe]);
 
-    Vec3 DeltaScale = Lerp(StartScale, EndScale, T);
+    vec3 DeltaScale = Lerp(StartScale, EndScale, T);
 
     FinalScale = StartScale + DeltaScale;
 }
@@ -2195,15 +2169,15 @@ static inline void CalculateAnimationTransform(AnimationTransformation* FrameTra
     HandleTranslationInterpolation(TranslationTransform, CurrentTime, FinalTransform.Translation);
 }
 
-static void Calc1DTask(std::map<std::string, BoneIDs>& Bones, Mat4x4* Matrices, Animation& FrAnim, Animation& ScAnim, JointsInfo* Joint, Mat4x4* Parent, real32 FrAnimTime, real32 ScAnimTime, real32 BlendingFactor)
+static void Calc1DTask(std::map<std::string, BoneIDs>& Bones, mat4* Matrices, Animation& FrAnim, Animation& ScAnim, JointsInfo* Joint, mat4* Parent, real32 FrAnimTime, real32 ScAnimTime, real32 BlendingFactor)
 {
     BoneIDs& Ids = Bones[Joint->BoneName];
 
     AnimationFrame* FrAnimFrame = FindFrame(FrAnim.PerBonesFrame, FrAnim.FramesAmount, Ids.BoneID);
     AnimationFrame* ScAnimFrame = FindFrame(ScAnim.PerBonesFrame, ScAnim.FramesAmount, Ids.BoneID);
 
-    Mat4x4 ParentMat  = Parent ? *Parent : Identity4x4;
-    Mat4x4 CurrentJointMat  = Identity4x4;
+    mat4 ParentMat  = Parent ? *Parent : Identity4;
+    mat4 CurrentJointMat  = Identity4;
 
     if (FrAnimFrame && ScAnimFrame) {
         AnimationFrameTransform FrAnimCurrentFrameTransform;
@@ -2212,26 +2186,26 @@ static void Calc1DTask(std::map<std::string, BoneIDs>& Bones, Mat4x4* Matrices, 
         AnimationFrameTransform ScAnimCurrentFrameTransform;
         CalculateAnimationTransform(ScAnimFrame->Transformations, ScAnimTime, ScAnimCurrentFrameTransform);
 
-        Vec3& FirstAnimScale    = FrAnimCurrentFrameTransform.Scale;
-        Vec3& SecondAnimScale   = ScAnimCurrentFrameTransform.Scale;
+        vec3& FirstAnimScale    = FrAnimCurrentFrameTransform.Scale;
+        vec3& SecondAnimScale   = ScAnimCurrentFrameTransform.Scale;
 
-        Vec3 DeltaScale     = Lerp(FirstAnimScale, SecondAnimScale, BlendingFactor);
-        Vec3 BlendedScale   = FirstAnimScale + DeltaScale;
+        vec3 DeltaScale     = Lerp(FirstAnimScale, SecondAnimScale, BlendingFactor);
+        vec3 BlendedScale   = FirstAnimScale + DeltaScale;
 
         Quat& FirstAnimRotation     = FrAnimCurrentFrameTransform.Rotation;
         Quat& SecondAnimRotation    = ScAnimCurrentFrameTransform.Rotation;
 
         Quat BlendedRotation = Quat::Slerp(FirstAnimRotation, SecondAnimRotation, BlendingFactor);
 
-        Vec3& FirstAnimTranslation  = FrAnimCurrentFrameTransform.Translation;
-        Vec3& SecondAnimTranslation = ScAnimCurrentFrameTransform.Translation;
+        vec3& FirstAnimTranslation  = FrAnimCurrentFrameTransform.Translation;
+        vec3& SecondAnimTranslation = ScAnimCurrentFrameTransform.Translation;
 
-        Vec3 DeltaTranslation   = Lerp(FirstAnimTranslation, SecondAnimTranslation, BlendingFactor);
-        Vec3 BlendedTranslation = FirstAnimTranslation + DeltaTranslation;
+        vec3 DeltaTranslation   = Lerp(FirstAnimTranslation, SecondAnimTranslation, BlendingFactor);
+        vec3 BlendedTranslation = FirstAnimTranslation + DeltaTranslation;
 
-        Mat4x4 ScaleMat         = {};
-        Mat4x4 RotationMat      = {};
-        Mat4x4 TranslationMat   = {};
+        mat4 ScaleMat         = {};
+        mat4 RotationMat      = {};
+        mat4 TranslationMat   = {};
 
         MakeScaleFromVector(&BlendedScale, &ScaleMat);
         BlendedRotation.ToMat4(&RotationMat);
@@ -2243,7 +2217,7 @@ static void Calc1DTask(std::map<std::string, BoneIDs>& Bones, Mat4x4* Matrices, 
         Assert(false);
     }
 
-    Mat4x4 ExportMat = ParentMat * CurrentJointMat;
+    mat4 ExportMat = ParentMat * CurrentJointMat;
     Matrices[Ids.OriginalBoneID] = ExportMat;
 
     i32 ChildrenAmount = Joint->ChildrenAmount;
@@ -2252,22 +2226,22 @@ static void Calc1DTask(std::map<std::string, BoneIDs>& Bones, Mat4x4* Matrices, 
     }
 }
 
-static void CalcClipTask(std::map<std::string, BoneIDs>& Bones, Mat4x4* Matrices, Animation& Anim, JointsInfo* Joint, Mat4x4* ParentMat, real32 CurrentTime)
+static void CalcClipTask(std::map<std::string, BoneIDs>& Bones, mat4* Matrices, Animation& Anim, JointsInfo* Joint, mat4* ParentMat, real32 CurrentTime)
 {
     BoneIDs& Ids = Bones[Joint->BoneName];
 
     AnimationFrame* CurrentFrame = FindFrame(Anim.PerBonesFrame, Anim.FramesAmount, Ids.BoneID);
 
-    Mat4x4 Parent           = ParentMat ? *ParentMat : Identity4x4;
-    Mat4x4 CurrentJointMat  = Identity4x4;
+    mat4 Parent           = ParentMat ? *ParentMat : Identity4;
+    mat4 CurrentJointMat  = Identity4;
 
     if (CurrentFrame) {
         AnimationFrameTransform CurrentFrameTransform;
         CalculateAnimationTransform(CurrentFrame->Transformations, CurrentTime, CurrentFrameTransform);
 
-        Mat4x4 ScaleMat         = {};
-        Mat4x4 RotationMat      = {};
-        Mat4x4 TranslationMat   = {};
+        mat4 ScaleMat         = {};
+        mat4 RotationMat      = {};
+        mat4 TranslationMat   = {};
 
         MakeScaleFromVector(&CurrentFrameTransform.Scale, &ScaleMat);
         CurrentFrameTransform.Rotation.ToMat4(&RotationMat);
@@ -2279,7 +2253,7 @@ static void CalcClipTask(std::map<std::string, BoneIDs>& Bones, Mat4x4* Matrices
         Assert(false);
     }
 
-    Mat4x4 ExportMat = Parent * CurrentJointMat;
+    mat4 ExportMat = Parent * CurrentJointMat;
     Matrices[Ids.OriginalBoneID] = ExportMat;
 
     i32 ChildrenAmount = Joint->ChildrenAmount;
@@ -2410,8 +2384,8 @@ void AnimationSystem::ExportToRender(SkinningMatricesStorage& Result, i32 CharId
             i32                             JointsAmount    = Skin.JointsAmount;
             std::map<std::string, BoneIDs>& Bones           = Skin.Bones;
             
-            Mat4x4* OriginMatrices = CharAnimTrack.Matrices.Matrices;
-            Mat4x4* ResultMatrices = Result.Matrices;
+            mat4* OriginMatrices = CharAnimTrack.Matrices.Matrices;
+            mat4* ResultMatrices = Result.Matrices;
             
             Result.Amount = JointsAmount;
 
@@ -2420,8 +2394,8 @@ void AnimationSystem::ExportToRender(SkinningMatricesStorage& Result, i32 CharId
             
                 BoneIDs& Ids = Bones[JointInfo->BoneName];
             
-                const Mat4x4&   CurrentOriginMat = OriginMatrices[Ids.OriginalBoneID];
-                Mat4x4&         CurrentResultMat = ResultMatrices[Ids.OriginalBoneID];
+                const mat4&   CurrentOriginMat = OriginMatrices[Ids.OriginalBoneID];
+                mat4&         CurrentResultMat = ResultMatrices[Ids.OriginalBoneID];
             
                 CurrentResultMat = CurrentOriginMat * JointInfo->InverseBindMatrix;
             }
@@ -2434,7 +2408,7 @@ void AnimationSystem::ExportToRender(SkinningMatricesStorage& Result, i32 CharId
 
 }
 
-Mat4x4& AnimationSystem::GetBoneLocation(i32 CharId, const std::string& BoneName)
+mat4& AnimationSystem::GetBoneLocation(i32 CharId, const std::string& BoneName)
 {
     for (AnimationTrack& Track : CharactersAnimationTrack) {
         if (Track.Id == CharId) {
@@ -2449,7 +2423,7 @@ Mat4x4& AnimationSystem::GetBoneLocation(i32 CharId, const std::string& BoneName
     Assert(false); // NOTE(ismail): we must not reache this line
 }
 
-Mat4x4& AnimationSystem::GetBoneLocation(i32 CharId, i32 BoneId)
+mat4& AnimationSystem::GetBoneLocation(i32 CharId, i32 BoneId)
 {
     for (AnimationTrack& Track : CharactersAnimationTrack) {
         if (Track.Id == CharId) {
@@ -2465,13 +2439,13 @@ static void SetupObjectRendering(GameContext* Ctx, FrameData* Data, WorldTransfo
                                  ShaderProgramVariablesStorage*  VarStorage, ObjectNesting& Nesting, 
                                  ShaderProgramsType ShaderType)
 {
-    Mat4x4  ObjectToCameraSpaceTransformation   = {};
-    Mat4x4  ObjectGeneralTransformation         = {};
-    Mat4x4  ObjectTranslation                   = {};
-    Mat4x4  ObjectRotation                      = {};
-    Mat4x4  ObjectScale                         = {};
-    Vec3    CameraPosition                      = Ctx->PlayerCamera.Transform.Position;
-    Vec3    ObjectPosition;
+    mat4  ObjectToCameraSpaceTransformation   = {};
+    mat4  ObjectGeneralTransformation         = {};
+    mat4  ObjectTranslation                   = {};
+    mat4  ObjectRotation                      = {};
+    mat4  ObjectScale                         = {};
+    vec3    CameraPosition                      = Ctx->PlayerCamera.Transform.Position;
+    vec3    ObjectPosition;
 
     MakeTranslationFromVec(&ObjectTransform.Position, &ObjectTranslation);
     MakeObjectToUprightRotation(&ObjectTransform.Rotation, &ObjectRotation);
@@ -2481,9 +2455,9 @@ static void SetupObjectRendering(GameContext* Ctx, FrameData* Data, WorldTransfo
         WorldTransform&                 ParentTransform = ParentObject->Transform;
         std::map<std::string, BoneIDs>& Bones           = ParentObject->ObjMesh.Skelet.Skin.Bones;
 
-        Mat4x4 RootToWorldTranslation   = {};
-        Mat4x4 RootToWorldRotation      = {};
-        Mat4x4 RootToWorldScale         = {};
+        mat4 RootToWorldTranslation   = {};
+        mat4 RootToWorldRotation      = {};
+        mat4 RootToWorldScale         = {};
 
         MakeTranslationFromVec(&ParentTransform.Position, &RootToWorldTranslation);
         MakeObjectToUprightRotation(&ParentTransform.Rotation, &RootToWorldRotation);
@@ -2491,7 +2465,7 @@ static void SetupObjectRendering(GameContext* Ctx, FrameData* Data, WorldTransfo
 
         MakeScaleFromVectorRelative(&ObjectTransform.Scale, &ParentTransform.Scale, &ObjectScale);
 
-        Mat4x4& AttachedBoneMat = Ctx->AnimSystem.GetBoneLocation(0, Nesting.AttachedToBone);
+        mat4& AttachedBoneMat = Ctx->AnimSystem.GetBoneLocation(0, Nesting.AttachedToBone);
 
         ObjectToCameraSpaceTransformation   = Data->CameraTransformation * RootToWorldTranslation;
         ObjectGeneralTransformation         = RootToWorldRotation * RootToWorldScale * AttachedBoneMat * 
@@ -2511,7 +2485,7 @@ static void SetupObjectRendering(GameContext* Ctx, FrameData* Data, WorldTransfo
     tglUniformMatrix4fv(VarStorage->Transform.ObjectToCameraSpaceTransformationLocation, 1, GL_TRUE, ObjectToCameraSpaceTransformation[0]);
     tglUniformMatrix4fv(VarStorage->Transform.ObjectGeneralTransformationLocation, 1, GL_TRUE, ObjectGeneralTransformation[0]);
 
-    Vec3 CameraPositionInObjectUprightSpace = CameraPosition - ObjectPosition;
+    vec3 CameraPositionInObjectUprightSpace = CameraPosition - ObjectPosition;
     tglUniform3fv(VarStorage->Light.ViewerPositionLocation, 1, &CameraPositionInObjectUprightSpace[0]);
 
     SetupPointLights(Ctx->PointLights, MAX_POINTS_LIGHTS, ShaderType, &ObjectPosition);
@@ -2520,10 +2494,10 @@ static void SetupObjectRendering(GameContext* Ctx, FrameData* Data, WorldTransfo
 
 static void SetupObjects(AnimationSystem& AnimSys, WorldTransform& ObjectTransform, ObjectNesting& Nesting, FrameDataStorage& FrameStorage)
 {
-    Mat4x4  RootTransformation                  = Identity4x4; 
-    Mat4x4  ObjectTranslation                   = {};
-    Mat4x4  ObjectRotation                      = {};
-    Mat4x4  ObjectScale                         = {};
+    mat4  RootTransformation                  = Identity4; 
+    mat4  ObjectTranslation                   = {};
+    mat4  ObjectRotation                      = {};
+    mat4  ObjectScale                         = {};
 
     MakeTranslationFromVec(&ObjectTransform.Position, &ObjectTranslation);
     MakeObjectToUprightRotation(&ObjectTransform.Rotation, &ObjectRotation);
@@ -2533,9 +2507,9 @@ static void SetupObjects(AnimationSystem& AnimSys, WorldTransform& ObjectTransfo
         WorldTransform&                 ParentTransform = ParentObject->Transform;
         std::map<std::string, BoneIDs>& Bones           = ParentObject->ObjMesh.Skelet.Skin.Bones;
 
-        Mat4x4 RootToWorldTranslation   = {};
-        Mat4x4 RootToWorldRotation      = {};
-        Mat4x4 RootToWorldScale         = {};
+        mat4 RootToWorldTranslation   = {};
+        mat4 RootToWorldRotation      = {};
+        mat4 RootToWorldScale         = {};
 
         MakeTranslationFromVec(&ParentTransform.Position, &RootToWorldTranslation);
         MakeObjectToUprightRotation(&ParentTransform.Rotation, &RootToWorldRotation);
@@ -2543,7 +2517,7 @@ static void SetupObjects(AnimationSystem& AnimSys, WorldTransform& ObjectTransfo
 
         MakeScaleFromVectorRelative(&ObjectTransform.Scale, &ParentTransform.Scale, &ObjectScale);
 
-        Mat4x4& AttachedBoneMat = AnimSys.GetBoneLocation(0, Nesting.AttachedToBone);
+        mat4& AttachedBoneMat = AnimSys.GetBoneLocation(0, Nesting.AttachedToBone);
 
         FrameStorage.ObjectToWorldTranslation       = RootToWorldTranslation;
         FrameStorage.ObjectGeneralTransformation    = RootToWorldRotation * RootToWorldScale * AttachedBoneMat * 
@@ -2587,7 +2561,7 @@ static void DrawSkeletalMesh(Platform *Platform, GameContext *Cntx, FrameData *D
         Cntx->AnimSystem.ExportToRender(SkinMatrices, Index);
         ShaderProgramVariablesStorage::AnimationInfo&   AnimVar     = VarStorage->Animation;
         for (i32 MatrixIndex = 0; MatrixIndex < SkinMatrices.Amount; ++MatrixIndex) {
-            const Mat4x4* Mat = &SkinMatrices.Matrices[MatrixIndex];
+            const mat4* Mat = &SkinMatrices.Matrices[MatrixIndex];
 
             tglUniformMatrix4fv(AnimVar.AnimationMatricesLocation[MatrixIndex], 1, GL_TRUE, (*Mat)[0]);
         }
@@ -2719,7 +2693,7 @@ static void PrecalculateObjects(GameContext* Cntx)
     Terrain&            Terra               = Cntx->Terrain;
     FrameDataStorage&   TerrainDataStorage  = FrameData.TerrainFrameDataStorage;
 
-    Mat4x4 TerrainWorldTranslation, TerrainWorldRotation, TerrainWorldScale;
+    mat4 TerrainWorldTranslation, TerrainWorldRotation, TerrainWorldScale;
     MakeTranslationFromVec(&Terra.Transform.Position, &TerrainWorldTranslation);
     MakeObjectToUprightRotation(&Terra.Transform.Rotation, &TerrainWorldRotation);
     MakeScaleFromVector(&Terra.Transform.Scale, &TerrainWorldScale);
@@ -2747,15 +2721,15 @@ static void ShadowPass(GameContext* Cntx)
 
     DirectionalLight& DirLight = Cntx->LightSource;
 
-    Mat4x4 CameraOrthoProjection = MakeOrthoProjection(40.0f, -40.0f, 40.0f, -40.0f, 40.0f, -40.0f);
+    mat4 CameraOrthoProjection = MakeOrthoProjection(40.0f, -40.0f, 40.0f, -40.0f, 40.0f, -40.0f);
 
-    Mat4x4 CameraSpaceRotation, CameraSpaceTranslation;
+    mat4 CameraSpaceRotation, CameraSpaceTranslation;
     MakeUprightToObjectRotation(&CameraSpaceRotation, &DirLight.Rotation);
 
-    Vec3 CameraSpaceTranslationVector = { -15.0f, 0.0f, 25.0f };
-    MakeInverseTranslation(&CameraSpaceTranslation, CameraSpaceTranslationVector.ValueHolder);
+    vec3 CameraSpaceTranslationVector = { -15.0f, 0.0f, 25.0f };
+    MakeInverseTranslation(&CameraSpaceTranslation, CameraSpaceTranslationVector.vec);
 
-    Mat4x4 CameraTransformation                 = CameraOrthoProjection * CameraSpaceRotation * CameraSpaceTranslation;
+    mat4 CameraTransformation                 = CameraOrthoProjection * CameraSpaceRotation * CameraSpaceTranslation;
     FrameData.ShadowPassCameraTransformation    = CameraTransformation;
 
     tglUniform1i(VarStorage->Animation.HaveSkinMatricesLocation, 0);
@@ -2766,7 +2740,7 @@ static void ShadowPass(GameContext* Cntx)
         SceneObject*        CurrentSceneObject      = &Cntx->TestSceneObjects[Index];
         MeshComponent*      Comp                    = &CurrentSceneObject->ObjMesh;
 
-        Mat4x4 ObjectToCameraSpaceTransform = CameraTransformation * CurrentObjectTransforms.ObjectToWorldTranslation;
+        mat4 ObjectToCameraSpaceTransform = CameraTransformation * CurrentObjectTransforms.ObjectToWorldTranslation;
 
         CurrentObjectTransforms.ShadowPassObjectMatrices = ObjectToCameraSpaceTransform * CurrentObjectTransforms.ObjectGeneralTransformation;
 
@@ -2791,14 +2765,14 @@ static void ShadowPass(GameContext* Cntx)
         SkeletalMeshComponent*  Comp                    = &CurrentSceneObject->ObjMesh;
 
         i32     AmountSkinMatrices  = CurrentObjectTransforms.SkinFrameStorage.Amount;
-        Mat4x4* SkinMatrices        = CurrentObjectTransforms.SkinFrameStorage.Matrices;
+        mat4* SkinMatrices        = CurrentObjectTransforms.SkinFrameStorage.Matrices;
         for (i32 MatrixIndex = 0; MatrixIndex < AmountSkinMatrices; ++MatrixIndex) {
-            const Mat4x4& Mat = SkinMatrices[MatrixIndex];
+            const mat4& Mat = SkinMatrices[MatrixIndex];
 
             tglUniformMatrix4fv(SkinMatricesLocation[MatrixIndex], 1, GL_TRUE, Mat[0]);
         }
 
-        Mat4x4 ObjectToCameraSpaceTransform = CameraTransformation * CurrentObjectTransforms.ObjectToWorldTranslation;
+        mat4 ObjectToCameraSpaceTransform = CameraTransformation * CurrentObjectTransforms.ObjectToWorldTranslation;
         CurrentObjectTransforms.ShadowPassObjectMatrices = ObjectToCameraSpaceTransform * CurrentObjectTransforms.ObjectGeneralTransformation;
 
         tglUniformMatrix4fv(ShaderTransformsLocation.ObjectToCameraSpaceTransformationLocation, 1, GL_TRUE, ObjectToCameraSpaceTransform[0]);
@@ -2820,7 +2794,7 @@ static void ShadowPass(GameContext* Cntx)
 
     tglUniform1i(VarStorage->Animation.HaveSkinMatricesLocation, 0);
 
-    Mat4x4 ObjectToCameraSpaceTransform = CameraTransformation * TerrainDataStorage.ObjectToWorldTranslation;
+    mat4 ObjectToCameraSpaceTransform = CameraTransformation * TerrainDataStorage.ObjectToWorldTranslation;
     TerrainDataStorage.ShadowPassObjectMatrices = ObjectToCameraSpaceTransform * TerrainDataStorage.ObjectGeneralTransformation;
 
     tglUniformMatrix4fv(VarStorage->Transform.ObjectToCameraSpaceTransformationLocation, 1, GL_TRUE, ObjectToCameraSpaceTransform[0]);
@@ -2849,8 +2823,8 @@ static void DrawPass(Platform* Platform, GameContext* Cntx)
     PointLight*         PointLights     = Cntx->PointLights;
     SpotLight*          SpotLights      = Cntx->SpotLights;
 
-    Mat4x4& CameraTransformation    = FrameData.CameraTransformation;
-    Vec3&   CameraPosition          = FrameData.CameraPosition;
+    mat4& CameraTransformation    = FrameData.CameraTransformation;
+    vec3&   CameraPosition          = FrameData.CameraPosition;
 
     tglUseProgram(Shader->Program);
 
@@ -2870,23 +2844,23 @@ static void DrawPass(Platform* Platform, GameContext* Cntx)
         ShaderProgramVariablesStorage::AnimationInfo&   AnimVar                 = VarStorage->Animation;
         i32*                                            AnimMatricesLocations   = AnimVar.AnimationMatricesLocation;
         i32                                             SkinMatricesAmount      = Matrices.Amount;
-        const Mat4x4*                                   SkinMatrices            = Matrices.Matrices;
+        const mat4*                                   SkinMatrices            = Matrices.Matrices;
         for (i32 MatrixIndex = 0; MatrixIndex < SkinMatricesAmount; ++MatrixIndex) {
-            const Mat4x4& Mat = SkinMatrices[MatrixIndex];
+            const mat4& Mat = SkinMatrices[MatrixIndex];
 
             tglUniformMatrix4fv(AnimMatricesLocations[MatrixIndex], 1, GL_TRUE, Mat[0]);
         }
 
-        Mat4x4 ObjectToCameraSpaceTransformation = CameraTransformation * ObjectDataStorage.ObjectToWorldTranslation;
-        Mat4x4 ObjectToLightSpaceTransformation = FrameData.ShadowPassCameraTransformation * ObjectDataStorage.ObjectToWorldTranslation * ObjectDataStorage.ObjectGeneralTransformation;
+        mat4 ObjectToCameraSpaceTransformation = CameraTransformation * ObjectDataStorage.ObjectToWorldTranslation;
+        mat4 ObjectToLightSpaceTransformation = FrameData.ShadowPassCameraTransformation * ObjectDataStorage.ObjectToWorldTranslation * ObjectDataStorage.ObjectGeneralTransformation;
 
         tglUniformMatrix4fv(ObjTransform->ObjectToCameraSpaceTransformationLocation, 1, GL_TRUE, ObjectToCameraSpaceTransformation[0]);
         tglUniformMatrix4fv(ObjTransform->ObjectGeneralTransformationLocation, 1, GL_TRUE, ObjectDataStorage.ObjectGeneralTransformation[0]);
         tglUniformMatrix4fv(VarStorage->Shadow.ObjectToLightSpaceTransformationLocation, 1, GL_TRUE, ObjectToLightSpaceTransformation[0]);
 
-        Vec3& ObjectPosition = ObjectDataStorage.ObjectPosition;
+        vec3& ObjectPosition = ObjectDataStorage.ObjectPosition;
 
-        Vec3 CameraPositionInObjectUprightSpace = CameraPosition - ObjectPosition;
+        vec3 CameraPositionInObjectUprightSpace = CameraPosition - ObjectPosition;
         tglUniform3fv(VarStorage->Light.ViewerPositionLocation, 1, &CameraPositionInObjectUprightSpace[0]);
 
         SetupPointLights(PointLights, MAX_POINTS_LIGHTS, ShaderProgramsType::SkeletalMeshShader, &ObjectPosition);
@@ -2946,16 +2920,16 @@ static void DrawPass(Platform* Platform, GameContext* Cntx)
         FrameDataStorage&   ObjectDataStorage   = StaticObjectsFrameData[Index];
         WorldTransform&     Transform           = CurrentSceneObject.Transform;
 
-        Mat4x4 ObjectToCameraSpaceTransformation = CameraTransformation * ObjectDataStorage.ObjectToWorldTranslation;
-        Mat4x4 ObjectToLightSpaceTransformation = FrameData.ShadowPassCameraTransformation * ObjectDataStorage.ObjectToWorldTranslation * ObjectDataStorage.ObjectGeneralTransformation;
+        mat4 ObjectToCameraSpaceTransformation = CameraTransformation * ObjectDataStorage.ObjectToWorldTranslation;
+        mat4 ObjectToLightSpaceTransformation = FrameData.ShadowPassCameraTransformation * ObjectDataStorage.ObjectToWorldTranslation * ObjectDataStorage.ObjectGeneralTransformation;
 
         tglUniformMatrix4fv(ObjTransform->ObjectToCameraSpaceTransformationLocation, 1, GL_TRUE, ObjectToCameraSpaceTransformation[0]);
         tglUniformMatrix4fv(ObjTransform->ObjectGeneralTransformationLocation, 1, GL_TRUE, ObjectDataStorage.ObjectGeneralTransformation[0]);
         tglUniformMatrix4fv(VarStorage->Shadow.ObjectToLightSpaceTransformationLocation, 1, GL_TRUE, ObjectToLightSpaceTransformation[0]);
 
-        Vec3& ObjectPosition = ObjectDataStorage.ObjectPosition;
+        vec3& ObjectPosition = ObjectDataStorage.ObjectPosition;
 
-        Vec3 CameraPositionInObjectUprightSpace = CameraPosition - ObjectPosition;
+        vec3 CameraPositionInObjectUprightSpace = CameraPosition - ObjectPosition;
         tglUniform3fv(VarStorage->Light.ViewerPositionLocation, 1, &CameraPositionInObjectUprightSpace[0]);
 
         SetupPointLights(PointLights, MAX_POINTS_LIGHTS, ShaderProgramsType::MeshShader, &ObjectPosition);
@@ -3001,14 +2975,14 @@ static void DrawPass(Platform* Platform, GameContext* Cntx)
 
     tglBindVertexArray(Terra.BuffersHandler[OpenGLBuffersLocation::GLVertexArrayLocation]);
 
-    Mat4x4 ObjectToCameraSpaceTransform = CameraTransformation * TerrainDataStorage.ObjectToWorldTranslation;
-    Mat4x4 ObjectToLightSpaceTransformation = FrameData.ShadowPassCameraTransformation * TerrainDataStorage.ObjectToWorldTranslation * TerrainDataStorage.ObjectGeneralTransformation;
+    mat4 ObjectToCameraSpaceTransform = CameraTransformation * TerrainDataStorage.ObjectToWorldTranslation;
+    mat4 ObjectToLightSpaceTransformation = FrameData.ShadowPassCameraTransformation * TerrainDataStorage.ObjectToWorldTranslation * TerrainDataStorage.ObjectGeneralTransformation;
 
     tglUniformMatrix4fv(VarStorage->Transform.ObjectToCameraSpaceTransformationLocation, 1, GL_TRUE, ObjectToCameraSpaceTransform[0]);
     tglUniformMatrix4fv(VarStorage->Transform.ObjectGeneralTransformationLocation, 1, GL_TRUE, TerrainDataStorage.ObjectGeneralTransformation[0]);
     tglUniformMatrix4fv(VarStorage->Shadow.ObjectToLightSpaceTransformationLocation, 1, GL_TRUE, ObjectToLightSpaceTransformation[0]);
 
-    Vec3 ViewerPositionInTerrainUpright = CameraPosition - TerrainDataStorage.ObjectPosition;
+    vec3 ViewerPositionInTerrainUpright = CameraPosition - TerrainDataStorage.ObjectPosition;
     tglUniform3fv(VarStorage->Light.ViewerPositionLocation, 1, &ViewerPositionInTerrainUpright[0]);
 
     SetupPointLights(PointLights, MAX_POINTS_LIGHTS, ShaderProgramsType::MeshShader, &TerrainDataStorage.ObjectPosition);
@@ -3119,7 +3093,7 @@ void Frame(Platform *Platform, GameContext *Cntx)
 
     Cntx->AnimSystem.Play(0, 0, Cntx->BlendingX, 0.0f, Cntx->DeltaTimeSec);
 
-    Mat4x4 PerspProjection = MakePerspProjection(60.0f, Platform->ScreenOpt.AspectRatio, 0.1f, 1500.0f);
+    mat4 PerspProjection = MakePerspProjection(60.0f, Platform->ScreenOpt.AspectRatio, 0.1f, 1500.0f);
 
     Cntx->PlayerCamera.Transform.Rotation.Bank      = 0.0f;
     Cntx->PlayerCamera.Transform.Rotation.Pitch     += RAD_TO_DEGREE(Platform->Input.MouseInput.Moution.y) * 0.5f;
@@ -3128,18 +3102,18 @@ void Frame(Platform *Platform, GameContext *Cntx)
     real32 ZTranslationMultiplyer = (real32)(Platform->Input.WButton.State + (-1 * Platform->Input.SButton.State)); // 1.0 if W Button -1.0 if S Button and 0 if W and S Button pressed together
     real32 XTranslationMultiplyer = (real32)(Platform->Input.DButton.State + (-1 * Platform->Input.AButton.State));
 
-    Vec3 Target, Right, Up;
+    vec3 Target, Right, Up;
     Rotation& PlayerCameraRotation = Cntx->PlayerCamera.Transform.Rotation;
     RotationToDirectionVecotrs(PlayerCameraRotation, Target, Right, Up);
 
     Cntx->PlayerCamera.Transform.Position += (Target * ZTranslationMultiplyer * 0.1f) + (Right * XTranslationMultiplyer * 0.1f);
 
-    Mat4x4 CameraTranslation = MakeInverseTranslation(&Cntx->PlayerCamera.Transform.Position);
+    mat4 CameraTranslation = MakeInverseTranslation(&Cntx->PlayerCamera.Transform.Position);
 
-    Mat4x4 CameraUprightToObjectRotation = {};
+    mat4 CameraUprightToObjectRotation = {};
     MakeUprightToObjectRotation(&CameraUprightToObjectRotation, &PlayerCameraRotation);
 
-    Mat4x4 CameraTransformation = PerspProjection * CameraUprightToObjectRotation * CameraTranslation;
+    mat4 CameraTransformation = PerspProjection * CameraUprightToObjectRotation * CameraTranslation;
 
     FrameData.CameraTransformation  = CameraTransformation;
     FrameData.CameraPosition        = Cntx->PlayerCamera.Transform.Position;
@@ -3182,17 +3156,17 @@ void Frame(Platform *Platform, GameContext *Cntx)
 
             CurrentParticle->Integrate(Cntx->DeltaTimeSec);
 
-            Mat4x4 ObjectToWorldTranslation = {};
+            mat4 ObjectToWorldTranslation = {};
             MakeTranslationFromVec(&Transform->Position, &ObjectToWorldTranslation);
 
-            Mat4x4 ObjectToWorlRotation = {};
+            mat4 ObjectToWorlRotation = {};
             MakeObjectToUprightRotation(&Transform->Rotation, &ObjectToWorlRotation);
 
-            Mat4x4 ObjectToWorldScale = {};
+            mat4 ObjectToWorldScale = {};
             MakeScaleFromVector(&Transform->Scale, &ObjectToWorldScale);
 
-            Mat4x4 ObjectToWorldTransformation = CameraTransformation * ObjectToWorldTranslation;
-            Mat4x4 ObjectToWorldScaleAndRotate = ObjectToWorlRotation * ObjectToWorldScale;
+            mat4 ObjectToWorldTransformation = CameraTransformation * ObjectToWorldTranslation;
+            mat4 ObjectToWorldScaleAndRotate = ObjectToWorlRotation * ObjectToWorldScale;
 
             tglUniformMatrix4fv(VarStorage->Transform.ObjectToCameraSpaceTransformationLocation, 1, GL_TRUE, ObjectToWorldTransformation[0]);
             tglUniformMatrix4fv(VarStorage->Transform.ObjectGeneralTransformationLocation, 1, GL_TRUE, ObjectToWorldScaleAndRotate[0]);

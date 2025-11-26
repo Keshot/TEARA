@@ -33,7 +33,7 @@ struct Key {
 };
 
 struct Mouse {
-    Vec2    Moution;
+    vec2    Moution;
     real32  Sensitive;
     real32  NormalizedWidth;
     real32  NormalizedHeight;

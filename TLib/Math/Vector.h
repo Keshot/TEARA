@@ -1,326 +1,465 @@
-#ifndef _TEARA_LIB_MATH_VECTOR_H_
-#define _TEARA_LIB_MATH_VECTOR_H_
+#ifndef _TEARA_MATH_VECTOR_H_
+#define _TEARA_MATH_VECTOR_H_
 
-#include "TLib/Math/Math.h"
-
-#define VECTOR_EPSILON 0.001f
+#include "Math.h"
 
 // TODO(ismail): convert all to SIMD
-// TODO(ismail): remove all const things?
-// TODO(ismail): reorder code first definition then implementation?
-// TODO(ismail): use here my int types
+// TODO(ismail): add tests
 
-// Vector2D
+#define VEC_EPS (1e-12f)
 
-struct Vec2 {
+struct vec2 {
+    real32& operator[](i32 indx);
+    vec2 operator-() const;
+    vec2 operator*(real32 Scalar) const;
+    vec2& operator*=(real32 Scalar);
+    vec2 operator+(const vec2 &Other) const;
+    vec2& operator+=(const vec2 &Other);
+    vec2 operator-(const vec2 &Other) const;
+    vec2& operator-=(const vec2 &Other);
+    real32 Dot(const vec2 &Other) const;
+    real32 Length() const;
+    void Normalize();
+
+    static real32 Distance(const vec2 &a, const vec2 &b);
+    static vec2 Lerp(const vec2 &a, const vec2 &b, real32 t);
+
     union {
         struct {
             real32 x, y;
         };
-        real32 ValueHolder[2];   
+        real32 vec[2];   
     };
-
-    inline real32& operator[](i32 indx) {
-        // TODO(ismail): may be some assert for check overflow?
-
-        real32& Result = ValueHolder[indx];
-
-        return Result;
-    }
-
-    inline Vec2 operator-() {
-        Vec2 Result = { -x, -y };
-
-        return Result;
-    }
-
-    inline Vec2 operator*(real32 Scalar) {
-        Vec2 Result = { x * Scalar, y * Scalar };
-
-        return Result;
-    }
-
-    inline Vec2& operator*=(real32 Scalar) {
-        x *= Scalar;
-        y *= Scalar;
-
-        return *this;
-    }
-
-    inline Vec2 operator+(const Vec2 &Other) {
-        Vec2 Result = { x + Other.x, y + Other.y };
-
-        return Result;
-    }
-
-    inline Vec2& operator+=(const Vec2 &Other) {
-        x += Other.x;
-        y += Other.y;
-
-        return *this;
-    }
-
-    inline Vec2 operator-(const Vec2 &Other) const {
-        Vec2 Result = { x - Other.x, y - Other.y };
-
-        return Result;
-    }
-
-    inline Vec2& operator-=(const Vec2 &Other) {
-        x -= Other.x;
-        y -= Other.y;
-
-        return *this;
-    }
-
-    inline real32 Dot(const Vec2 &Other) {
-        real32 Result = x * Other.x + y * Other.y;
-
-        return Result;
-    }
-
-    inline real32 Length() {
-        return Sqrt(x * x + y * y);
-    }
-
-    inline void Normalize() {
-        real32 InverseLength = 1 / ( Sqrt( x * x + y * y ) );
-
-        x *= InverseLength;
-        y *= InverseLength;
-    }
 };
 
-inline real32 Distance(const Vec2 &a, const Vec2 &b) {
+inline real32& vec2::operator[](i32 indx) 
+{
+    Assert(indx < (sizeof(vec) / sizeof(*vec)));
+
+    real32& Result = vec[indx];
+
+    return Result;
+}
+
+inline vec2 vec2::operator-() const 
+{
+    vec2 Result = { -x, -y };
+
+    return Result;
+}
+
+inline vec2 vec2::operator*(real32 Scalar) const
+{
+    vec2 Result = { x * Scalar, y * Scalar };
+    return Result;
+}
+
+inline vec2& vec2::operator*=(real32 Scalar) 
+{
+    x *= Scalar;
+    y *= Scalar;
+
+    return *this;
+}
+
+inline vec2 vec2::operator+(const vec2 &Other) const 
+{
+    vec2 Result = { x + Other.x, y + Other.y };
+
+    return Result;
+}
+
+inline vec2& vec2::operator+=(const vec2 &Other) 
+{
+    x += Other.x;
+    y += Other.y;
+
+    return *this;
+}
+
+inline vec2 vec2::operator-(const vec2 &Other) const 
+{
+    vec2 Result = { x - Other.x, y - Other.y };
+
+    return Result;
+}
+
+inline vec2& vec2::operator-=(const vec2 &Other) 
+{
+    x -= Other.x;
+    y -= Other.y;
+
+    return *this;
+}
+
+inline real32 vec2::Dot(const vec2 &Other) const
+{
+    real32 Result = x * Other.x + y * Other.y;
+
+    return Result;
+}
+
+inline real32 vec2::Length() const
+{
+    real32 LenSqr = SQUARE(x) + SQUARE(y);
+
+    return Sqrt(LenSqr);
+}
+
+inline void vec2::Normalize() 
+{
+    real32 Len = Length();
+
+    if (Len < VEC_EPS) {
+        x = y = 0.0f;
+
+        return;
+    }
+
+    real32 InverseLength = 1.0f / ( Len );
+
+    x *= InverseLength;
+    y *= InverseLength;
+}
+
+inline real32 vec2::Distance(const vec2 &a, const vec2 &b) 
+{
     real32 Result = (a - b).Length();
 
     return Result;
 }
 
-// Vector3D
+inline vec2 vec2::Lerp(const vec2 &a, const vec2 &b, real32 t)
+{
+    vec2 To = b - a;
+    return To * t;
+}
 
-struct Vec3 {
+struct vec3 {
+    real32& operator[](i32 indx);
+    const real32& operator[](i32 indx) const;
+    vec3 operator-() const;
+    vec3 operator*(real32 Scalar) const;
+    vec3& operator*=(real32 Scalar);
+    vec3 operator+(const vec3 &Other) const;
+    vec3& operator+=(const vec3 &Other);
+    vec3 operator-(const vec3 &Other) const;
+    vec3& operator-=(const vec3 &Other);
+    real32 Dot(const vec3 &Other) const;
+    vec3 Cross(const vec3 &Other) const;
+    real32 Length() const;
+    void Normalize();
+    real32* Data();
+
+    static real32 Distance(const vec3 &a, const vec3 &b);
+    static vec3 Normalize(const vec3 &Other);
+    static real32 DotProduct(const vec3 &A, const vec3 &B);
+    static vec3 Lerp(const vec3 &a, const vec3 &b, real32 t);
+
     union {
         struct {
             real32 x, y, z;
         };
-        real32 ValueHolder[3];   
+        real32 vec[3];
     };
-
-    inline real32& operator[](int indx){
-        // TODO(ismail): may be some assert for check overflow?
-
-        real32& Result = ValueHolder[indx];
-
-        return Result;
-    }
-
-    inline const real32& operator[](int indx) const {
-        // TODO(ismail): may be some assert for check overflow?
-
-        const real32& Result = ValueHolder[indx];
-
-        return Result;
-    }
-
-    inline Vec3 operator-() {
-        Vec3 Result = { -x, -y, -z };
-
-        return Result;
-    }
-
-    inline Vec3 operator*(real32 Scalar) const {
-        Vec3 Result = { x * Scalar, y * Scalar, z * Scalar };
-
-        return Result;
-    }
-
-    inline Vec3& operator*=(real32 Scalar) {
-        x *= Scalar;
-        y *= Scalar;
-        z *= Scalar;
-
-        return *this;
-    }
-
-    inline Vec3 operator+(Vec3 &Other) {
-        Vec3 Result = { x + Other.x, y + Other.y, z + Other.z };
-
-        return Result;
-    }
-
-    inline Vec3& operator+=(Vec3 &Other) {
-        x += Other.x;
-        y += Other.y;
-        z += Other.z;
-
-        return *this;
-    }
-
-    inline Vec3 operator-(const Vec3 &Other) const {
-        Vec3 Result = { x - Other.x, y - Other.y, z - Other.z };
-
-        return Result;
-    }
-
-    inline Vec3& operator-=(const Vec3 &Other) {
-        x -= Other.x;
-        y -= Other.y;
-        z -= Other.z;
-
-        return *this;
-    }
-
-    inline real32 Dot(const Vec3 &Other) {
-        real32 Result = x * Other.x + y * Other.y + z * Other.z;
-
-        return Result;
-    }
-
-    inline Vec3 Cross(const Vec3 &Other) {
-        // | THISx1 |   | OTHERx2 |   | y1 * z2 - z1 * y2 |
-        // | THISy1 | x | OTHERy2 | = | z1 * x2 - x1 * z2 |
-        // | THISz1 |   | OTHERz2 |   | x1 * y2 - y1 * x1 |
-        Vec3 Result = { 
-                y * Other.z - z * Other.y, 
-                z * Other.x - x * Other.z,
-                x * Other.y - y * Other.x
-            };
-
-        return Result;
-    }
-
-    inline real32 Length() {
-        return Sqrt(x * x + y * y + z * z);
-    }
-
-    inline void Normalize() {
-        // TODO (ismail): normalize this with epsilon
-        if (x == 0.0f && y == 0.0f && z == 0.0f) {
-            return;
-        }
-
-        real32 InverseLength = 1 / ( Sqrt( x * x + y * y + z * z ) );
-
-        x *= InverseLength;
-        y *= InverseLength;
-        z *= InverseLength;
-    }
 };
 
-inline real32 Distance(const Vec3 &a, const Vec3 &b) {
+inline real32& vec3::operator[](i32 indx)
+{
+    Assert(indx < (sizeof(vec) / sizeof(*vec)));
+
+    real32& Result = vec[indx];
+
+    return Result;
+}
+
+inline const real32& vec3::operator[](i32 indx) const
+{
+    Assert(indx < (sizeof(vec) / sizeof(*vec)));
+
+    const real32& Result = vec[indx];
+
+    return Result;
+}
+
+inline vec3 vec3::operator-() const
+{
+    vec3 Result = { -x, -y, -z };
+
+    return Result;
+}
+
+inline vec3 vec3::operator*(real32 Scalar) const
+{
+    vec3 Result = { x * Scalar, y * Scalar, z * Scalar };
+
+    return Result;
+}
+
+inline vec3& vec3::operator*=(real32 Scalar)
+{
+    x *= Scalar;
+    y *= Scalar;
+    z *= Scalar;
+
+    return *this;
+}
+
+inline vec3 vec3::operator+(const vec3 &Other) const
+{
+    vec3 Result = { x + Other.x, y + Other.y, z + Other.z };
+
+    return Result;
+}
+
+inline vec3& vec3::operator+=(const vec3 &Other)
+{
+    x += Other.x;
+    y += Other.y;
+    z += Other.z;
+
+    return *this;
+}
+
+inline vec3 vec3::operator-(const vec3 &Other) const
+{
+    vec3 Result = { x - Other.x, y - Other.y, z - Other.z };
+
+    return Result;
+}
+
+inline vec3& vec3::operator-=(const vec3 &Other)
+{
+    x -= Other.x;
+    y -= Other.y;
+    z -= Other.z;
+
+    return *this;
+}
+
+inline real32 vec3::Dot(const vec3 &Other) const
+{
+    real32 Result = x * Other.x + y * Other.y + z * Other.z;
+
+    return Result;
+}
+
+inline vec3 vec3::Cross(const vec3 &Other) const
+{
+    // | THISx1 |   | OTHERx2 |   | y1 * z2 - z1 * y2 |
+    // | THISy1 | x | OTHERy2 | = | z1 * x2 - x1 * z2 |
+    // | THISz1 |   | OTHERz2 |   | x1 * y2 - y1 * x1 |
+    vec3 Result = {
+        y * Other.z - z * Other.y,
+        z * Other.x - x * Other.z,
+        x * Other.y - y * Other.x
+    };
+
+    return Result;
+}
+
+inline real32 vec3::Length() const
+{
+    real32 LenSq = SQUARE(x) + SQUARE(y) + SQUARE(z);
+
+    return Sqrt( LenSq );
+}
+
+inline void vec3::Normalize()
+{
+    real32 Len = Length();
+
+    if (Len < VEC_EPS) {
+        x = y = z = 0.0f;
+
+        return;
+    }
+
+    real32 InverseLength = 1.0f / ( Len );
+
+    x *= InverseLength;
+    y *= InverseLength;
+    z *= InverseLength;
+}
+
+inline real32* vec3::Data()
+{
+    return vec;
+}
+
+inline real32 vec3::Distance(const vec3 &a, const vec3 &b)
+{
     real32 Result = (a - b).Length();
 
     return Result;
 }
 
-inline Vec3 Normalize(const Vec3 &Other) {
-    Vec3 Result = Other;
+inline vec3 vec3::Normalize(const vec3 &Other)
+{
+    vec3 Result = Other;
 
     Result.Normalize();
 
     return Result;
 }
 
-inline real32 DotProduct(const Vec3 &A, const Vec3 &B) {
-    real32 Result = A.x * B.x + A.y * B.y + A.z * B.z;
+inline real32 vec3::DotProduct(const vec3 &a, const vec3 &b)
+{
+    real32 Result = a.x * b.x + a.y * b.y + a.z * b.z;
+
     return Result;
 }
 
-// Vector4D
+inline vec3 vec3::Lerp(const vec3 &a, const vec3 &b, real32 t)
+{
+    vec3 To = b - a;
+    return To * t;
+}
 
-struct Vec4 {
+struct vec4 {
+    real32& operator[](i32 indx);
+    const real32& operator[](i32 indx) const;
+    vec4 operator-() const;
+    vec4 operator*(real32 Scalar) const;
+    vec4& operator*=(real32 Scalar);
+    vec4 operator+(const vec4 &Other) const;
+    vec4& operator+=(const vec4 &Other);
+    vec4 operator-(const vec4 &Other) const;
+    vec4& operator-=(const vec4 &Other);
+    real32 Dot(const vec4 &Other) const;
+    real32 Length() const;
+    void Normalize();
+
+    static real32 Distance(const vec4 &a, const vec4 &b);
+    static vec4 Lerp(const vec4 &a, const vec4 &b, real32 t);
+
     union {
         struct {
             real32 x, y, z, w;
         };
-        real32 ValueHolder[4];   
+        real32 vec[4];
     };
-
-    inline real32& operator[](int indx){
-        // TODO(ismail): may be some assert for check overflow?
-
-        real32& Result = ValueHolder[indx];
-
-        return Result;
-    }
-
-    inline Vec4 operator-() {
-        Vec4 Result = { -x, -y, -z, -w };
-
-        return Result;
-    }
-
-    inline Vec4 operator*(real32 Scalar) {
-        // NOTE(ismail): should we multiply w by the Scalar?
-        Vec4 Result = { x * Scalar, y * Scalar, z * Scalar, w * Scalar };
-
-        return Result;
-    }
-
-    inline Vec4& operator*=(real32 Scalar) {
-        x *= Scalar;
-        y *= Scalar;
-        z *= Scalar;
-        w *= Scalar; // ?
-
-        return *this;
-    }
-
-    inline Vec4 operator+(Vec4 &Other) {
-        Vec4 Result = { x + Other.x, y + Other.y, z + Other.z, w + Other.w }; // ?
-
-        return Result;
-    }
-
-    inline Vec4& operator+=(Vec4 &Other) {
-        x += Other.x;
-        y += Other.y;
-        z += Other.z;
-        w += Other.w; // ?
-
-        return *this;
-    }
-
-    inline Vec4 operator-(const Vec4 &Other) const {
-        Vec4 Result = { x - Other.x, y - Other.y, z - Other.z, w - Other.w };
-
-        return Result;
-    }
-
-    inline Vec4& operator-=(const Vec4 &Other) {
-        x -= Other.x;
-        y -= Other.y;
-        z -= Other.z;
-        w -= Other.w;
-
-        return *this;
-    }
-
-    inline real32 Dot(const Vec4 &Other) {
-        real32 Result = x * Other.x + y * Other.y + z * Other.z + w * Other.w;
-
-        return Result;
-    }
-
-    inline real32 Length() {
-        return Sqrt(x * x + y * y + z * z + w * w);
-    }
-
-    inline void Normalize() {
-        real32 InverseLength = 1 / ( Sqrt( x * x + y * y + z * z + w * w ) );
-
-        x *= InverseLength;
-        y *= InverseLength;
-        z *= InverseLength;
-        w *= InverseLength;
-    }
-
-    inline real32 Distance(const Vec4 &a, const Vec4 &b) {
-        real32 Result = (a - b).Length();
-
-        return Result;
-    }
 };
+
+inline real32& vec4::operator[](i32 indx)
+{
+    Assert(indx < (sizeof(vec) / sizeof(*vec)));
+
+    real32& Result = vec[indx];
+
+    return Result;
+}
+
+inline const real32& vec4::operator[](i32 indx) const
+{
+    Assert(indx < (sizeof(vec) / sizeof(*vec)));
+
+    const real32& Result = vec[indx];
+
+    return Result;
+}
+
+inline vec4 vec4::operator-() const
+{
+    vec4 Result = { -x, -y, -z, -w };
+
+    return Result;
+}
+
+inline vec4 vec4::operator*(real32 Scalar) const
+{
+    vec4 Result = { x * Scalar, y * Scalar, z * Scalar, w * Scalar };
+
+    return Result;
+}
+
+inline vec4& vec4::operator*=(real32 Scalar)
+{
+    x *= Scalar;
+    y *= Scalar;
+    z *= Scalar;
+    w *= Scalar;
+
+    return *this;
+}
+
+inline vec4 vec4::operator+(const vec4 &Other) const
+{
+    vec4 Result = { x + Other.x, y + Other.y, z + Other.z, w + Other.w };
+
+    return Result;
+}
+
+inline vec4& vec4::operator+=(const vec4 &Other)
+{
+    x += Other.x;
+    y += Other.y;
+    z += Other.z;
+    w += Other.w;
+
+    return *this;
+}
+
+inline vec4 vec4::operator-(const vec4 &Other) const
+{
+    vec4 Result = { x - Other.x, y - Other.y, z - Other.z, w - Other.w };
+
+    return Result;
+}
+
+inline vec4& vec4::operator-=(const vec4 &Other)
+{
+    x -= Other.x;
+    y -= Other.y;
+    z -= Other.z;
+    w -= Other.w;
+
+    return *this;
+}
+
+inline real32 vec4::Dot(const vec4 &Other) const
+{
+    real32 Result = x * Other.x + y * Other.y + z * Other.z + w * Other.w;
+
+    return Result;
+}
+
+inline real32 vec4::Length() const
+{
+    real32 LenSq = SQUARE(x) + SQUARE(y) + SQUARE(z) + SQUARE(w);
+    
+    return Sqrt(LenSq);
+}
+
+inline void vec4::Normalize()
+{
+    real32 Len = Length();
+
+    if (Len < VEC_EPS) {
+        x = y = z = w = 0.0f;
+
+        return;
+    }
+
+    real32 InverseLength = 1.0f / Len;
+
+    x *= InverseLength;
+    y *= InverseLength;
+    z *= InverseLength;
+    w *= InverseLength;
+}
+
+inline real32 vec4::Distance(const vec4 &a, const vec4 &b)
+{
+    real32 Result = (a - b).Length();
+
+    return Result;
+}
+
+inline vec4 vec4::Lerp(const vec4 &a, const vec4 &b, real32 t)
+{
+    vec4 To = b - a;
+    return To * t;
+}
 
 #endif

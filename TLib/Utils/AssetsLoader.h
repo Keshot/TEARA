@@ -17,9 +17,9 @@ struct Material {
     bool32  HaveSpecularExponent;
     char    TextureFilePath[FILE_NAME_MAX];
     char    SpecularExpFilePath[FILE_NAME_MAX];
-    Vec3    AmbientColor;
-    Vec3    DiffuseColor;
-    Vec3    SpecularColor;
+    vec3    AmbientColor;
+    vec3    DiffuseColor;
+    vec3    SpecularColor;
 };
 
 struct Mesh {
@@ -34,9 +34,9 @@ struct Mesh {
 // we need to chek will it increase performance
 struct ObjFile {
     Mesh*           Meshes;
-    Vec3*           Positions;
-    Vec3*           Normals;
-    Vec2*           TextureCoord;
+    vec3*           Positions;
+    vec3*           Normals;
+    vec2*           TextureCoord;
     u32*            Indices;
     u32             MeshesCount;
     u32             PositionsCount;

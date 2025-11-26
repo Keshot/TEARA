@@ -2,5 +2,6 @@
 .vscode/tasks.json
 .vscode/c_cpp_properties.json
 /TCore/build
+/build
 tasks
 MessageFromAlishock
