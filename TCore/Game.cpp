@@ -1,5 +1,6 @@
 #include "TLib/Utils/Types.h"
 #include "TLib/Math/Matrix.h"
+#include "TLib/Math/Transformation.h"
 #include "TLib/Utils/Debug.h"
 #include "TLib/Utils/AssetsLoader.h"
 #include "TLib/3rdparty/ufbx/ufbx.h"
@@ -10,90 +11,6 @@
 #include "TLib/3rdparty/stb/stb_image.h"
 
 ShaderProgram ShadersProgramsCache[ShaderProgramsTypeMax];
-
-void MakeScaleFromVector(vec3* ScaleFactor, mat4* Result)
-{
-    *Result = {
-        ScaleFactor->x,           0.0f,          0.0f, 0.0f,
-                  0.0f, ScaleFactor->y,          0.0f, 0.0f,
-                  0.0f,          0.0f, ScaleFactor->z, 0.0f,
-                  0.0f,          0.0f,           0.0f, 1.0f,
-    };
-}
-
-void MakeScaleFromVectorRelative(vec3* ScaleFactor, vec3* RelativeTo, mat4* Result)
-{
-    real32 x = 1.0f / RelativeTo->x;
-    real32 y = 1.0f / RelativeTo->y;
-    real32 z = 1.0f / RelativeTo->z;
-
-    *Result = {
-        ScaleFactor->x * x,               0.0f,               0.0f, 0.0f,
-                      0.0f, ScaleFactor->y * y,               0.0f, 0.0f,
-                      0.0f,               0.0f, ScaleFactor->z * z, 0.0f,
-                      0.0f,               0.0f,               0.0f, 1.0f,
-    };
-}
-
-void MakeTranslationFromVec(vec3 *TranslationVec, mat4 *TranslationMat)
-{
-    *TranslationMat = {
-        1.0f,   0.0f,   0.0f, TranslationVec->x,
-        0.0f,   1.0f,   0.0f, TranslationVec->y,
-        0.0f,   0.0f,   1.0f, TranslationVec->z,
-        0.0f,   0.0f,   0.0f,              1.0f,
-    };
-}
-
-inline mat4 MakeInverseTranslation(vec3 *Trans)
-{
-    mat4 Result = {
-        1.0f,   0.0f,   0.0f, -Trans->x,
-        0.0f,   1.0f,   0.0f, -Trans->y,
-        0.0f,   0.0f,   1.0f, -Trans->z,
-        0.0f,   0.0f,   0.0f,     1.0f,
-    };
-
-    return Result;
-}
-
-static mat4 MakePerspProjection(real32 FovInDegree, real32 AspectRatio, real32 NearZ, real32 FarZ)
-{
-    real32 d = 1 / tanf(DEGREE_TO_RAD(FovInDegree / 2));
-    
-    real32 x = d / AspectRatio;
-    real32 y = d;
-
-    real32 ClipDistance = NearZ - FarZ;
-    
-    real32 a = (-FarZ - NearZ) / ClipDistance;
-    real32 b = (2 * NearZ * FarZ) / ClipDistance;
-
-    mat4 Result = {
-           x, 0.0f, 0.0f, 0.0f,
-        0.0f,    y, 0.0f, 0.0f,
-        0.0f, 0.0f,    a,    b,
-        0.0f, 0.0f, 1.0f, 0.0f,
-    };
-
-    return Result;
-}
-
-static mat4 MakeOrthoProjection(real32 Right, real32 Left, real32 Top, real32 Bot, real32 Far, real32 Near)
-{
-    real32 XDen = Right - Left;
-    real32 YDen = Top - Bot;
-    real32 ZDen = Far - Near;
-
-    mat4 Result = {
-        2.0f / XDen,        0.0f,        0.0f, (-Left - Right) / XDen,
-               0.0f, 2.0f / YDen,        0.0f,    (-Bot - Top) / YDen,
-               0.0f,        0.0f, 2.0f / ZDen,   (-Near - Far) / ZDen,
-               0.0f,        0.0f,        0.0f,                   1.0f,
-    };
-
-    return Result;
-}
 
 void GenerateTerrainMesh(TerrainLoadFile *ToLoad, real32 TextureScale, real32 Size, i32 VertexAmount)
 {
@@ -896,43 +813,6 @@ struct glTF2File {
     i32                 MeshesAmount;
 };
 
-void MakeInverseTranslation(mat4 *Result, real32 *Translation)
-{
-    *Result = {
-        1.0f, 0.0f, 0.0f, -Translation[_x_],
-        0.0f, 1.0f, 0.0f, -Translation[_y_],
-        0.0f, 0.0f, 1.0f, -Translation[_z_],
-        0.0f, 0.0f, 0.0f, 1.0f,
-    };
-}
-
-void MakeInverseScale(mat4 *Result, real32 *Scale)
-{
-    real32 x = 1.0f / Scale[_x_];
-    real32 y = 1.0f / Scale[_y_];
-    real32 z = 1.0f / Scale[_z_];
-
-    *Result = {
-           x, 0.0f, 0.0f, 0.0f,
-        0.0f,    y, 0.0f, 0.0f,
-        0.0f, 0.0f,    z, 0.0f,
-        0.0f, 0.0f, 0.0f, 1.0f,
-    };
-}
-
-void MakeInverseScalemat3(mat3 *Result, real32 *Scale)
-{
-    real32 x = 1.0f / Scale[_x_];
-    real32 y = 1.0f / Scale[_y_];
-    real32 z = 1.0f / Scale[_z_];
-
-    *Result = {
-           x,   0.0f,    0.0f,
-        0.0f,      y,    0.0f,
-        0.0f,   0.0f,       z
-    };
-}
-
 void ReadJointNode(Skinning* Skin, cgltf_node* Joint, JointsInfo* ParentJoint, i32& Index, cgltf_node** RootJoints, i32 Len)
 {
     if (!Joint) {
@@ -951,8 +831,8 @@ void ReadJointNode(Skinning* Skin, cgltf_node* Joint, JointsInfo* ParentJoint, i
     mat4 InverseRotationMatrix    = {};
     mat4 ParentMatrix             = !ParentJoint ? Identity4 : ParentJoint->InverseBindMatrix;
 
-    MakeInverseTranslation(&InverseTranslationMatrix, Translation);
-    MakeInverseScale(&InverseScaleMatrix, Scale);
+    InverseTranslationFromArr(Translation, InverseTranslationMatrix);
+    InverseScaleFromArr(Scale, InverseScaleMatrix);
     Rotation.UprightToObject(InverseRotationMatrix);
 
     i32 ChildreJointsAmount = (i32)Joint->children_count;
@@ -2069,9 +1949,9 @@ static void Calc1DTask(std::map<std::string, BoneIDs>& Bones, mat4* Matrices, An
         mat4 RotationMat      = {};
         mat4 TranslationMat   = {};
 
-        MakeScaleFromVector(&BlendedScale, &ScaleMat);
+        ScaleFromVec(BlendedScale, ScaleMat);
         BlendedRotation.Mat4(RotationMat);
-        MakeTranslationFromVec(&BlendedTranslation, &TranslationMat);
+        TranslationFromVec(BlendedTranslation, TranslationMat);
 
         CurrentJointMat = TranslationMat * RotationMat * ScaleMat;
     }
@@ -2105,9 +1985,9 @@ static void CalcClipTask(std::map<std::string, BoneIDs>& Bones, mat4* Matrices, 
         mat4 RotationMat      = {};
         mat4 TranslationMat   = {};
 
-        MakeScaleFromVector(&CurrentFrameTransform.Scale, &ScaleMat);
+        ScaleFromVec(CurrentFrameTransform.Scale, ScaleMat);
         CurrentFrameTransform.Rotation.Mat4(RotationMat);
-        MakeTranslationFromVec(&CurrentFrameTransform.Translation, &TranslationMat);
+        TranslationFromVec(CurrentFrameTransform.Translation, TranslationMat);
 
         CurrentJointMat = TranslationMat * RotationMat * ScaleMat;
     }
@@ -2301,15 +2181,15 @@ static void SetupObjectRendering(GameContext* Ctx, FrameData* Data, WorldTransfo
                                  ShaderProgramVariablesStorage*  VarStorage, ObjectNesting& Nesting, 
                                  ShaderProgramsType ShaderType)
 {
-    mat4  ObjectToCameraSpaceTransformation   = {};
-    mat4  ObjectGeneralTransformation         = {};
-    mat4  ObjectTranslation                   = {};
-    mat4  ObjectRotation                      = {};
-    mat4  ObjectScale                         = {};
+    mat4    ObjectToCameraSpaceTransformation   = {};
+    mat4    ObjectGeneralTransformation         = {};
+    mat4    ObjectTranslation                   = {};
+    mat4    ObjectRotation                      = {};
+    mat4    ObjectScale                         = {};
     vec3    CameraPosition                      = Ctx->PlayerCamera.Transform.Position;
     vec3    ObjectPosition;
 
-    MakeTranslationFromVec(&ObjectTransform.Position, &ObjectTranslation);
+    TranslationFromVec(ObjectTransform.Position, ObjectTranslation);
     ObjectTransform.Rotation.ObjectToUpright(ObjectRotation);
 
     if (Nesting.Parent) {
@@ -2321,11 +2201,11 @@ static void SetupObjectRendering(GameContext* Ctx, FrameData* Data, WorldTransfo
         mat4 RootToWorldRotation      = {};
         mat4 RootToWorldScale         = {};
 
-        MakeTranslationFromVec(&ParentTransform.Position, &RootToWorldTranslation);
+        TranslationFromVec(ParentTransform.Position, RootToWorldTranslation);
         ParentTransform.Rotation.ObjectToUpright(RootToWorldRotation);
-        MakeScaleFromVector(&ParentTransform.Scale, &RootToWorldScale);
+        ScaleFromVec(ParentTransform.Scale, RootToWorldScale);
 
-        MakeScaleFromVectorRelative(&ObjectTransform.Scale, &ParentTransform.Scale, &ObjectScale);
+        ScaleFromVecRelative(ObjectTransform.Scale, ParentTransform.Scale, ObjectScale);
 
         mat4& AttachedBoneMat = Ctx->AnimSystem.GetBoneLocation(0, Nesting.AttachedToBone);
 
@@ -2336,7 +2216,7 @@ static void SetupObjectRendering(GameContext* Ctx, FrameData* Data, WorldTransfo
         ObjectPosition = ParentTransform.Position;
     }
     else {
-        MakeScaleFromVector(&ObjectTransform.Scale, &ObjectScale);
+        ScaleFromVec(ObjectTransform.Scale, ObjectScale);
 
         ObjectToCameraSpaceTransformation   = Data->CameraTransformation * ObjectTranslation;
         ObjectGeneralTransformation         = ObjectRotation * ObjectScale;
@@ -2361,7 +2241,7 @@ static void SetupObjects(AnimationSystem& AnimSys, WorldTransform& ObjectTransfo
     mat4  ObjectRotation                      = {};
     mat4  ObjectScale                         = {};
 
-    MakeTranslationFromVec(&ObjectTransform.Position, &ObjectTranslation);
+    TranslationFromVec(ObjectTransform.Position, ObjectTranslation);
     ObjectTransform.Rotation.ObjectToUpright(ObjectRotation);
 
     if (Nesting.Parent) {
@@ -2373,11 +2253,11 @@ static void SetupObjects(AnimationSystem& AnimSys, WorldTransform& ObjectTransfo
         mat4 RootToWorldRotation      = {};
         mat4 RootToWorldScale         = {};
 
-        MakeTranslationFromVec(&ParentTransform.Position, &RootToWorldTranslation);
+        TranslationFromVec(ParentTransform.Position, RootToWorldTranslation);
         ParentTransform.Rotation.ObjectToUpright(RootToWorldRotation);
-        MakeScaleFromVector(&ParentTransform.Scale, &RootToWorldScale);
+        ScaleFromVec(ParentTransform.Scale, RootToWorldScale);
 
-        MakeScaleFromVectorRelative(&ObjectTransform.Scale, &ParentTransform.Scale, &ObjectScale);
+        ScaleFromVecRelative(ObjectTransform.Scale, ParentTransform.Scale, ObjectScale);
 
         mat4& AttachedBoneMat = AnimSys.GetBoneLocation(0, Nesting.AttachedToBone);
 
@@ -2388,7 +2268,7 @@ static void SetupObjects(AnimationSystem& AnimSys, WorldTransform& ObjectTransfo
         FrameStorage.ObjectPosition = ParentTransform.Position;
     }
     else {
-        MakeScaleFromVector(&ObjectTransform.Scale, &ObjectScale);
+        ScaleFromVec(ObjectTransform.Scale, ObjectScale);
 
         FrameStorage.ObjectToWorldTranslation       = ObjectTranslation;
         FrameStorage.ObjectGeneralTransformation    = ObjectRotation * ObjectScale;
@@ -2556,9 +2436,9 @@ static void PrecalculateObjects(GameContext* Cntx)
     FrameDataStorage&   TerrainDataStorage  = FrameData.TerrainFrameDataStorage;
 
     mat4 TerrainWorldTranslation, TerrainWorldRotation, TerrainWorldScale;
-    MakeTranslationFromVec(&Terra.Transform.Position, &TerrainWorldTranslation);
+    TranslationFromVec(Terra.Transform.Position, TerrainWorldTranslation);
     Terra.Transform.Rotation.ObjectToUpright(TerrainWorldRotation);
-    MakeScaleFromVector(&Terra.Transform.Scale, &TerrainWorldScale);
+    ScaleFromVec(Terra.Transform.Scale, TerrainWorldScale);
 
     TerrainDataStorage.ObjectToWorldTranslation     = TerrainWorldTranslation;
     TerrainDataStorage.ObjectGeneralTransformation  = TerrainWorldRotation * TerrainWorldScale;
@@ -2583,13 +2463,14 @@ static void ShadowPass(GameContext* Cntx)
 
     DirectionalLight& DirLight = Cntx->LightSource;
 
-    mat4 CameraOrthoProjection = MakeOrthoProjection(40.0f, -40.0f, 40.0f, -40.0f, 40.0f, -40.0f);
+    mat4 CameraOrthoProjection = {};
+    MakeOrthoProjection(CameraOrthoProjection, 40.0f, -40.0f, 40.0f, -40.0f, 40.0f, -40.0f);
 
     mat4 CameraSpaceRotation, CameraSpaceTranslation;
     DirLight.Rotation.UprightToObject(CameraSpaceRotation);
 
     vec3 CameraSpaceTranslationVector = { -15.0f, 0.0f, 25.0f };
-    MakeInverseTranslation(&CameraSpaceTranslation, CameraSpaceTranslationVector.vec);
+    InverseTranslationFromVec(CameraSpaceTranslationVector, CameraSpaceTranslation);
 
     mat4 CameraTransformation                 = CameraOrthoProjection * CameraSpaceRotation * CameraSpaceTranslation;
     FrameData.ShadowPassCameraTransformation    = CameraTransformation;
@@ -2955,7 +2836,8 @@ void Frame(Platform *Platform, GameContext *Cntx)
 
     Cntx->AnimSystem.Play(0, 0, Cntx->BlendingX, 0.0f, Cntx->DeltaTimeSec);
 
-    mat4 PerspProjection = MakePerspProjection(60.0f, Platform->ScreenOpt.AspectRatio, 0.1f, 1500.0f);
+    mat4 PerspProjection = {};
+    MakePerspProjection(PerspProjection, 60.0f, Platform->ScreenOpt.AspectRatio, 0.1f, 1500.0f);
 
     Cntx->PlayerCamera.Transform.Rotation.b = 0.0f;
     Cntx->PlayerCamera.Transform.Rotation.p += RAD_TO_DEGREE(Platform->Input.MouseInput.Moution.y) * 0.5f;
@@ -2970,7 +2852,8 @@ void Frame(Platform *Platform, GameContext *Cntx)
 
     Cntx->PlayerCamera.Transform.Position += (Target * ZTranslationMultiplyer * 0.1f) + (Right * XTranslationMultiplyer * 0.1f);
 
-    mat4 CameraTranslation = MakeInverseTranslation(&Cntx->PlayerCamera.Transform.Position);
+    mat4 CameraTranslation = {}; 
+    InverseTranslationFromVec(Cntx->PlayerCamera.Transform.Position, CameraTranslation);
 
     mat4 CameraUprightToObjectRotation = {};
     PlayerCameraRotation.UprightToObject(CameraUprightToObjectRotation);
