@@ -1,5 +1,5 @@
-#ifndef _TEARA_OPENGL_H_
-#define _TEARA_OPENGL_H_
+#ifndef _TEARA_RENERING_OPENGL_H_
+#define _TEARA_RENERING_OPENGL_H_
 
 #if (defined(_WIN32) || defined(WIN32))
 #include <windows.h>
@@ -15,7 +15,7 @@
 #include "glext.h"
 #endif
 
-#include "TLib/Utils/Types.h"
+#include "Core/Types.h"
 
 #define GL_TEXTURE_UNIT0 (0x00)
 #define GL_TEXTURE_UNIT1 (GL_TEXTURE_UNIT0 + 1)

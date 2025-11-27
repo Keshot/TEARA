@@ -1,7 +1,7 @@
-#ifndef _TEARA_LIB_UTILS_AUDIO_LOADER_H_
-#define _TEARA_LIB_UTILS_AUDIO_LOADER_H_
+#ifndef _TEARA_UTILS_AUDIO_LOADER_H_
+#define _TEARA_UTILS_AUDIO_LOADER_H_
 
-#include "TLib/Utils/Types.h"
+#include "Core/Types.h"
 
 enum AudioFormat {
     WAV,

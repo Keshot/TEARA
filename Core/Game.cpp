@@ -1,14 +1,14 @@
-#include "TLib/Utils/Types.h"
-#include "TLib/Math/Matrix.h"
-#include "TLib/Math/Transformation.h"
-#include "TLib/Utils/Debug.h"
-#include "TLib/Utils/AssetsLoader.h"
-#include "TLib/3rdparty/ufbx/ufbx.h"
-#include "TLib/3rdparty/cgltf/cgltf.h"
+#include "Types.h"
+#include "Math/Matrix.h"
+#include "Math/Transformation.h"
+#include "Debug.h"
+#include "Utils/AssetsLoader.h"
+#include "3rdparty/ufbx/ufbx.h"
+#include "3rdparty/cgltf/cgltf.h"
 #include "EnginePlatform.h"
 #include "Game.h"
-#include "TGL.h"
-#include "TLib/3rdparty/stb/stb_image.h"
+#include "Rendering/OpenGL/TGL.h"
+#include "3rdparty/stb/stb_image.h"
 
 ShaderProgram ShadersProgramsCache[ShaderProgramsTypeMax];
 
@@ -196,30 +196,25 @@ struct ShadersName {
 
 ShadersName ShaderProgramNames[ShaderProgramsType::ShaderProgramsTypeMax] = {
     { 
-        "../mesh_component_shader.vs", 
-        "../mesh_component_shader.fs" 
+        "../Rendering/shaders/mesh_component_shader.vs", 
+        "../Rendering/shaders/mesh_component_shader.fs" 
     },
     { 
-        "../skeletal_mesh_component_shader.vs", 
-        "../skeletal_mesh_component_shader.fs" 
+        "../Rendering/shaders/skeletal_mesh_component_shader.vs", 
+        "../Rendering/shaders/skeletal_mesh_component_shader.fs" 
     },
     { 
-        "../particle_shader.vs", 
-        "../particle_shader.fs" 
+        "../Rendering/shaders/particle_shader.vs", 
+        "../Rendering/shaders/particle_shader.fs" 
     },
     {
-        "../debug_draw.vs", 
-        "../debug_draw.fs" 
+        "../Rendering/shaders/debug_draw.vs", 
+        "../Rendering/shaders/debug_draw.fs" 
     },
     {
-        "../depth_test_shader.vs", 
-        "../depth_test_shader.fs" 
+        "../Rendering/shaders/depth_test_shader.vs", 
+        "../Rendering/shaders/depth_test_shader.fs" 
     }
-    /*,
-    { 
-        "data/shaders/terrain_shader.vs", 
-        "data/shaders/terrain_shader.fs" 
-    },*/
 };
 
 #define DIFFUSE_TEXTURE_UNIT            GL_TEXTURE0

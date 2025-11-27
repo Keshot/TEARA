@@ -6,11 +6,11 @@
 #include <map>
 #include <list>
 
-#include "TLib/Utils/Types.h"
-#include "TLib/Utils/AssetsLoader.h"
-#include "TLib/Math/Vector.h"
-#include "TLib/Math/Rotation.h"
-#include "TLib/Math/Quat.h"
+#include "Types.h"
+#include "Utils/AssetsLoader.h"
+#include "Math/Vector.h"
+#include "Math/Rotation.h"
+#include "Math/Quat.h"
 
 #define BATTLE_AREA_GRID_VERT_AMOUNT    100
 #define ONE_SQUARE_INDEX_AMOUNT         6

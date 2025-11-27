@@ -1,12 +1,12 @@
-#ifndef _TEARA_LIB_MATH_UTILS_H_
-#define _TEARA_LIB_MATH_UTILS_H_
+#ifndef _TEARA_MATH_UTILS_H_
+#define _TEARA_MATH_UTILS_H_
 
 // TODO (ismail): my own SIMD math function or instead my own use SDL
 #include <corecrt_math.h>
 #include <stdlib.h>
 
-#include "TLib/Utils/Types.h"
-#include "TLib/Utils/Debug.h"
+#include "Core/Types.h"
+#include "Core/Debug.h"
 
 #define                     PI         (3.14159265358979323846f)
 #define                 TWO_PI         (2.0f * PI)

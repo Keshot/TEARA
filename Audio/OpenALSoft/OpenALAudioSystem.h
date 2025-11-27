@@ -5,8 +5,8 @@
 #include <AL/alc.h>
 #include <AL/alext.h>
 
-#include "TLib/Utils/Types.h"
-#include "TLib/Utils/AudioLoader.h"
+#include "Core/Types.h"
+#include "Utils/AudioLoader.h"
 
 #ifndef AUDIO_COMPONENTS_MAX_SFX_BUFFER
     #define AUDIO_COMPONENTS_MAX_SFX_BUFFER 20

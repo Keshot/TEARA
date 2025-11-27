@@ -1,9 +1,9 @@
-#ifndef TEARA_LIB_PHYSICS_COLLISION_H_
-#define TEARA_LIB_PHYSICS_COLLISION_H_
+#ifndef TEARA_PHYSICS_COLLISION_H_
+#define TEARA_PHYSICS_COLLISION_H_
 
-#include "TLib/Utils/Types.h"
-#include "TLib/Math/Vector.h"
-#include "TLib/Math/Matrix.h"
+#include "Core/Types.h"
+#include "Math/Vector.h"
+#include "Math/Matrix.h"
 
 #define OBB_EPSILON 0.0001f
 

@@ -1,9 +1,9 @@
-#ifndef _TEARA_LIB_UTILS_ASSETS_LOADER_H_
-#define _TEARA_LIB_UTILS_ASSETS_LOADER_H_
+#ifndef _TEARA_UTILS_ASSETS_LOADER_H_
+#define _TEARA_UTILS_ASSETS_LOADER_H_
 
-#include "TCore/EnginePlatform.h"
-#include "TLib/Utils/Types.h"
-#include "TLib/Math/Vector.h"
+#include "Core/EnginePlatform.h"
+#include "Core/Types.h"
+#include "Math/Vector.h"
 
 #define FILE_NAME_MAX   64
 

@@ -1,8 +1,8 @@
 #ifndef _TEARA_ENGINE_PLATFORM_H_
 #define _TEARA_ENGINE_PLATFORM_H_
 
-#include "TLib/Utils/Types.h"
-#include "TLib/Math/Vector.h"
+#include "Types.h"
+#include "Math/Vector.h"
 
 struct File {
     u64      Size;

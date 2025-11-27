@@ -9,10 +9,10 @@
 #include <windowsx.h>
 #include <stdio.h>
 
-#include "TLib/Utils/Types.h"
-#include "TLib/Math/Math.h"
-#include "TLib/Utils/AssetsLoader.h"
-#include "TLib/Audio/OpenALSoft/OpenALAudioSystem.h"
+#include "Core/Types.h"
+#include "Math/Math.h"
+#include "Utils/AssetsLoader.h"
+#include "Audio/OpenALSoft/OpenALAudioSystem.h"
 #include "Game.cpp"
 
 #ifndef WIN32_CLASS_NAME

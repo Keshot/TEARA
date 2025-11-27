@@ -1,6 +1,6 @@
 #include "OpenALAudioSystem.h"
-#include "TLib/Utils/Debug.h"
-#include "TLib/Utils/AudioLoader.h"
+#include "Core/Debug.h"
+#include "Utils/AudioLoader.h"
 
 Statuses AudioSystemInit(AudioSystem* AudioSys, void* SystemBuffer, u64 SystemBufferSize)
 {

@@ -1,12 +1,12 @@
 #include "AudioLoader.h"
 #include <AL/alext.h>
-#include "TLib/Utils/Debug.h"
+#include "Core/Debug.h"
 
 #define DR_WAV_IMPLEMENTATION
-#include "TLib/3rdparty/audio/dr_wav.h"
+#include "3rdparty/audio/dr_wav.h"
 
 #define DR_FLAC_IMPLEMENTATION
-#include "TLib/3rdparty/audio/dr_flac.h"
+#include "3rdparty/audio/dr_flac.h"
 
 // for now it is okay but we need to create only one function that can read both flac and wav
 // we can just simple read in buffer by ourself and provide raw memory to library

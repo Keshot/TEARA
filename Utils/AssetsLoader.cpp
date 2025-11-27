@@ -1,6 +1,6 @@
 #include "AssetsLoader.h"
-#include "Debug.h"
-#include "TLib/3rdparty/fastobj/fast_obj.h"
+#include "Core/Debug.h"
+#include "3rdparty/fastobj/fast_obj.h"
 
 #include <string.h>
 

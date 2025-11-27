@@ -1,5 +1,5 @@
 #include "TGL.h"
-#include "TLib/Utils/Debug.h"
+#include "Core/Debug.h"
 
 TEARA_glGenBuffers                  tglGenBuffers;
 TEARA_glBindBuffer                  tglBindBuffer;
