@@ -3,13 +3,14 @@
 
 #include <string.h>
 
-#define HANDLE_MEMORY_ALLOCATION(type, size, assign)    \
-    (assign) = ((type)malloc(size));                    \
-    if (!(assign)) {                                    \
-        Assert(false);                                  \
-        return GltfFile::Failed;                        \
-    }                                                   \
-    memset((assign), 0, (size));
+#define HANDLE_MEMORY_ALLOCATION(type, amount, assign)      \
+    u64 size = sizeof(type) * (amount);                     \
+    (assign) = ((type*)malloc(size));                       \
+    if (!(assign)) {                                        \
+        Assert(false);                                      \
+        return GltfFile::Failed;                            \
+    }                                                       \
+    memset((assign), 0, size);
 
 static cgltf_data* Open(const char* Path)
 {
@@ -34,6 +35,76 @@ static cgltf_data* Open(const char* Path)
 
     return Result;
 }
+
+/*
+static void ReadJointNode(Skinning* Skin, cgltf_node* Joint, JointsInfo* ParentJoint, i32& Index, cgltf_node** RootJoints, i32 Len)
+{
+    if (!Joint) {
+        return;
+    }
+
+    JointsInfo* CurrentJointInfo    = &Skin->Joints[Index];
+    std::string BoneName            = Joint->name;
+
+    cgltf_float*    Translation = Joint->translation;
+    cgltf_float*    Scale       = Joint->scale;
+    quat            Rotation    = Joint->rotation;
+
+    mat4 InverseTranslationMatrix = {};
+    mat4 InverseScaleMatrix       = {};
+    mat4 InverseRotationMatrix    = {};
+    mat4 ParentMatrix             = !ParentJoint ? Identity4 : ParentJoint->InverseBindMatrix;
+
+    InverseTranslationFromArr(Translation, InverseTranslationMatrix);
+    InverseScaleFromArr(Scale, InverseScaleMatrix);
+    Rotation.UprightToObject(InverseRotationMatrix);
+
+    i32 ChildreJointsAmount = (i32)Joint->children_count;
+
+    if (ParentJoint) {
+        i32 ChildrenIndex = ParentJoint->ChildrenAmount;
+
+        Assert(ChildrenIndex <= MAX_JOINT_CHILDREN_AMOUNT);
+
+        ++ParentJoint->ChildrenAmount;
+
+        ParentJoint->Children[ChildrenIndex] = CurrentJointInfo;
+    }
+
+    CurrentJointInfo->BoneName.resize(BoneName.size());
+
+    CurrentJointInfo->BoneName              = BoneName;
+    CurrentJointInfo->Parent                = ParentJoint;
+    CurrentJointInfo->InverseBindMatrix     = InverseScaleMatrix * InverseRotationMatrix * InverseTranslationMatrix * ParentMatrix;
+    CurrentJointInfo->DefaultScale          = { Scale[_x_], Scale[_y_], Scale[_z_] };
+    CurrentJointInfo->DefaultRotation       = Rotation;
+    CurrentJointInfo->DefaultTranslation    = { Translation[_x_], Translation[_y_], Translation[_z_] };
+
+    i32 OriginalID = -1;
+    for (i32 RootJointID = 0; RootJointID < Len; ++RootJointID) {
+        cgltf_node** OriginalJoint = &RootJoints[RootJointID];
+
+        if (*OriginalJoint == Joint) {
+            OriginalID = OriginalJoint - RootJoints;
+
+            break;
+        }
+    }
+
+    Assert(OriginalID != -1);
+
+    BoneIDs& Ids = Skin->Bones[BoneName];
+
+    Ids.BoneID          = Index;
+    Ids.OriginalBoneID  = OriginalID;
+
+    ++Index;
+
+    for (i32 ChildrenJointIndex = 0; ChildrenJointIndex < ChildreJointsAmount; ++ChildrenJointIndex) {
+        ReadJointNode(Skin, Joint->children[ChildrenJointIndex], CurrentJointInfo, Index, RootJoints, Len);
+    }
+}
+*/
 
 GltfFile::~GltfFile()
 {
@@ -93,7 +164,7 @@ bool32 GltfFile::Read(const char* Path)
 
     Assert(!Meshes);
 
-    HANDLE_MEMORY_ALLOCATION(GltfMesh*, (sizeof(GltfMesh) * MeshesCount), Meshes);
+    HANDLE_MEMORY_ALLOCATION(GltfMesh, MeshesCount, Meshes);
     
     MeshesAmount = MeshesCount;
 
@@ -103,7 +174,7 @@ bool32 GltfFile::Read(const char* Path)
 
         i32 PrimitivesAmount = (i32)CurrentMesh.primitives_count;
 
-        HANDLE_MEMORY_ALLOCATION(GltfPrimitive*, (sizeof(GltfPrimitive) * PrimitivesAmount), CurrentMeshOut.Primitives);
+        HANDLE_MEMORY_ALLOCATION(GltfPrimitive, PrimitivesAmount, CurrentMeshOut.Primitives);
 
         CurrentMeshOut.PrimitivesAmount = PrimitivesAmount;
         
@@ -143,12 +214,12 @@ bool32 GltfFile::Read(const char* Path)
             vec4*           BoneWeights     = 0;
             u32*            Indices         = 0;
 
-            HANDLE_MEMORY_ALLOCATION(vec3*, (sizeof(*Positions) * PositionsCount), Positions);
-            HANDLE_MEMORY_ALLOCATION(vec3*, (sizeof(*Normals) * NormalsCount), Normals);
-            HANDLE_MEMORY_ALLOCATION(vec2*, (sizeof(*TextureCoords) * TexturesCoordCount), TextureCoords);
-            HANDLE_MEMORY_ALLOCATION(GltfJointIndex*, (sizeof(*BoneIDs) * WeightsCount), BoneIDs);
-            HANDLE_MEMORY_ALLOCATION(vec4*, (sizeof(*BoneWeights) * JointsCount), BoneWeights);
-            HANDLE_MEMORY_ALLOCATION(u32*, (sizeof(*Indices) * IndicesCount), Indices);
+            HANDLE_MEMORY_ALLOCATION(vec3, PositionsCount, Positions);
+            HANDLE_MEMORY_ALLOCATION(vec3, NormalsCount, Normals);
+            HANDLE_MEMORY_ALLOCATION(vec2, TexturesCoordCount, TextureCoords);
+            HANDLE_MEMORY_ALLOCATION(GltfJointIndex, WeightsCount, BoneIDs);
+            HANDLE_MEMORY_ALLOCATION(vec4, JointsCount, BoneWeights);
+            HANDLE_MEMORY_ALLOCATION(u32, IndicesCount, Indices);
 
             CurrentPrimitiveOut.PositionsCount   = PositionsCount;
             CurrentPrimitiveOut.NormalsCount     = NormalsCount;
@@ -215,13 +286,12 @@ bool32 GltfFile::Read(const char* Path)
                 char* DiffuseTextureFileName = Diffuse->base_color_texture.texture->image->uri;
                 char* TextureFileNameTmp = 0;
 
-                u64 Len = strlen(DiffuseTextureFileName);
+                u64 SrcLen = strlen(DiffuseTextureFileName);
+                u64 DstLen = SrcLen + 1;
 
-                HANDLE_MEMORY_ALLOCATION(char*, ((sizeof(*DiffuseTextureFileName) * Len) + 1), TextureFileNameTmp);
+                HANDLE_MEMORY_ALLOCATION(char, DstLen, TextureFileNameTmp);
 
-                memset(TextureFileNameTmp, 0, Len + 1);
-
-                memcpy_s(TextureFileNameTmp, Len, DiffuseTextureFileName, Len);
+                memcpy_s(TextureFileNameTmp, DstLen, DiffuseTextureFileName, SrcLen);
 
                 CurrentPrimitiveMaterial.TextureFilePath = TextureFileNameTmp;
             
@@ -236,16 +306,15 @@ bool32 GltfFile::Read(const char* Path)
             if (CurrentMeshPrimitiveMaterial->has_specular) {
                 cgltf_specular& Specular = CurrentMeshPrimitiveMaterial->specular;
 
-                char *SpecularTextureFileName = Specular.specular_texture.texture->image->uri;
+                char* SpecularTextureFileName = Specular.specular_texture.texture->image->uri;
                 char* SpecularFileNameTmp = 0;
 
-                u64 Len = strlen(SpecularTextureFileName);
+                u64 SrcLen = strlen(SpecularTextureFileName);
+                u64 DstLen = SrcLen + 1;
 
-                HANDLE_MEMORY_ALLOCATION(char*, ((sizeof(*SpecularTextureFileName) * Len) + 1), SpecularFileNameTmp);
+                HANDLE_MEMORY_ALLOCATION(char, DstLen, SpecularFileNameTmp);
 
-                memset(SpecularFileNameTmp, 0, Len + 1);
-
-                memcpy_s(SpecularFileNameTmp, Len, SpecularTextureFileName, Len);
+                memcpy_s(SpecularFileNameTmp, DstLen, SpecularTextureFileName, SrcLen);
 
                 CurrentPrimitiveMaterial.SpecularExpFilePath = SpecularFileNameTmp;
 
@@ -259,6 +328,40 @@ bool32 GltfFile::Read(const char* Path)
         }
 
         CurrentMeshOut.PrimitivesAmount = PrimitivesAmount;
+    }
+
+    if (Mesh->skins_count > 0) {
+        Assert(Mesh->skins_count == 1);
+
+        // TODO(Ismail): use already created inverse_bind_matrix in CurrentSkin
+        cgltf_skin& CurrentSkin = Mesh->skins[0];
+
+        HANDLE_MEMORY_ALLOCATION(GltfSkin, 1, Skins);
+
+        SkinsAmount = Mesh->skins_count;
+
+        
+
+        u32             JointsCount = (u32)CurrentSkin->joints_count;
+        cgltf_node**    Joints      = CurrentSkin->joints;
+        cgltf_node*     RootJoint   = Joints[0];
+
+        Skelet->Joints = (JointsInfo*)Platform->AllocMem(sizeof(*Skelet->Joints) * JointsCount);
+
+        i32 IndexCounter = 0;
+
+        ReadJointNode(Skelet, *Joints, NULL, IndexCounter, Joints, (i32)JointsCount);
+
+        FileOut->Skelet->JointsAmount = JointsCount;
+
+        i32 AnimationsCount = (i32)Mesh->animations_count;
+
+        Assert(AnimationsCount == 1);
+
+        cgltf_animation*    Animations  = Mesh->animations;
+        AnimationsArray*    AnimArray   = FileOut->Animations;
+
+        glTFReadAnimations(Animations, AnimationsCount, *AnimArray, *Skelet);
     }
 
     cgltf_free(Mesh);

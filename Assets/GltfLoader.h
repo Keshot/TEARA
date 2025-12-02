@@ -2,7 +2,7 @@
 #define _TEARA_ASSETS_GLTF_LOADER_H_
 
 #include "Core/Types.h"
-#include "Math/Vector.h"
+#include "Math/Quat.h"
 
 #include <stdlib.h>
 
@@ -45,8 +45,18 @@ struct GltfAnimation {
 
 };
 
-struct GltfSkin {
+struct GltfJoint {
+    char*   BoneName;
+    u32     NameLen;
+    i32     Parent;
+    i32*    Children;
+    i32     ChildrenAmount;
+    mat4    InverseBindMatrix;
+};
 
+struct GltfSkin {
+    GltfJoint*  Joints;
+    i32         JointsAmount;
 };
 
 struct GltfFile {
@@ -74,13 +84,16 @@ struct GltfFile {
     i32 AnimationsAmount;
 
     GltfSkin* Skins;
-    i32 SkinningAmount;
+    i32 SkinsAmount;
 };
 
 inline GltfFile::GltfFile() 
     : Meshes(0)
+    , MeshesAmount(0)
     , Animations(0)
+    , AnimationsAmount(0)
     , Skins(0)
+    , SkinsAmount(0)
 {
 }
 
