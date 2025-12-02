@@ -9,6 +9,7 @@
 #include "Game.h"
 #include "Rendering/OpenGL/TGL.h"
 #include "3rdparty/stb/stb_image.h"
+#include "Assets/GltfLoader.h"
 
 ShaderProgram ShadersProgramsCache[ShaderProgramsTypeMax];
 
@@ -1676,6 +1677,9 @@ void PrepareFrame(Platform *Platform, GameContext *Cntx)
         Object.ObjMesh.ObjectPath  = CurrentObject.Mesh.Path;
 
         InitSkeletalMeshComponent(Platform, Cntx, &Object.ObjMesh, CurrentObject);
+
+        GltfFile fl;
+        fl.Read(CurrentObject.Mesh.Path);
 
         Object.Transform.Rotation = { 0.0f, 0.0f, 0.0f };
         Object.Transform.Position = { 0.0f, 0.0f, Position };

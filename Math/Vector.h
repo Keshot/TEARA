@@ -462,4 +462,10 @@ inline vec4 vec4::Lerp(const vec4 &a, const vec4 &b, real32 t)
     return To * t;
 }
 
+enum { 
+    vec2_size = (sizeof(vec2) / sizeof(*vec2::vec)),  
+    vec3_size = (sizeof(vec3) / sizeof(*vec3::vec)),  
+    vec4_size = (sizeof(vec4) / sizeof(*vec4::vec)) 
+};
+
 #endif
