@@ -50,7 +50,7 @@ inline quat::quat(real32 w, real32 x, real32 y, real32 z)
 {
 }
 
-quat::quat(real32* Rot)
+inline quat::quat(real32* Rot)
     : w(Rot[_w_])
     , x(Rot[_x_])
     , y(Rot[_y_])

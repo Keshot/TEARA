@@ -74,7 +74,7 @@ inline void InverseTranslationFromVec(vec3& Vec, mat4& Result)
     };
 }
 
-void InverseTranslationFromArr(real32 *Translation, mat4& Result)
+inline void InverseTranslationFromArr(real32 *Translation, mat4& Result)
 {
     Result = {
         1.0f, 0.0f, 0.0f, -Translation[_x_],

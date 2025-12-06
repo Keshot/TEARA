@@ -350,7 +350,7 @@ struct mat4 {
 
 typedef mat4 mat4x4;
 
-real32 *mat4::operator[](i32 Index)
+inline real32 *mat4::operator[](i32 Index)
 {
     Assert(Index < (sizeof(mat) / sizeof(*mat)));
 
@@ -359,7 +359,7 @@ real32 *mat4::operator[](i32 Index)
     return Result;
 }
 
-const real32* mat4::operator[](i32 Index) const
+inline const real32* mat4::operator[](i32 Index) const
 {    
     Assert(Index < (sizeof(mat) / sizeof(*mat)));
 
@@ -368,7 +368,7 @@ const real32* mat4::operator[](i32 Index) const
     return Result;
 }
 
-mat4 mat4::operator-() const
+inline mat4 mat4::operator-() const
 {
     mat4 Result = {
         -mat[0][0], -mat[0][1], -mat[0][2], -mat[0][3],
@@ -380,7 +380,7 @@ mat4 mat4::operator-() const
     return Result;
 }
 
-mat4 mat4::operator-(const mat4 &Other) const
+inline mat4 mat4::operator-(const mat4 &Other) const
 {
     mat4 Result = {
         mat[0][0] - Other.mat[0][0], mat[0][1] - Other.mat[0][1], mat[0][2] - Other.mat[0][2], mat[0][3] - Other.mat[0][3],
@@ -392,7 +392,7 @@ mat4 mat4::operator-(const mat4 &Other) const
     return Result;
 }
 
-mat4 mat4::operator+(const mat4 &Other) const
+inline mat4 mat4::operator+(const mat4 &Other) const
 {
     mat4 Result = {
         mat[0][0] + Other.mat[0][0], mat[0][1] + Other.mat[0][1], mat[0][2] + Other.mat[0][2], mat[0][3] + Other.mat[0][3],
@@ -404,7 +404,7 @@ mat4 mat4::operator+(const mat4 &Other) const
     return Result;
 }
 
-mat4 mat4::operator*(real32 Scalar) const
+inline mat4 mat4::operator*(real32 Scalar) const
 {
     mat4 Result = {
         mat[0][0] * Scalar, mat[0][1] * Scalar, mat[0][2] * Scalar, mat[0][3] * Scalar,
@@ -416,7 +416,7 @@ mat4 mat4::operator*(real32 Scalar) const
     return Result;
 }
 
-mat4 mat4::operator*(const mat4 &Other) const
+inline mat4 mat4::operator*(const mat4 &Other) const
 {
     // TODO(ismail): check can i optimise this?
 
@@ -445,7 +445,7 @@ mat4 mat4::operator*(const mat4 &Other) const
     return Result;
 }
 
-vec4 mat4::operator*(const vec4 &Vec) const
+inline vec4 mat4::operator*(const vec4 &Vec) const
 {
     vec4 Result = {
         mat[0][0] * Vec.x + mat[0][1] * Vec.y + mat[0][2] * Vec.z + mat[0][3] * Vec.w,
@@ -457,7 +457,7 @@ vec4 mat4::operator*(const vec4 &Vec) const
     return Result;
 }
 
-mat4 &mat4::operator*=(real32 Scalar)
+inline mat4 &mat4::operator*=(real32 Scalar)
 {
     mat[0][0] *= Scalar; mat[0][1] *= Scalar; mat[0][2] *= Scalar; mat[0][3] *= Scalar;
     mat[1][0] *= Scalar; mat[1][1] *= Scalar; mat[1][2] *= Scalar; mat[1][3] *= Scalar;
@@ -467,7 +467,7 @@ mat4 &mat4::operator*=(real32 Scalar)
     return *this;
 }
 
-mat4 &mat4::operator-=(const mat4 &Other)
+inline mat4 &mat4::operator-=(const mat4 &Other)
 {
     mat[0][0] -= Other.mat[0][0]; mat[0][1] -= Other.mat[0][1]; mat[0][2] -= Other.mat[0][2]; mat[0][3] -= Other.mat[0][3];
     mat[1][0] -= Other.mat[1][0]; mat[1][1] -= Other.mat[1][1]; mat[1][2] -= Other.mat[1][2]; mat[1][3] -= Other.mat[1][3];
@@ -477,7 +477,7 @@ mat4 &mat4::operator-=(const mat4 &Other)
     return *this;
 }
 
-mat4 &mat4::operator+=(const mat4 &Other)
+inline mat4 &mat4::operator+=(const mat4 &Other)
 {
     mat[0][0] += Other.mat[0][0]; mat[0][1] += Other.mat[0][1]; mat[0][2] += Other.mat[0][2]; mat[0][3] += Other.mat[0][3];
     mat[1][0] += Other.mat[1][0]; mat[1][1] += Other.mat[1][1]; mat[1][2] += Other.mat[1][2]; mat[1][3] += Other.mat[1][3];
@@ -487,7 +487,7 @@ mat4 &mat4::operator+=(const mat4 &Other)
     return *this;
 }
 
-mat4 &mat4::operator*=(const mat4 &Other)
+inline mat4 &mat4::operator*=(const mat4 &Other)
 {
     real32 x, y, z, w;
 

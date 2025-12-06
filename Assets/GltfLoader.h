@@ -41,8 +41,45 @@ struct GltfMesh {
     i32 PrimitivesAmount;
 };
 
-struct GltfAnimation {
+struct GltfAnimationTransform {
+    enum InterpolationType {
+        IStep,
+        ILinear,
+        IMax,
+    };
 
+    union TransformationStorage {
+        vec3    Translation;
+        quat    Rotation;
+        vec3    Scale;
+    };
+
+    InterpolationType       IType;
+    real32*                 Keyframes;
+    TransformationStorage*  Transforms;
+    i32                     Amount;
+};
+
+struct GltfAnimationFrame {
+    enum {
+        ATranslation,
+        ARotation,
+        AScale,
+        AMax,
+    };
+
+    GltfAnimationTransform Transformations[AMax];
+};
+
+struct GltfAnimation {
+    GltfAnimationFrame* PerBonesFrame;
+    i32                 FramesAmount;
+    real32              Duration;
+};
+
+struct GltfAnimationArray {
+    GltfAnimation* Animations;
+    i32 AnimationsAmount;
 };
 
 struct GltfJoint {
@@ -80,18 +117,15 @@ struct GltfFile {
     GltfMesh* Meshes;
     i32 MeshesAmount;
 
-    GltfAnimation* Animations;
-    i32 AnimationsAmount;
-
     GltfSkin* Skins;
     i32 SkinsAmount;
+
+    GltfAnimationArray Animations;
 };
 
 inline GltfFile::GltfFile() 
     : Meshes(0)
     , MeshesAmount(0)
-    , Animations(0)
-    , AnimationsAmount(0)
     , Skins(0)
     , SkinsAmount(0)
 {
