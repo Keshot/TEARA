@@ -346,6 +346,7 @@ struct mat4 {
     mat4 &operator-=(const mat4 &Other);
     mat4 &operator+=(const mat4 &Other);
     mat4 &operator*=(const mat4 &Other);
+    void Transpose();
 };
 
 typedef mat4 mat4x4;
@@ -534,6 +535,52 @@ inline mat4 &mat4::operator*=(const mat4 &Other)
     return *this;
 }
 
+inline void mat4::Transpose()
+{
+    // | 1  1  1  1 |      | 1  2  3  4 |
+    // | 2  2  2  2 |  to  | 1  2  3  4 |
+    // | 3  3  3  3 |      | 1  2  3  4 |
+    // | 4  4  4  4 |      | 1  2  3  4 |
+
+    real32 tmp;
+
+    tmp = mat[0][1]; mat[0][1] = mat[1][0]; mat[1][0] = tmp;
+    // | 1  1  1  1 |      | 1  2  1  1 |
+    // | 2  2  2  2 |  to  | 1  2  2  2 |
+    // | 3  3  3  3 |      | 3  3  3  3 |
+    // | 4  4  4  4 |      | 4  4  4  4 |
+
+    tmp = mat[0][2]; mat[0][2] = mat[2][0]; mat[2][0] = tmp;
+    // | 1  2  1  1 |      | 1  2  3  1 |
+    // | 1  2  2  2 |  to  | 1  2  2  2 |
+    // | 3  3  3  3 |      | 1  3  3  3 |
+    // | 4  4  4  4 |      | 4  4  4  4 |
+
+    tmp = mat[0][3]; mat[0][3] = mat[3][0]; mat[3][0] = tmp;
+    // | 1  2  3  1 |      | 1  2  3  4 |
+    // | 1  2  2  2 |  to  | 1  2  2  2 |
+    // | 1  3  3  3 |      | 1  3  3  3 |
+    // | 4  4  4  4 |      | 1  4  4  4 |
+
+    tmp = mat[1][2]; mat[1][2] = mat[2][1]; mat[2][1] = tmp;
+    // | 1  2  3  4 |      | 1  2  3  4 |
+    // | 1  2  2  2 |  to  | 1  2  3  2 |
+    // | 1  3  3  3 |      | 1  2  3  3 |
+    // | 1  4  4  4 |      | 1  4  4  4 |
+
+    tmp = mat[1][3]; mat[1][3] = mat[3][1]; mat[3][1] = tmp;
+    // | 1  2  3  4 |      | 1  2  3  4 |
+    // | 1  2  3  2 |  to  | 1  2  3  4 |
+    // | 1  2  3  3 |      | 1  2  3  3 |
+    // | 1  4  4  4 |      | 1  2  4  4 |
+
+    tmp = mat[2][3]; mat[2][3] = mat[3][2]; mat[3][2] = tmp;
+    // | 1  2  3  4 |      | 1  2  3  4 |
+    // | 1  2  3  4 |  to  | 1  2  3  4 |
+    // | 1  2  3  3 |      | 1  2  3  4 |
+    // | 1  2  4  4 |      | 1  2  3  4 |
+}
+
 const mat4 Identity4 = 
 {
     1.0f, 0.0f, 0.0f, 0.0f,
@@ -547,6 +594,12 @@ const mat3 Identity3 =
     1.0f, 0.0f, 0.0f,
     0.0f, 1.0f, 0.0f,
     0.0f, 0.0f, 1.0f
+};
+
+enum { 
+    mat2_size = (sizeof(mat2) / sizeof(**mat2::mat)),  
+    mat3_size = (sizeof(mat3) / sizeof(**mat3::mat)),  
+    mat4_size = (sizeof(mat4) / sizeof(**mat4::mat)) 
 };
 
 #endif

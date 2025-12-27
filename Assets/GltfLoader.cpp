@@ -4,14 +4,56 @@
 
 #include <string.h>
 
-#define HANDLE_MEMORY_ALLOCATION(type, amount, assign, ret_value)   \
-    size = sizeof(type) * (amount);                                 \
-    (assign) = ((type*)malloc(size));                               \
-    if (!(assign)) {                                                \
-        Assert(false);                                              \
-        return ret_value;                                           \
-    }                                                               \
-    memset((assign), 0, size);
+// TODO(Ismail): move all test staff to somewhere
+
+inline bool32 GltfMemoryArena::Init(u64 Len)
+{
+    if (Base) {
+        Assert(false); // u can't allocate memory arena twice for GltfFile
+    }
+
+    Base = (byte*)malloc(Len);
+    if (!Base) {
+        Assert(false);
+
+        return GltfFile::Failed;
+    }
+
+    Size      = Len;
+    NextAvail = Base;
+    AvailSize = Size;
+
+    memset(Base, 0, Size);
+
+    return GltfFile::Success;
+}
+
+inline void GltfMemoryArena::Clear()
+{
+    NextAvail = Base;
+    AvailSize = Size;
+
+    memset(Base, 0, Size);
+}
+
+inline void* GltfMemoryArena::Alloc(u64 Size)
+{
+    if (Size > AvailSize) {
+        Assert(false); // just allocate enough 
+
+        return 0;
+    }
+
+    Assert(*NextAvail == 0);
+
+    void* Tmp = NextAvail;
+
+    NextAvail += Size;
+
+    AvailSize -= Size;
+
+    return Tmp;
+}
 
 static cgltf_data* Open(const char* Path)
 {
@@ -37,127 +79,260 @@ static cgltf_data* Open(const char* Path)
     return Result;
 }
 
-static void ReadJoints(cgltf_node** Root, GltfJoint* DstRoot, cgltf_node** From, GltfJoint* To, i32 Len)
+inline static i32 FindBoneIndex(cgltf_node** Joints, i32 Amount, cgltf_node* ToFind)
 {
-    u64     size        = 0;
-    mat4    ParentMat   = Identity4;
-
-    if (!Len--) {
-        return;
-    }
-
-    cgltf_node* OrigJoint = *From;
-
-    cgltf_node* Parent = OrigJoint->parent;
-    if (Parent && Parent->skin) {
-        Assert(OrigJoint->skin == Parent->skin);
-
-        i32 JointsAmount = (i32)OrigJoint->skin->joints_count;
-
-        for (i32 idx = 0; idx < JointsAmount; ++idx) {
-            if (Root[idx] == Parent) {
-                ParentMat = DstRoot[idx].InverseBindMatrix;
-            }
+    for (i32 JointIndex = 0; JointIndex < Amount; ++JointIndex) {
+        cgltf_node* CompareJoint = Joints[JointIndex];
+        if (CompareJoint == ToFind) {
+            return JointIndex;
         }
     }
 
-    cgltf_float*    Translation = OrigJoint->translation;
-    cgltf_float*    Scale       = OrigJoint->scale;
-    quat            Rotation    = OrigJoint->rotation;
-
-    mat4 InverseTranslationMatrix = {};
-    mat4 InverseScaleMatrix       = {};
-    mat4 InverseRotationMatrix    = {};
-
-    InverseTranslationFromArr(Translation, InverseTranslationMatrix);
-    InverseScaleFromArr(Scale, InverseScaleMatrix);
-    Rotation.UprightToObject(InverseRotationMatrix);
-
-    To->InverseBindMatrix = InverseScaleMatrix * InverseRotationMatrix * InverseTranslationMatrix * ParentMat;
-
-    char *JointNameTmp;
-
-    u32 SrcNameLen = strlen(OrigJoint->name);
-    u32 DstNameLen = SrcNameLen + 1;
-
-    HANDLE_MEMORY_ALLOCATION(char, DstNameLen, JointNameTmp);
-
-    memcpy_s(JointNameTmp, DstNameLen, OrigJoint->name, SrcNameLen);
-
-    To->BoneName    = JointNameTmp;
-    To->NameLen     = SrcNameLen;
-
-    i32* ChildrenIdxs;
-    i32 ChildrenJointsAmount = (i32)OrigJoint->children_count;
-
-    HANDLE_MEMORY_ALLOCATION(i32, ChildrenJointsAmount, ChildrenIdxs);
-
-    for (i32 idx = 0; idx < ChildrenJointsAmount; ++idx) {
-        cgltf_node** Child = OrigJoint->children + idx;
-
-        ChildrenIdxs[idx] = Child - Root;
-    } 
-
-    To->Children        = ChildrenIdxs;
-    To->ChildrenAmount  = ChildrenJointsAmount;
-
-    ReadJoints(Root, DstRoot, From + 1, To + 1, Len);
+    return -1;
 }
 
-GltfFile::~GltfFile()
+inline static void ReadAnimation(cgltf_animation& SrcAnims, GltfAnimation& DstAnims, cgltf_node** Joints, i32 JointsAmount, GltfMemoryArena& Arena)
 {
-    if (Meshes) {
-        for (i32 MeshIdx = 0; MeshIdx < MeshesAmount; ++MeshIdx) {
-            GltfMesh& Mesh = Meshes[MeshIdx];
-            
-            GltfPrimitive* Primitives = Mesh.Primitives;
-            if (!Primitives) {
-                continue;
-            }
+    i32                      ChannelsCount = (i32)SrcAnims.channels_count;
+    cgltf_animation_channel* Channels      = SrcAnims.channels;
 
-            i32 PrimitivesAmount = Mesh.PrimitivesAmount;
-            for (i32 PrimitiveIdx = 0; PrimitiveIdx < PrimitivesAmount; ++PrimitiveIdx) {
-                GltfPrimitive& Primitive = Primitives[PrimitiveIdx];
+    GltfAnimationFrame* BonesFrames = (GltfAnimationFrame*)Arena.Alloc(sizeof(*BonesFrames) * JointsAmount);
+
+    DstAnims.PerBonesFrame  = BonesFrames;
+    DstAnims.FramesAmount   = JointsAmount;
+
+    real32 AnimationDuration = 0.0f;
+    for (i32 ChannelIndex = 0; ChannelIndex < ChannelsCount; ++ChannelIndex) {
+        cgltf_animation_channel& CurrentChannel = Channels[ChannelIndex];
+
+        cgltf_animation_sampler* CurrentSampler = CurrentChannel.sampler;
+
+        cgltf_animation_path_type ChannelType       = CurrentChannel.target_path;
+        cgltf_interpolation_type  InterpalationType = CurrentSampler->interpolation;
+
+        Assert(ChannelType != cgltf_animation_path_type::cgltf_animation_path_type_invalid &&
+               ChannelType != cgltf_animation_path_type::cgltf_animation_path_type_weights);
+        
+        Assert(InterpalationType != cgltf_interpolation_type::cgltf_interpolation_type_cubic_spline);
+
+        cgltf_accessor* KeyframesAccessor  = CurrentSampler->input;
+        cgltf_accessor* TransformsAccessor = CurrentSampler->output;
+
+        Assert(KeyframesAccessor->has_max && KeyframesAccessor->has_min);
+        Assert(KeyframesAccessor->max[1] == 0.0f && KeyframesAccessor->min[1] == 0.0f);
+
+        real32 DurationTmp = KeyframesAccessor->max[0];
+
+        if ((DurationTmp != AnimationDuration) && (ChannelIndex > 0)) {
+            Assert(false);
+        }
+
+        AnimationDuration = DurationTmp > AnimationDuration ? DurationTmp : AnimationDuration;
+
+        i32 KeyframesAmount  = (i32)CurrentSampler->input->count;
+        i32 TransformsAmount = (i32)CurrentSampler->output->count;
+
+        Assert(TransformsAmount == KeyframesAmount);
+
+        cgltf_node* TargetNode = CurrentChannel.target_node;
+
+        i32 BoneIdx = FindBoneIndex(Joints, JointsAmount, TargetNode);
+
+        Assert(BoneIdx >= 0);
+
+        GltfAnimationFrame& Frame = BonesFrames[BoneIdx];
+
+        GltfAnimationTransform* Transform;
+        switch(ChannelType) {
+            case cgltf_animation_path_type::cgltf_animation_path_type_translation: {
+                Transform = &Frame.Transformations[GltfAnimationFrame::ATranslation];
+
+                GltfAnimationTransform::TransformationStorage* TransformsStorage = (GltfAnimationTransform::TransformationStorage*)Arena.Alloc(sizeof(*TransformsStorage) * TransformsAmount);
+
+                for (i32 TransformIndex = 0; TransformIndex < TransformsAmount; ++TransformIndex) {
+                    vec3& Elem = TransformsStorage[TransformIndex].Translation;
+                    cgltf_accessor_read_float(TransformsAccessor, TransformIndex, Elem.vec, sizeof(Elem));
+                }
+
+                Transform->Transforms = TransformsStorage;
+            } break;
+
+            case cgltf_animation_path_type::cgltf_animation_path_type_rotation: {
+                Transform = &Frame.Transformations[GltfAnimationFrame::ARotation];
+
+                GltfAnimationTransform::TransformationStorage* TransformsStorage = (GltfAnimationTransform::TransformationStorage*)Arena.Alloc(sizeof(*TransformsStorage) * TransformsAmount);
+
+                for (i32 TransformIndex = 0; TransformIndex < TransformsAmount; ++TransformIndex) {
+                    real32 Elem[4] = {};
+                    cgltf_accessor_read_float(TransformsAccessor, TransformIndex, Elem, sizeof(Elem));
+
+                    quat& Rot = TransformsStorage[TransformIndex].Rotation;
+                    Rot.w = Elem[_w_];
+                    Rot.x = Elem[_x_];
+                    Rot.y = Elem[_y_];
+                    Rot.z = Elem[_z_];
+                }
+
+                Transform->Transforms = TransformsStorage;
+            } break;
+
+            case cgltf_animation_path_type::cgltf_animation_path_type_scale: {
+                Transform = &Frame.Transformations[GltfAnimationFrame::AScale];
                 
-                free(Primitive.Positions);
-                free(Primitive.Normals);
-                free(Primitive.TextureCoord);
-                free(Primitive.BoneWeights);
-                free(Primitive.BoneIds);
-                free(Primitive.Indices);
+                GltfAnimationTransform::TransformationStorage* TransformsStorage = (GltfAnimationTransform::TransformationStorage*)Arena.Alloc(sizeof(*TransformsStorage) * TransformsAmount);
 
-                free(Primitive.Material.TextureFilePath);
-                free(Primitive.Material.SpecularExpFilePath);
-            }
-            free(Primitives);
+                for (i32 TransformIndex = 0; TransformIndex < TransformsAmount; ++TransformIndex) {
+                    vec3& Elem = TransformsStorage[TransformIndex].Scale;
+                    cgltf_accessor_read_float(TransformsAccessor, TransformIndex, Elem.vec, sizeof(Elem));
+                }
+                
+                Transform->Transforms = TransformsStorage;
+            } break;
         }
-        free(Meshes);
-    }
-    if (Skins) {
-        for (i32 SkinIdx = 0; SkinIdx < SkinsAmount; ++SkinIdx) {
-            GltfSkin& Skin = Skins[SkinIdx];
 
-            i32         SkinJointsAmount    = Skin.JointsAmount;
-            GltfJoint*  Joints              = Skin.Joints;
-            for (i32 JointIdx = 0; JointIdx < SkinJointsAmount; ++JointIdx) {
-                GltfJoint& Joint = Joints[JointIdx];
+        real32* Keyframes = (real32*)Arena.Alloc(sizeof(*Keyframes) * KeyframesAmount);
 
-                free(Joint.BoneName);
-                free(Joint.Children);
-            }
-            free(Joints);
-        }
-        free(Skins);
+        i32 Read = (i32)cgltf_accessor_unpack_floats(KeyframesAccessor, Keyframes, KeyframesAmount);
+
+        Assert(Read == KeyframesAmount);
+
+        Transform->Keyframes = Keyframes;
+        Transform->Amount    = KeyframesAmount;
+        Transform->IType     = InterpalationType == cgltf_interpolation_type::cgltf_interpolation_type_linear ? GltfAnimationTransform::ILinear : GltfAnimationTransform::IStep;
+        
+        Transform->Validated = 1;
     }
-    if (Animations) {
-        free(Animations);
+
+    DstAnims.Duration = AnimationDuration;
+
+    // TODO(ismail): move it into tests for GltfLoader
+    Assert(DstAnims.Duration > 0.0f);
+    Assert(DstAnims.FramesAmount == JointsAmount);
+
+    i32 FrmAm = DstAnims.FramesAmount;
+    GltfAnimationFrame* Fr = DstAnims.PerBonesFrame;
+    for (i32 FrIndex = 0; FrIndex < FrmAm; ++FrIndex) {
+        GltfAnimationFrame& FrTmp = Fr[FrIndex];
+
+        Assert(FrTmp.Transformations[GltfAnimationFrame::ATranslation].Validated);
+        Assert(FrTmp.Transformations[GltfAnimationFrame::ARotation].Validated);
+        Assert(FrTmp.Transformations[GltfAnimationFrame::AScale].Validated);
     }
 }
 
-bool32 GltfFile::Read(const char* Path)
+inline static bool32 ReadSkin(cgltf_skin& SrcSkin, GltfSkin& DstSkin, GltfMemoryArena& Arena, i32 RootsMax)
 {
-    u64 size = 0;
+    i32 RootsAmount = 0;
 
+    cgltf_accessor* InverseMatAccessor = SrcSkin.inverse_bind_matrices;
+
+    Assert(InverseMatAccessor);
+
+    Assert(InverseMatAccessor->component_type == cgltf_component_type_r_32f);
+    Assert(InverseMatAccessor->type == cgltf_type_mat4);
+
+    mat4*   InverseBindMatrix;
+
+    i32     MatAmount               = (i32)InverseMatAccessor->count;
+    real32* InverseBindMatrixHolder = (real32*)Arena.Alloc(sizeof(*InverseBindMatrix) * MatAmount);
+
+    InverseBindMatrix = (mat4*)InverseBindMatrixHolder;
+
+    i32 Read = (i32)cgltf_accessor_unpack_floats(InverseMatAccessor, InverseBindMatrixHolder, MatAmount * mat4_size);
+
+    cgltf_node**    SrcJoints   = SrcSkin.joints;
+    i32             JointsCount = (i32)SrcSkin.joints_count;
+    GltfJoint*      DstJoints   = (GltfJoint*)Arena.Alloc(sizeof(*DstJoints) * JointsCount);
+    i32*            Roots       = (i32*)Arena.Alloc(sizeof(*Roots) * RootsMax);
+
+    DstSkin.Joints       = DstJoints;
+    DstSkin.JointsAmount = JointsCount;
+    DstSkin.Roots        = Roots;
+
+    for (i32 JointIndex = 0; JointIndex < JointsCount; ++JointIndex) {
+        cgltf_node* SrcJoint    = SrcJoints[JointIndex];
+        GltfJoint&  DstJoint    = DstJoints[JointIndex];
+
+        cgltf_node* Parent      = SrcJoint->parent;
+        i32         ParentIndex = FindBoneIndex(SrcJoints, JointsCount, Parent);
+
+        if (!SrcJoint->parent || ParentIndex == -1) {
+            Roots[RootsAmount++] = JointIndex;
+
+            Assert(RootsAmount <= 1); // for now only 1 root bone we can process
+        }
+
+        const char* SrcJointName    = SrcJoint->name;
+        u32         SrcNameLen      = (u32)strlen(SrcJointName);
+        u32         DstNameLen      = SrcNameLen + 1;
+        
+        char* DstJointName = (char*)Arena.Alloc(sizeof(*DstJointName) * DstNameLen);
+
+        memcpy_s(DstJointName, DstNameLen, SrcJointName, SrcNameLen);
+
+        cgltf_node**    Childrens       = SrcJoint->children;
+        i32             ChildrensAmount = (i32)SrcJoint->children_count;
+        i32*            ChildrensTmp    = (i32*)Arena.Alloc(sizeof(*ChildrensTmp) * ChildrensAmount);
+
+        for (i32 ChildIndex = 0; ChildIndex < ChildrensAmount; ++ChildIndex) {
+            cgltf_node* Child = Childrens[ChildIndex];
+
+            i32 inx = FindBoneIndex(SrcJoints, JointsCount, Child);
+
+            Assert(inx >= 0);
+
+            ChildrensTmp[ChildIndex] = inx;
+        }
+
+        DstJoint.BoneName           = DstJointName;
+        DstJoint.NameLen            = SrcNameLen;
+        DstJoint.Parent             = ParentIndex;
+        DstJoint.Children           = ChildrensTmp;
+        DstJoint.ChildrenAmount     = ChildrensAmount;
+        DstJoint.InverseBindMatrix  = InverseBindMatrix[JointIndex];
+
+        DstJoint.InverseBindMatrix .Transpose();
+    }
+
+    DstSkin.RootsAmount = RootsAmount;
+        
+    // TODO(ismail): move it into tests for GltfLoader
+    for (i32 idx = 0; idx < JointsCount; ++idx) {
+        cgltf_node* Joint       = SrcJoints[idx];
+        GltfJoint&  JointTmp    = DstJoints[idx];
+
+        const char* OriginalName    = Joint->name;
+        const char* ReadName        = JointTmp.BoneName;
+
+        i32 JointChildrenCount      = Joint->children_count;
+        i32 JointTmpChildrenCount   = JointTmp.ChildrenAmount;
+
+        Assert(JointChildrenCount == JointTmpChildrenCount);
+
+        cgltf_node**    JointChildrens      = Joint->children;
+        i32*            JointTmpChildrens   = JointTmp.Children;
+        for (i32 ChildrenIdx = 0; ChildrenIdx < JointChildrenCount; ++ChildrenIdx) {
+            cgltf_node* JointChildren       = JointChildrens[ChildrenIdx];
+            i32         JointTmpChildren    = JointTmpChildrens[ChildrenIdx];
+
+            const char* JointChildrenName       = JointChildren->name;
+            const char* JointTmpChildrenName    = DstJoints[JointTmpChildren].BoneName;
+
+            int TestRes = strcmp(OriginalName, ReadName);
+
+            Assert(!TestRes);
+        }
+
+        int TestRes = strcmp(OriginalName, ReadName);
+
+        Assert(!TestRes);
+    }
+
+    return GltfFile::Success;
+}
+
+inline static bool32 ReadMeshes(cgltf_data* GltfData, GltfMesh* Meshes, GltfMemoryArena& Arena)
+{
     u32 IndicesRead         = 0;
     u32 PositionsRead       = 0;
     u32 NormalsRead         = 0;
@@ -171,24 +346,15 @@ bool32 GltfFile::Read(const char* Path)
     const cgltf_accessor* AccessorWeights       = 0;
     const cgltf_accessor* AccessorJoints        = 0;
 
-    cgltf_data* Mesh = Open(Path);
-
-    i32 MeshesCount = (i32)Mesh->meshes_count;
-
-    Assert(!Meshes);
-
-    HANDLE_MEMORY_ALLOCATION(GltfMesh, MeshesCount, Meshes, GltfFile::Failed);
-    
-    MeshesAmount = MeshesCount;
+    i32 MeshesCount = GltfData->meshes_count;
 
     for (i32 MeshIndex = 0; MeshIndex < MeshesCount; ++MeshIndex) {
-        cgltf_mesh& CurrentMesh     = Mesh->meshes[MeshIndex];
+        cgltf_mesh& CurrentMesh     = GltfData->meshes[MeshIndex];
         GltfMesh&   CurrentMeshOut  = Meshes[MeshIndex];
 
         i32 PrimitivesAmount = (i32)CurrentMesh.primitives_count;
 
-        HANDLE_MEMORY_ALLOCATION(GltfPrimitive, PrimitivesAmount, CurrentMeshOut.Primitives, GltfFile::Failed);
-
+        CurrentMeshOut.Primitives       = (GltfPrimitive*)Arena.Alloc(sizeof(*CurrentMeshOut.Primitives) * PrimitivesAmount);
         CurrentMeshOut.PrimitivesAmount = PrimitivesAmount;
         
         cgltf_primitive*    PrimitivesBase      = CurrentMesh.primitives;
@@ -220,19 +386,12 @@ bool32 GltfFile::Read(const char* Path)
             i32 JointsCount         = AccessorJoints->count;
             i32 IndicesCount        = CurrentMeshPrimitive.indices->count;
 
-            vec3*           Positions       = 0;
-            vec3*           Normals         = 0;
-            vec2*           TextureCoords   = 0;
-            GltfJointIndex* BoneIDs         = 0;
-            vec4*           BoneWeights     = 0;
-            u32*            Indices         = 0;
-
-            HANDLE_MEMORY_ALLOCATION(vec3, PositionsCount, Positions, GltfFile::Failed);
-            HANDLE_MEMORY_ALLOCATION(vec3, NormalsCount, Normals, GltfFile::Failed);
-            HANDLE_MEMORY_ALLOCATION(vec2, TexturesCoordCount, TextureCoords, GltfFile::Failed);
-            HANDLE_MEMORY_ALLOCATION(GltfJointIndex, WeightsCount, BoneIDs, GltfFile::Failed);
-            HANDLE_MEMORY_ALLOCATION(vec4, JointsCount, BoneWeights, GltfFile::Failed);
-            HANDLE_MEMORY_ALLOCATION(u32, IndicesCount, Indices, GltfFile::Failed);
+            vec3*           Positions       = (vec3*)Arena.Alloc(sizeof(*Positions) * PositionsCount);
+            vec3*           Normals         = (vec3*)Arena.Alloc(sizeof(*Normals) * NormalsCount);
+            vec2*           TextureCoords   = (vec2*)Arena.Alloc(sizeof(*TextureCoords) * TexturesCoordCount);
+            GltfJointIndex* BoneIDs         = (GltfJointIndex*)Arena.Alloc(sizeof(*BoneIDs) * WeightsCount);
+            vec4*           BoneWeights     = (vec4*)Arena.Alloc(sizeof(*BoneWeights) * JointsCount);
+            u32*            Indices         = (u32*)Arena.Alloc(sizeof(*Indices) * IndicesCount);
 
             CurrentPrimitiveOut.PositionsCount   = PositionsCount;
             CurrentPrimitiveOut.NormalsCount     = NormalsCount;
@@ -297,12 +456,11 @@ bool32 GltfFile::Read(const char* Path)
                 cgltf_pbr_metallic_roughness* Diffuse = &CurrentMeshPrimitiveMaterial->pbr_metallic_roughness;
 
                 char* DiffuseTextureFileName = Diffuse->base_color_texture.texture->image->uri;
-                char* TextureFileNameTmp = 0;
 
                 u64 SrcLen = strlen(DiffuseTextureFileName);
                 u64 DstLen = SrcLen + 1;
 
-                HANDLE_MEMORY_ALLOCATION(char, DstLen, TextureFileNameTmp, GltfFile::Failed);
+                char* TextureFileNameTmp = (char*)Arena.Alloc(sizeof(*TextureFileNameTmp) * DstLen);
 
                 memcpy_s(TextureFileNameTmp, DstLen, DiffuseTextureFileName, SrcLen);
 
@@ -320,12 +478,11 @@ bool32 GltfFile::Read(const char* Path)
                 cgltf_specular& Specular = CurrentMeshPrimitiveMaterial->specular;
 
                 char* SpecularTextureFileName = Specular.specular_texture.texture->image->uri;
-                char* SpecularFileNameTmp = 0;
 
                 u64 SrcLen = strlen(SpecularTextureFileName);
                 u64 DstLen = SrcLen + 1;
 
-                HANDLE_MEMORY_ALLOCATION(char, DstLen, SpecularFileNameTmp, GltfFile::Failed);
+                char* SpecularFileNameTmp = (char*)Arena.Alloc(sizeof(*SpecularFileNameTmp) * DstLen);
 
                 memcpy_s(SpecularFileNameTmp, DstLen, SpecularTextureFileName, SrcLen);
 
@@ -339,64 +496,78 @@ bool32 GltfFile::Read(const char* Path)
                 CurrentPrimitiveMaterial.HaveSpecularExponent  = 1;
             }
         }
-
-        CurrentMeshOut.PrimitivesAmount = PrimitivesAmount;
     }
-
-    if (Mesh->skins_count > 0) {
-        Assert(Mesh->skins_count == 1);
-
-        HANDLE_MEMORY_ALLOCATION(GltfSkin, 1, Skins, GltfFile::Failed);
-        
-        SkinsAmount = Mesh->skins_count;
-        // TODO(Ismail): use already created inverse_bind_matrix in CurrentSkin
-        cgltf_skin& CurrentSkin = Mesh->skins[0];
-        GltfSkin&   Skin        = Skins[0];
-        GltfJoint*  JointsTmp   = 0;
-
-        u32 JointsCount = (u32)CurrentSkin.joints_count;
-
-        HANDLE_MEMORY_ALLOCATION(GltfJoint, JointsCount, JointsTmp, GltfFile::Failed);
-
-        cgltf_node** Joints = CurrentSkin.joints;
-        ReadJoints(Joints, JointsTmp, Joints, JointsTmp, (i32)JointsCount);
-
-        Skin.Joints         = JointsTmp;
-        Skin.JointsAmount   = JointsCount;
-        
-        // TODO(ismail): remove it later
-        for (i32 idx = 0; idx < JointsCount; ++idx) {
-            const char* OriginalName    = Joints[idx]->name;
-            const char* ReadName        = JointsTmp[idx].BoneName;
-
-            int TestRes = strcmp(OriginalName, ReadName);
-
-            Assert(!TestRes);
-        }
-
-        AnimationsAmount = (i32)Mesh->animations_count;
-
-        Assert(AnimationsAmount == 1); //NOTE(ismail): for now we support only one animation in single gltf file
-
-        HANDLE_MEMORY_ALLOCATION(GltfAnimation, AnimationsAmount, Animations, GltfFile::Failed);
-
-        AnimationsArray*    AnimArray   = FileOut->Animations;
-
-        glTFReadAnimations(Animations, AnimationsCount, *AnimArray, *Skelet);
-
-        /*
-        i32 AnimationsCount = (i32)Mesh->animations_count;
-
-        Assert(AnimationsCount == 1);
-
-        cgltf_animation*    Animations  = Mesh->animations;
-        AnimationsArray*    AnimArray   = FileOut->Animations;
-
-        glTFReadAnimations(Animations, AnimationsCount, *AnimArray, *Skelet);
-        */
-    }
-
-    cgltf_free(Mesh);
 
     return GltfFile::Success;
+}
+
+bool32 GltfFile::Read(const char* Path)
+{
+    bool32  Result  = GltfFile::Success;
+
+    Assert(!Meshes);
+    
+    if (Arena.Init(MemoryArenaSize) == GltfFile::Failed) {
+        return GltfFile::Failed;
+    }
+
+    cgltf_data* GltfData = Open(Path);
+
+    MeshesAmount = (i32)GltfData->meshes_count;
+
+    Assert(MeshesAmount == 1); // for now we read only one mesh per file
+
+    Meshes = (GltfMesh*)Arena.Alloc(sizeof(*Meshes) * MeshesAmount);
+    
+    if (ReadMeshes(GltfData, Meshes, Arena) == GltfFile::Failed) {
+        Assert(false);
+
+        Result = GltfFile::Failed;
+
+        goto Finish;
+    }
+
+    if (GltfData->skins_count > 0) {
+        Assert(GltfData->skins_count == 1);
+
+        SkinsAmount = GltfData->skins_count;
+
+        cgltf_skin* SrcSkins = GltfData->skins;
+
+        Skins = (GltfSkin*)Arena.Alloc(sizeof(*Skins) * SkinsAmount);
+
+        for (i32 SkinIndex = 0; SkinIndex < SkinsAmount; ++SkinIndex) {
+            cgltf_skin& SrcSkin = SrcSkins[SkinIndex];
+            GltfSkin&   DscSkin = Skins[SkinIndex];
+
+            if (ReadSkin(SrcSkin, DscSkin, Arena, RootJointsMax) == GltfFile::Failed) {
+                Assert(false);
+
+                Result = GltfFile::Failed;
+
+                goto Finish;
+            }
+        }
+
+        AnimationsAmount = (i32)GltfData->animations_count;
+
+        if (AnimationsAmount > 0) {
+            Assert(AnimationsAmount == 1); //NOTE(ismail): for now we support only one animation in single gltf file
+
+            cgltf_animation* Anims = GltfData->animations;
+            Animations = (GltfAnimation*)Arena.Alloc(sizeof(*Animations) * AnimationsAmount);
+
+            for (i32 AnimIndex = 0; AnimIndex <  AnimationsAmount; ++AnimIndex) {
+                cgltf_animation& Anim    = Anims[AnimIndex];
+                GltfAnimation&   AnimOut = Animations[AnimIndex];
+
+                ReadAnimation(Anim, AnimOut, SrcSkins->joints, SrcSkins->joints_count, Arena);
+            }
+        }
+    }
+
+Finish:
+    cgltf_free(GltfData);
+
+    return Result;
 }

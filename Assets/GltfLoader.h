@@ -6,6 +6,42 @@
 
 #include <stdlib.h>
 
+struct GltfMemoryArena {
+    GltfMemoryArena();
+    ~GltfMemoryArena();
+
+    GltfMemoryArena(const GltfMemoryArena&) = delete;
+    GltfMemoryArena(GltfMemoryArena&&) = delete;
+
+    GltfMemoryArena& operator=(const GltfMemoryArena&) = delete;
+    GltfMemoryArena& operator=(GltfMemoryArena&&) = delete;
+
+    bool32 Init(u64 size);
+
+    void Clear();
+    void* Alloc(u64 Size);
+
+    byte*   Base;
+    u64     Size;
+    byte*   NextAvail;
+    u64     AvailSize;
+};
+
+inline GltfMemoryArena::GltfMemoryArena()
+    : Base(0)
+    , Size(0)
+    , NextAvail(0)
+    , AvailSize(0)
+{
+}
+
+inline GltfMemoryArena::~GltfMemoryArena()
+{
+    if (Base) {
+        free(Base);
+    }
+}
+
 struct GltfJointIndex {
     i32 x, y, z, w;
 };
@@ -58,6 +94,7 @@ struct GltfAnimationTransform {
     real32*                 Keyframes;
     TransformationStorage*  Transforms;
     i32                     Amount;
+    bool32                  Validated;
 };
 
 struct GltfAnimationFrame {
@@ -77,11 +114,6 @@ struct GltfAnimation {
     real32              Duration;
 };
 
-struct GltfAnimationArray {
-    GltfAnimation* Animations;
-    i32 AnimationsAmount;
-};
-
 struct GltfJoint {
     char*   BoneName;
     u32     NameLen;
@@ -92,8 +124,10 @@ struct GltfJoint {
 };
 
 struct GltfSkin {
-    GltfJoint*  Joints;
+    i32*        Roots;
+    i32         RootsAmount;
     i32         JointsAmount;
+    GltfJoint*  Joints;
 };
 
 struct GltfFile {
@@ -103,6 +137,7 @@ struct GltfFile {
     };
 
     GltfFile();
+    GltfFile(u64 ArenaLen, i32 RootMax);
 
     GltfFile(const GltfFile&) = delete;
     GltfFile(GltfFile&&) = delete;
@@ -120,15 +155,37 @@ struct GltfFile {
     GltfSkin* Skins;
     i32 SkinsAmount;
 
-    GltfAnimationArray Animations;
+    GltfAnimation* Animations;
+    i32 AnimationsAmount;
+
+    GltfMemoryArena Arena;
+
+private:
+    u64 MemoryArenaSize;
+    i32 RootJointsMax;
 };
+
+inline GltfFile::~GltfFile() = default;
 
 inline GltfFile::GltfFile() 
     : Meshes(0)
     , MeshesAmount(0)
     , Skins(0)
     , SkinsAmount(0)
+    , MemoryArenaSize(10 * 1000 * 1000) // 10mb
+    , RootJointsMax(1)
 {
+}
+
+inline GltfFile::GltfFile(u64 ArenaLen, i32 RootMax)
+    : Meshes(0)
+    , MeshesAmount(0)
+    , Skins(0)
+    , SkinsAmount(0)
+    , MemoryArenaSize(ArenaLen)
+    , RootJointsMax(RootMax)
+{
+
 }
 
 #endif
