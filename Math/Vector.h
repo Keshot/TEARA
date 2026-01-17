@@ -468,4 +468,14 @@ enum {
     vec4_size = (sizeof(vec4) / sizeof(*vec4::vec)) 
 };
 
+struct vec4i {
+    union {
+        struct {
+            i32 x, y, z, w;
+        };
+        i32 vec[4];
+    };
+};
+
+
 #endif
